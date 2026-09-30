@@ -75,15 +75,29 @@ class LLMConfig(_Strict):
     """
 
     enabled: bool = Field(True, description="Set false for a deterministic-only report with no LLM call.")
-    backend: Literal["openai", "litellm", "azure", "anthropic", "bedrock"] = Field(
+    backend: Literal[
+        "openai",
+        "anthropic",
+        "azure",
+        "bedrock",
+        "bedrock-mantle",
+        "google",
+        "google-cloud",
+        "groq",
+        "mistral",
+        "cohere",
+        "xai",
+        "huggingface",
+        "litellm",
+    ] = Field(
         "openai",
         description=(
-            "openai: any OpenAI-compatible endpoint (needs api_base) — self-hosted Ollama/vLLM/"
-            "LM Studio included. anthropic: the Anthropic Messages API directly. azure: Azure "
-            "OpenAI (needs azure_endpoint). bedrock: Amazon Bedrock, AWS IAM auth (env vars, "
-            "profile, or instance role) — not an API key. litellm: any other provider litellm "
-            "reaches (Vertex, Cohere, watsonx, custom proxies, ...) via its own model-string "
-            'convention, e.g. model: "vertex_ai/gemini-1.5-pro".'
+            "Which provider to call. openai: any OpenAI-compatible endpoint (needs api_base), "
+            "self-hosted Ollama/vLLM/LM Studio included. azure: needs azure_endpoint. bedrock, "
+            "bedrock-mantle: AWS IAM auth, not an API key. google: Gemini API. google-cloud: "
+            "Vertex AI (project/location, or an API key). anthropic, groq, mistral, cohere, xai, "
+            "huggingface: the provider's own API. litellm: any other provider litellm reaches, "
+            'by its own model-string convention, e.g. model: "vertex_ai/gemini-1.5-pro".'
         ),
     )
     model: str | None = Field(None, description='Model identifier, e.g. "qwen2.5-coder:32b".')
@@ -104,8 +118,15 @@ class LLMConfig(_Strict):
     )
     aws_region: str | None = Field(
         None,
-        description="AWS region for the bedrock backend. Falls back to AWS_DEFAULT_REGION/AWS_REGION "
-        "if unset; one of the two must resolve to something.",
+        description="AWS region for the bedrock and bedrock-mantle backends. Falls back to "
+        "AWS_DEFAULT_REGION/AWS_REGION if unset; one of the two must resolve to something.",
+    )
+    gcp_project: str | None = Field(
+        None,
+        description="Google Cloud project for the google-cloud backend. Falls back to the environment's.",
+    )
+    gcp_location: str | None = Field(
+        None, description="Google Cloud location for the google-cloud backend, e.g. us-central1 or global."
     )
     max_input_tokens: int = Field(
         12000,
