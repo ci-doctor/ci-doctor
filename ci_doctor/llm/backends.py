@@ -1,26 +1,31 @@
 """LLM backend registry.
 
-Every backend builds one `PydanticAILLMClient` wrapping a different
-`pydantic_ai.models.Model`, selected by `llm.backend`. Each uses
-`PromptedOutput(Report)` and one built-in repair retry (`Agent(retries=1)`) —
-no hand-rolled JSON parsing or retry loop here.
+Every backend builds one `PydanticAILLMClient` wrapping a `pydantic_ai.models.Model`,
+selected by `llm.backend`. Each uses `PromptedOutput(Report)` and one built-in repair
+retry (`Agent(retries=1)`) — no hand-rolled JSON parsing or retry loop here.
 
-Every backend needs its own pip extra; there is no default SDK in the base
-install. `openai`/`azure` and `litellm` are mutually exclusive installs —
-litellm pins `openai<3.0`, Pydantic AI's OpenAI integration needs `openai>=3.8`
-(see pyproject.toml's `[tool.uv] conflicts`). `litellm` reaches everything the
-other four don't (Vertex, Cohere, watsonx, ~100 providers) via the community
-`pydantic-ai-litellm` bridge, using litellm's own model-string convention
-(e.g. `model: vertex_ai/gemini-1.5-pro`).
+Any Pydantic AI-native provider goes through one generic path: Pydantic AI's own
+`infer_model` picks the `Model` class, and the provider is built from the constructor
+arguments it actually accepts (`api_key`, `base_url`, `http_client`). Adding a provider
+is a name in `LLMConfig.backend` and a pip extra. Only a provider with unusual
+constructor arguments gets an entry in `_EXTRA_KWARGS`. `litellm` is the one real
+override: it is the community `pydantic-ai-litellm` bridge, which routes in-process to
+~100 providers by litellm's own model-string convention (`vertex_ai/gemini-1.5-pro`).
 
-Every SDK is imported inside the builder that needs it, so importing this
-module costs nothing on a run that never reaches a model.
+Every backend needs its own pip extra; there is no default SDK in the base install.
+`openai`/`azure` and `litellm` are mutually exclusive — litellm pins `openai<3.0`,
+Pydantic AI's OpenAI integration needs `openai>=3.8` (see `[tool.uv] conflicts`).
+
+Every SDK is imported inside the builder that needs it, so importing this module
+costs nothing on a run that never reaches a model.
 """
 
+import inspect
 import os
+import ssl
 import threading
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, get_args
 
 from ci_doctor.config.schema import LLMConfig
 from ci_doctor.core.ports import LLMClient
@@ -29,6 +34,13 @@ from ci_doctor.llm.schema import Report
 if TYPE_CHECKING:
     from pydantic_ai import Agent
     from pydantic_ai.models import Model
+
+#: Every name `llm.backend` accepts — the config Literal is the single source.
+_KNOWN = frozenset(get_args(LLMConfig.model_fields["backend"].annotation))
+
+#: Where our name differs from Pydantic AI's: its bare `openai` is the Responses API,
+#: and self-hosted servers speak Chat Completions.
+_KIND = {"openai": "openai-chat"}
 
 
 def _api_key(cfg: LLMConfig, environ: Mapping[str, str]) -> str | None:
@@ -43,82 +55,64 @@ def _require_model(cfg: LLMConfig) -> str:
     return cfg.model
 
 
-def _openai_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
-    """Any OpenAI-compatible endpoint — self-hosted (Ollama, vLLM) or hosted."""
-    from pydantic_ai.models.openai import OpenAIChatModel
-    from pydantic_ai.providers.openai import OpenAIProvider
-
-    model_name = _require_model(cfg)
-    kwargs: dict[str, Any] = {
-        "base_url": cfg.api_base,
-        "api_key": _api_key(cfg, environ) or "no-key",  # SDK requires non-empty; local servers ignore it
-    }
-    if cfg.ca_bundle:
+def _provider_kwargs(provider_class: type, cfg: LLMConfig, environ: Mapping[str, str]) -> dict[str, Any]:
+    """Build the constructor arguments the provider class actually accepts."""
+    params = inspect.signature(provider_class.__init__).parameters
+    kwargs: dict[str, Any] = {}
+    if "api_key" in params:
+        kwargs["api_key"] = _api_key(cfg, environ)
+    if "base_url" in params and cfg.api_base:
+        kwargs["base_url"] = cfg.api_base
+    if "http_client" in params and cfg.ca_bundle:
         import httpx
 
-        kwargs["http_client"] = httpx.AsyncClient(verify=cfg.ca_bundle)
-    return OpenAIChatModel(model_name, provider=OpenAIProvider(**kwargs))
+        kwargs["http_client"] = httpx.AsyncClient(verify=ssl.create_default_context(cafile=cfg.ca_bundle))
+    return kwargs
 
 
-def _anthropic_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
-    """The Anthropic Messages API directly."""
-    from pydantic_ai.models.anthropic import AnthropicModel
-    from pydantic_ai.providers.anthropic import AnthropicProvider
-
-    model_name = _require_model(cfg)
-    kwargs: dict[str, Any] = {"api_key": _api_key(cfg, environ)}
-    if cfg.ca_bundle:
-        import httpx
-
-        kwargs["http_client"] = httpx.AsyncClient(verify=cfg.ca_bundle)
-    return AnthropicModel(model_name, provider=AnthropicProvider(**kwargs))
-
-
-def _azure_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
-    """Azure OpenAI. Unlike `openai`, no "no-key" fallback: Azure always needs one."""
-    from pydantic_ai.models.openai import OpenAIChatModel
-    from pydantic_ai.providers.azure import AzureProvider
-
-    model_name = _require_model(cfg)
-    provider = AzureProvider(
-        azure_endpoint=cfg.azure_endpoint,
-        api_version=cfg.azure_api_version,
-        api_key=_api_key(cfg, environ),
-    )
-    return OpenAIChatModel(model_name, provider=provider)
+#: Arguments a provider needs beyond the generic three. Each takes the config and the
+#: kwargs built so far, and returns what to add or replace.
+_EXTRA_KWARGS: dict[str, Callable[[LLMConfig, dict[str, Any]], dict[str, Any]]] = {
+    # The OpenAI SDK refuses an empty key; local servers ignore whatever they get.
+    "openai": lambda cfg, kw: {"api_key": kw.get("api_key") or "no-key"},
+    "azure": lambda cfg, kw: {"azure_endpoint": cfg.azure_endpoint, "api_version": cfg.azure_api_version},
+    # AWS auth comes from the environment/IAM (boto3's chain), not an API key.
+    "bedrock": lambda cfg, kw: {"region_name": cfg.aws_region},
+    "bedrock-mantle": lambda cfg, kw: {"region_name": cfg.aws_region},
+    "google-cloud": lambda cfg, kw: {
+        k: v for k, v in {"project": cfg.gcp_project, "location": cfg.gcp_location}.items() if v
+    },
+}
 
 
-def _bedrock_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":  # noqa: ARG001 - AWS creds come from the environment/IAM, not `environ`
-    """Amazon Bedrock. AWS IAM auth (env vars, profile, or instance role) — not an API key."""
-    from pydantic_ai.models.bedrock import BedrockConverseModel
-    from pydantic_ai.providers.bedrock import BedrockProvider
+def _generic_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
+    """Any Pydantic AI-native provider: Anthropic, Google, Groq, Mistral, Cohere, xAI, Bedrock, ..."""
+    from pydantic_ai.models import infer_model, infer_provider_class
 
     model_name = _require_model(cfg)
-    return BedrockConverseModel(model_name, provider=BedrockProvider(region_name=cfg.aws_region))
+    kind = _KIND.get(cfg.backend, cfg.backend)
+    provider_class = infer_provider_class(kind)
+    kwargs = _provider_kwargs(provider_class, cfg, environ)
+    if extra := _EXTRA_KWARGS.get(cfg.backend):
+        kwargs.update(extra(cfg, kwargs))
+    provider = provider_class(**kwargs)
+    return infer_model(f"{kind}:{model_name}", provider_factory=lambda _: provider)
 
 
 def _litellm_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
-    """Anything litellm reaches that the other backends can't."""
+    """Anything litellm reaches that the native providers can't."""
     from pydantic_ai_litellm import LiteLLMModel  # ty: ignore[unresolved-import]
 
     model_name = _require_model(cfg)
     return LiteLLMModel(model_name, api_key=_api_key(cfg, environ), api_base=cfg.api_base or None)
 
 
-_MODEL_BUILDERS: dict[str, Callable[[LLMConfig, Mapping[str, str]], "Model"]] = {
-    "openai": _openai_model,
-    "anthropic": _anthropic_model,
-    "azure": _azure_model,
-    "bedrock": _bedrock_model,
-    "litellm": _litellm_model,
-}
+_OVERRIDES: dict[str, Callable[[LLMConfig, Mapping[str, str]], "Model"]] = {"litellm": _litellm_model}
 
-_READY_CHECKS: dict[str, Callable[[LLMConfig], bool]] = {
+#: What a backend needs before a call is worth attempting; the default is just a model.
+_NEEDS: dict[str, Callable[[LLMConfig], bool]] = {
     "openai": lambda cfg: bool(cfg.model and cfg.api_base),
-    "anthropic": lambda cfg: bool(cfg.model),
     "azure": lambda cfg: bool(cfg.model and cfg.azure_endpoint),
-    "bedrock": lambda cfg: bool(cfg.model),
-    "litellm": lambda cfg: bool(cfg.model),
 }
 
 
@@ -135,9 +129,9 @@ def make_client(cfg: LLMConfig, environ: Mapping[str, str] | None = None) -> LLM
     Raises:
         ValueError: On an unknown backend name.
     """
-    build = _MODEL_BUILDERS.get(cfg.backend)
-    if build is None:
+    if cfg.backend not in _KNOWN:
         raise ValueError(f"unknown llm.backend: {cfg.backend}")
+    build = _OVERRIDES.get(cfg.backend, _generic_model)
     resolved_environ = os.environ if environ is None else environ
     return PydanticAILLMClient(build(cfg, resolved_environ), cfg)
 
@@ -151,8 +145,9 @@ def backend_ready(cfg: LLMConfig) -> bool:
     Returns:
         True if the backend has everything it needs. Unknown backends are False.
     """
-    check = _READY_CHECKS.get(cfg.backend)
-    return check(cfg) if check else False
+    if cfg.backend not in _KNOWN:
+        return False
+    return _NEEDS.get(cfg.backend, lambda c: bool(c.model))(cfg)
 
 
 class PydanticAILLMClient(LLMClient):
