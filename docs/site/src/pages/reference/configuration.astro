@@ -47,14 +47,17 @@ github:                          # used when github is the ci or the scm
 
 llm:
   enabled: true                  # false => deterministic-only report
-  backend: openai                # openai | anthropic | azure | bedrock | litellm
+  backend: openai                # openai | anthropic | azure | bedrock | bedrock-mantle | google |
+                                 # google-cloud | groq | mistral | cohere | xai | huggingface | litellm
   model: null                    # e.g. "qwen2.5-coder:32b" or "claude-opus-4-8"
   api_base: null                 # OpenAI-compatible / litellm base URL
   api_key_env: null              # optional; local servers often need none
   ca_bundle: null                # LLM endpoint's own CA, independent of the provider's
   azure_endpoint: null           # required for backend: azure
   azure_api_version: null        # required for backend: azure
-  aws_region: null               # backend: bedrock; falls back to AWS_DEFAULT_REGION/AWS_REGION
+  aws_region: null               # bedrock, bedrock-mantle; falls back to AWS_DEFAULT_REGION/AWS_REGION
+  gcp_project: null              # backend: google-cloud; falls back to the environment's
+  gcp_location: null             # backend: google-cloud, e.g. us-central1 or global
   max_input_tokens: 12000
   temperature: 0.1
   timeout_seconds: 120
@@ -198,6 +201,62 @@ redaction:
                 ></tr
             >
             <tr
+                ><td><code>bedrock-mantle</code></td><td
+                    >Bedrock's OpenAI-shaped models, AWS IAM auth</td
+                ><td
+                    ><code>model</code>; <code>aws_region</code>; <code>pip install ci-doctorr[bedrock-mantle]</code></td
+                ></tr
+            >
+            <tr
+                ><td><code>google</code></td><td
+                    >The Gemini API</td
+                ><td
+                    ><code>model</code>; <code>api_key_env</code> or <code>GOOGLE_API_KEY</code>; <code>pip install ci-doctorr[google]</code></td
+                ></tr
+            >
+            <tr
+                ><td><code>google-cloud</code></td><td
+                    >Vertex AI, Google Cloud auth</td
+                ><td
+                    ><code>model</code>; <code>gcp_project</code>/<code>gcp_location</code> with Application Default Credentials, or an API key; <code>pip install ci-doctorr[google]</code></td
+                ></tr
+            >
+            <tr
+                ><td><code>groq</code></td><td
+                    >Groq's own API</td
+                ><td
+                    ><code>model</code>; <code>api_key_env</code> or <code>GROQ_API_KEY</code>; <code>pip install ci-doctorr[groq]</code></td
+                ></tr
+            >
+            <tr
+                ><td><code>mistral</code></td><td
+                    >Mistral's own API</td
+                ><td
+                    ><code>model</code>; <code>api_key_env</code> or <code>MISTRAL_API_KEY</code>; <code>pip install ci-doctorr[mistral]</code></td
+                ></tr
+            >
+            <tr
+                ><td><code>cohere</code></td><td
+                    >Cohere's own API</td
+                ><td
+                    ><code>model</code>; <code>api_key_env</code> or <code>CO_API_KEY</code>; <code>pip install ci-doctorr[cohere]</code></td
+                ></tr
+            >
+            <tr
+                ><td><code>xai</code></td><td
+                    >xAI's Grok API</td
+                ><td
+                    ><code>model</code>; <code>api_key_env</code> or <code>XAI_API_KEY</code>; <code>pip install ci-doctorr[xai]</code></td
+                ></tr
+            >
+            <tr
+                ><td><code>huggingface</code></td><td
+                    >Hugging Face Inference</td
+                ><td
+                    ><code>model</code>; <code>api_key_env</code> or <code>HF_TOKEN</code>; <code>pip install ci-doctorr[huggingface]</code></td
+                ></tr
+            >
+            <tr
                 ><td><code>litellm</code></td><td
                     >Whatever else <a href="https://docs.litellm.ai/">litellm</a>
                     reaches — Vertex, Cohere, watsonx, custom proxies, ~100
@@ -214,17 +273,18 @@ redaction:
     <div class="note">
         <strong>Reach for <code>openai</code> first.</strong> The OpenAI Chat
         Completions shape is what Ollama, vLLM, llama.cpp, Together, Groq, DeepSeek,
-        Mistral and most others already speak. There is no default SDK in the base
+        Mistral and most others already speak; a provider with its own backend above
+        (Groq, Mistral, Google, ...) talks to its native API instead. There is no default SDK in the base
         install any more — every backend needs its own extra, picked for exactly the
         provider you're using.
     </div>
     <div class="note">
-        <strong><code>openai</code>/<code>azure</code> and <code>litellm</code>
+        <strong><code>openai</code>/<code>azure</code>/<code>bedrock-mantle</code> and <code>litellm</code>
         are mutually exclusive installs, not a menu to combine.</strong> litellm
         hard-pins <code>openai&lt;3.0</code>, while Pydantic AI's own OpenAI
         integration needs <code>openai&gt;=3.8</code> — the two cannot be installed
         in one environment. Pick whichever track covers your provider;
-        <code>anthropic</code> and <code>bedrock</code> are unaffected either way.
+        Every other native backend is unaffected either way.
         <code>litellm</code> may
         also pull <code>tiktoken</code>, which fetches vocab at runtime, so it is
         unfit for a strict air gap. When the LLM is disabled or unavailable,

@@ -1,15 +1,17 @@
-"""Backend registry: selection, readiness, and the shared PydanticAILLMClient.
+"""Backend registry: selection, readiness, provider kwargs, and the shared PydanticAILLMClient.
 
-No network — every builder is monkeypatched to a pydantic-ai test double
-(`TestModel`/`FunctionModel`, no extra required). `PydanticAILLMClient` is
-exercised against a stub output model; the real `Report` schema is covered
-end-to-end in tests/test_report.py.
+No network. Dispatch and argument-building are tested against a fake provider class, so
+they need no backend SDK; the real-construction tests skip per test when their SDK isn't
+installed. `PydanticAILLMClient` runs against a stub output model — the real `Report`
+schema is covered end-to-end in tests/test_report.py.
 """
 
 import sys
 import types
 from types import SimpleNamespace
 
+import certifi
+import httpx
 import pytest
 from pydantic import BaseModel
 from pydantic_ai.messages import ModelResponse, TextPart
@@ -17,12 +19,8 @@ from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.llm.backends import (
-    _MODEL_BUILDERS,
-    PydanticAILLMClient,
-    backend_ready,
-    make_client,
-)
+from ci_doctor.llm import backends
+from ci_doctor.llm.backends import _KNOWN, PydanticAILLMClient, backend_ready, make_client
 
 
 class _StubReport(BaseModel):
@@ -43,17 +41,160 @@ def _use_stub_report_schema(monkeypatch):
     monkeypatch.setattr("ci_doctor.llm.backends.Report", _StubReport)
 
 
-@pytest.mark.parametrize("backend", ["openai", "anthropic", "azure", "bedrock", "litellm"])
-def test_make_client_selects_backend(backend, monkeypatch):
-    """Every known backend builds a PydanticAILLMClient, real builder swapped for a test double."""
-    monkeypatch.setitem(_MODEL_BUILDERS, backend, lambda cfg, environ: TestModel())
-    kwargs = {"backend": backend, "model": "m"}
-    if backend == "openai":
-        kwargs["api_base"] = "http://stub"
-    if backend == "azure":
-        kwargs["azure_endpoint"] = "https://stub.openai.azure.com"
-    client = make_client(_llm(**kwargs))
-    assert isinstance(client, PydanticAILLMClient)
+class _FakeProvider:
+    """Records the kwargs it was built with. Accepts api_key and base_url, like most providers."""
+
+    built: dict = {}
+
+    def __init__(self, *, api_key=None, base_url=None):
+        type(self).built = {"api_key": api_key, "base_url": base_url}
+
+
+class _FakeClientProvider(_FakeProvider):
+    """A provider that also takes an http_client."""
+
+    def __init__(self, *, api_key=None, http_client=None):
+        type(self).built = {"api_key": api_key, "http_client": http_client}
+
+
+class _AnyProvider:
+    """Accepts whatever it is given, for tests that only look at the model id."""
+
+    def __init__(self, **kwargs):
+        pass
+
+
+class _RegionProvider:
+    """A provider with no api_key at all, like Bedrock."""
+
+    built: dict = {}
+
+    def __init__(self, *, region_name=None):
+        type(self).built = {"region_name": region_name}
+
+
+@pytest.fixture
+def fake_pydantic_ai(monkeypatch):
+    """Swap Pydantic AI's provider lookup and model builder for recorders — no SDK needed.
+
+    Returns:
+        A dict with the provider class to hand out (`provider_class`) and the ids
+        `infer_model` was called with (`ids`).
+    """
+    state = {"provider_class": _FakeProvider, "ids": [], "kinds": []}
+
+    def infer_provider_class(kind):
+        state["kinds"].append(kind)
+        return state["provider_class"]
+
+    def infer_model(model_id, provider_factory):
+        state["ids"].append(model_id)
+        provider_factory("ignored")
+        return TestModel()
+
+    monkeypatch.setattr("pydantic_ai.models.infer_provider_class", infer_provider_class)
+    monkeypatch.setattr("pydantic_ai.models.infer_model", infer_model)
+    return state
+
+
+def test_generic_path_passes_only_the_kwargs_the_provider_accepts(fake_pydantic_ai):
+    """api_key and base_url reach a provider that takes them; nothing else is invented."""
+    env = {"MY_KEY": "secret"}
+    backends._generic_model(_llm(backend="groq", model="m", api_key_env="MY_KEY", api_base="http://x"), env)
+    assert _FakeProvider.built == {"api_key": "secret", "base_url": "http://x"}
+
+
+def test_generic_path_leaves_an_unset_key_to_the_provider(fake_pydantic_ai):
+    """No api_key_env -> None, so the provider reads its own default env var."""
+    backends._generic_model(_llm(backend="groq", model="m"), {})
+    assert _FakeProvider.built["api_key"] is None
+
+
+def test_ca_bundle_becomes_an_http_client_only_where_accepted(fake_pydantic_ai):
+    """A provider with an http_client parameter gets the CA-bundle client; one without doesn't."""
+    fake_pydantic_ai["provider_class"] = _FakeClientProvider
+    backends._generic_model(_llm(backend="groq", model="m", ca_bundle=certifi.where()), {})
+    assert isinstance(_FakeClientProvider.built["http_client"], httpx.AsyncClient)
+
+    fake_pydantic_ai["provider_class"] = _FakeProvider
+    backends._generic_model(_llm(backend="groq", model="m", ca_bundle=certifi.where()), {})
+    assert "http_client" not in _FakeProvider.built
+
+
+@pytest.mark.parametrize(
+    "backend,kind",
+    [("openai", "openai-chat"), ("groq", "groq"), ("google-cloud", "google-cloud"), ("bedrock", "bedrock")],
+)
+def test_model_id_uses_pydantic_ais_provider_kind(fake_pydantic_ai, backend, kind):
+    """`openai` maps to Chat Completions; the rest keep their name. Colons in a model id survive."""
+    fake_pydantic_ai["provider_class"] = _AnyProvider
+    backends._generic_model(_llm(backend=backend, model="a.b-v1:0"), {})
+    assert fake_pydantic_ai["kinds"] == [kind]
+    assert fake_pydantic_ai["ids"] == [f"{kind}:a.b-v1:0"]
+
+
+def test_openai_gets_a_placeholder_key_for_local_servers(fake_pydantic_ai):
+    """The OpenAI SDK refuses an empty key; a keyless local server gets a placeholder."""
+    backends._generic_model(_llm(backend="openai", model="m", api_base="http://stub"), {})
+    assert _FakeProvider.built["api_key"] == "no-key"
+    backends._generic_model(
+        _llm(backend="openai", model="m", api_base="http://stub", api_key_env="K"), {"K": "real"}
+    )
+    assert _FakeProvider.built["api_key"] == "real"
+
+
+def test_azure_extras(fake_pydantic_ai):
+    """Azure is built from its endpoint and API version, not a base URL."""
+
+    class _Azure:
+        built: dict = {}
+
+        def __init__(self, *, azure_endpoint=None, api_version=None, api_key=None):
+            type(self).built = {"e": azure_endpoint, "v": api_version, "k": api_key}
+
+    fake_pydantic_ai["provider_class"] = _Azure
+    cfg = _llm(
+        backend="azure", model="m", azure_endpoint="https://x", azure_api_version="v1", api_key_env="K"
+    )
+    backends._generic_model(cfg, {"K": "k"})
+    assert _Azure.built == {"e": "https://x", "v": "v1", "k": "k"}
+
+
+@pytest.mark.parametrize("backend", ["bedrock", "bedrock-mantle"])
+def test_bedrock_family_gets_the_region(fake_pydantic_ai, backend):
+    """Bedrock takes a region, no key; unset falls through to the AWS environment."""
+    fake_pydantic_ai["provider_class"] = _RegionProvider
+    backends._generic_model(_llm(backend=backend, model="m", aws_region="eu-west-1"), {})
+    assert _RegionProvider.built == {"region_name": "eu-west-1"}
+    backends._generic_model(_llm(backend=backend, model="m"), {})
+    assert _RegionProvider.built == {"region_name": None}
+
+
+def test_google_cloud_passes_project_and_location_only_when_set(fake_pydantic_ai):
+    """Unset project/location are omitted, so Application Default Credentials can supply them."""
+
+    class _GCloud:
+        built: dict = {}
+
+        def __init__(self, *, api_key=None, project=None, location=None):
+            type(self).built = {"project": project, "location": location}
+
+    fake_pydantic_ai["provider_class"] = _GCloud
+    backends._generic_model(_llm(backend="google-cloud", model="m"), {})
+    assert _GCloud.built == {"project": None, "location": None}
+    backends._generic_model(
+        _llm(backend="google-cloud", model="m", gcp_project="p", gcp_location="global"), {}
+    )
+    assert _GCloud.built == {"project": "p", "location": "global"}
+
+
+@pytest.mark.parametrize("backend", sorted(_KNOWN))
+def test_make_client_builds_a_client_for_every_backend(backend, monkeypatch, fake_pydantic_ai):
+    """Every name the config accepts builds a PydanticAILLMClient (litellm's bridge faked too)."""
+    monkeypatch.setitem(backends._OVERRIDES, "litellm", lambda cfg, environ: TestModel())
+    fake_pydantic_ai["provider_class"] = _AnyProvider
+    kwargs = {"backend": backend, "model": "m", "api_base": "http://stub", "azure_endpoint": "https://x"}
+    assert isinstance(make_client(_llm(**kwargs)), PydanticAILLMClient)
 
 
 def test_unknown_backend_raises():
@@ -62,20 +203,30 @@ def test_unknown_backend_raises():
         make_client(SimpleNamespace(backend="nope"))
 
 
-def test_backend_ready_rules():
-    """Each backend reports ready only when it has everything it needs."""
+def test_an_unknown_backend_is_never_ready():
+    """`backend_ready` refuses a name the config would never accept."""
+    assert backend_ready(SimpleNamespace(backend="nope", model="m")) is False
+
+
+@pytest.mark.parametrize("backend", sorted(_KNOWN - {"openai", "azure"}))
+def test_a_backend_needs_only_a_model(backend):
+    """Most backends are ready as soon as they have a model; credentials come from the environment."""
+    assert backend_ready(_llm(backend=backend, model="m")) is True
+    assert backend_ready(_llm(backend=backend)) is False
+
+
+def test_openai_and_azure_need_their_endpoint():
+    """Openai needs api_base; azure needs azure_endpoint."""
     assert backend_ready(_llm(backend="openai", model="m", api_base="http://x")) is True
-    assert backend_ready(_llm(backend="openai", model="m")) is False  # needs api_base
-    assert backend_ready(_llm(backend="anthropic", model="m")) is True
-    assert backend_ready(_llm(backend="anthropic")) is False  # needs model
-    assert (
-        backend_ready(_llm(backend="azure", model="m", azure_endpoint="https://x.openai.azure.com")) is True
-    )
-    assert backend_ready(_llm(backend="azure", model="m")) is False  # needs azure_endpoint
-    assert backend_ready(_llm(backend="bedrock", model="m")) is True  # region/creds come from AWS env
-    assert backend_ready(_llm(backend="bedrock")) is False  # needs model
-    assert backend_ready(_llm(backend="litellm", model="m")) is True
-    assert backend_ready(_llm(backend="litellm")) is False  # needs model
+    assert backend_ready(_llm(backend="openai", model="m")) is False
+    assert backend_ready(_llm(backend="azure", model="m", azure_endpoint="https://x")) is True
+    assert backend_ready(_llm(backend="azure", model="m")) is False
+
+
+def test_a_missing_model_is_a_clear_error(fake_pydantic_ai):
+    """An injected config skips `backend_ready`, so the builder itself refuses."""
+    with pytest.raises(ValueError, match="llm.model is required for the groq backend"):
+        backends._generic_model(_llm(backend="groq"), {})
 
 
 def _reply(json_text: str) -> ModelResponse:
@@ -87,12 +238,11 @@ def test_complete_structured_returns_a_validated_dict():
     """One call, no repair needed: the reply is parsed and returned as a dict."""
     model = FunctionModel(lambda messages, info: _reply('{"summary": "ok", "score": 1}'))
     client = PydanticAILLMClient(model, _llm(model="m"))
-    out = client.complete_structured("prompt")
-    assert out == {"summary": "ok", "score": 1}
+    assert client.complete_structured("prompt") == {"summary": "ok", "score": 1}
 
 
 def test_agent_is_built_once_and_reused():
-    """One Agent per client, not one per call — same reuse discipline as before."""
+    """One Agent per client, not one per call."""
     calls = {"n": 0}
 
     def fake_llm(messages, info):
@@ -100,12 +250,11 @@ def test_agent_is_built_once_and_reused():
         return _reply('{"summary": "ok", "score": 1}')
 
     client = PydanticAILLMClient(FunctionModel(fake_llm), _llm(model="m"))
-    agent_first = client._agent_for()
+    first = client._agent_for()
     client.complete_structured("first")
     client.complete_structured("second")
-    agent_second = client._agent_for()
-    assert agent_first is agent_second
-    assert calls["n"] == 2  # one call per job, not one extra for re-building the Agent
+    assert client._agent_for() is first
+    assert calls["n"] == 2
 
 
 def test_one_repair_retry_on_invalid_then_valid_reply():
@@ -114,14 +263,11 @@ def test_one_repair_retry_on_invalid_then_valid_reply():
 
     def fake_llm(messages, info):
         calls["n"] += 1
-        if calls["n"] == 1:
-            return _reply("not json at all")
-        return _reply('{"summary": "ok", "score": 1}')
+        return _reply("not json at all" if calls["n"] == 1 else '{"summary": "ok", "score": 1}')
 
     client = PydanticAILLMClient(FunctionModel(fake_llm), _llm(model="m"))
-    out = client.complete_structured("prompt")
-    assert out == {"summary": "ok", "score": 1}
-    assert calls["n"] == 2  # one call + Pydantic AI's own one repair retry, no more
+    assert client.complete_structured("prompt") == {"summary": "ok", "score": 1}
+    assert calls["n"] == 2
 
 
 def test_still_invalid_after_the_retry_raises():
@@ -145,100 +291,93 @@ def test_temperature_and_timeout_reach_the_agent():
 
 
 def test_litellm_model_string_reaches_litellm_model(monkeypatch):
-    """Litellm's own model-string convention passes straight through (fake module: real one conflicts)."""
+    """Litellm's own model-string convention passes straight through (fake module: the real one conflicts)."""
     captured = {}
 
     class _FakeLiteLLMModel:
         def __init__(self, model_name, *, api_key=None, api_base=None):
             captured["model_name"] = model_name
-            captured["api_key"] = api_key
-            captured["api_base"] = api_base
 
     fake_module = types.ModuleType("pydantic_ai_litellm")
     fake_module.LiteLLMModel = _FakeLiteLLMModel
     monkeypatch.setitem(sys.modules, "pydantic_ai_litellm", fake_module)
 
-    from ci_doctor.llm.backends import _litellm_model
-
-    _litellm_model(_llm(backend="litellm", model="vertex_ai/gemini-1.5-pro"), {})
+    backends._litellm_model(_llm(backend="litellm", model="vertex_ai/gemini-1.5-pro"), {})
     assert captured["model_name"] == "vertex_ai/gemini-1.5-pro"
 
 
-# Real SDKs needed below; mutually exclusive with litellm, so skip rather than
-# require every CI job to install every extra.
-openai_sdk = pytest.importorskip("openai")
-anthropic_sdk = pytest.importorskip("anthropic")
+# Real construction: needs each provider's SDK, so each test skips when it is absent.
+# (openai/azure/bedrock-mantle conflict with litellm — see pyproject.toml.)
+_REAL = [
+    ("openai", "openai", "OpenAIChatModel", {"api_base": "http://stub"}),
+    (
+        "azure",
+        "openai",
+        "OpenAIChatModel",
+        {"azure_endpoint": "https://x.openai.azure.com", "azure_api_version": "v1"},
+    ),
+    ("anthropic", "anthropic", "AnthropicModel", {}),
+    ("google", "google.genai", "GoogleModel", {}),
+    ("google-cloud", "google.genai", "GoogleModel", {}),
+    ("groq", "groq", "GroqModel", {}),
+    ("mistral", "mistralai", "MistralModel", {}),
+    ("cohere", "cohere", "CohereModel", {}),
+    ("xai", "xai_sdk", "XaiModel", {}),
+    ("huggingface", "huggingface_hub", "HuggingFaceModel", {}),
+]
 
 
-def test_openai_model_uses_api_base_and_resolved_key(monkeypatch):
-    """A configured api_key_env reaches the provider; api_base is passed through."""
-    from ci_doctor.llm.backends import _openai_model
-
-    model = _openai_model(
-        _llm(model="m", api_base="http://stub", api_key_env="MY_KEY"), {"MY_KEY": "secret-key"}
-    )
-    assert model.model_name == "m"
-
-
-def test_openai_model_falls_back_to_no_key_placeholder():
-    """No api_key_env configured -> the SDK gets a non-empty placeholder, not None."""
-    from ci_doctor.llm.backends import _openai_model
-
-    # Would raise if the client ever required a real, non-empty string and got None.
-    _openai_model(_llm(model="m", api_base="http://stub"), {})
+@pytest.mark.parametrize("backend,sdk,model_class,extra", _REAL, ids=[r[0] for r in _REAL])
+def test_real_provider_builds_the_right_model(backend, sdk, model_class, extra):
+    """The generic path constructs each provider's own Model class from a key in the environment."""
+    pytest.importorskip(sdk)
+    cfg = _llm(backend=backend, model="some-model", api_key_env="K", **extra)
+    model = backends._generic_model(cfg, {"K": "fake"})
+    assert type(model).__name__ == model_class
+    assert model.model_name == "some-model"
 
 
-def test_anthropic_model_resolves_key_from_env():
-    """Anthropic reads its key the same way openai does — via api_key_env."""
-    from ci_doctor.llm.backends import _anthropic_model
-
-    model = _anthropic_model(_llm(model="claude-x", api_key_env="ANTHROPIC_KEY"), {"ANTHROPIC_KEY": "k"})
-    assert model.model_name == "claude-x"
-
-
-def test_azure_model_needs_endpoint_and_a_key():
-    """Azure builds on the endpoint/api_version, not api_base — and needs a key."""
-    from ci_doctor.llm.backends import _azure_model
-
-    model = _azure_model(
-        _llm(
-            model="gpt-x",
-            azure_endpoint="https://x.openai.azure.com",
-            azure_api_version="2024-10-21",
-            api_key_env="AZURE_KEY",
-        ),
-        {"AZURE_KEY": "k"},
-    )
-    assert model.model_name == "gpt-x"
+def test_a_missing_key_fails_naming_the_providers_own_variable(monkeypatch):
+    """No key anywhere -> the provider's clear error, which `client_for_run` degrades on."""
+    pytest.importorskip("groq")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    with pytest.raises(Exception, match="GROQ_API_KEY"):
+        backends._generic_model(_llm(backend="groq", model="m"), {})
 
 
-boto3 = pytest.importorskip("boto3")
+@pytest.fixture
+def aws_env(monkeypatch):
+    """Fake AWS credentials.
 
-
-@pytest.fixture(autouse=True)
-def _fake_aws_creds(monkeypatch):
-    """Give boto3 something to find via env vars.
-
-    With no resolvable credentials, boto3 falls through to a real network
-    probe (EC2 instance metadata) — which the socket-blocking test guard
-    correctly rejects. Fake env-var creds are enough to stop it there;
-    construction never actually calls Bedrock.
+    With none resolvable, boto3 falls through to a real network probe (EC2 instance
+    metadata), which the socket-blocking test guard rightly rejects.
     """
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
 
 
-def test_bedrock_model_needs_only_region_no_api_key():
-    """Bedrock's auth is AWS IAM — region_name is required, no api_key involved."""
-    from ci_doctor.llm.backends import _bedrock_model
-
-    model = _bedrock_model(_llm(model="anthropic.claude-opus-4-6-v1:0", aws_region="us-east-1"), {})
+def test_bedrock_builds_with_only_a_region(aws_env):
+    """Bedrock's auth is AWS IAM; a region is enough, and a colon in the model id survives."""
+    pytest.importorskip("boto3")
+    model = backends._generic_model(
+        _llm(backend="bedrock", model="anthropic.claude-opus-4-6-v1:0", aws_region="us-east-1"), {}
+    )
+    assert type(model).__name__ == "BedrockConverseModel"
     assert model.model_name == "anthropic.claude-opus-4-6-v1:0"
 
 
-def test_bedrock_model_falls_back_to_aws_region_env_var(monkeypatch):
-    """No aws_region configured -> falls back to AWS_DEFAULT_REGION, not raise."""
-    from ci_doctor.llm.backends import _bedrock_model
-
+def test_bedrock_falls_back_to_the_aws_region_env_var(aws_env, monkeypatch):
+    """No aws_region configured -> AWS_DEFAULT_REGION is used."""
+    pytest.importorskip("boto3")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-west-2")
-    _bedrock_model(_llm(model="anthropic.claude-opus-4-6-v1:0"), {})
+    backends._generic_model(_llm(backend="bedrock", model="anthropic.claude-opus-4-6-v1:0"), {})
+
+
+def test_bedrock_mantle_builds_an_openai_shaped_model(aws_env):
+    """Bedrock Mantle serves OpenAI-shaped models over AWS auth."""
+    pytest.importorskip("boto3")
+    pytest.importorskip("openai")
+    model = backends._generic_model(
+        _llm(backend="bedrock-mantle", model="openai.gpt-oss-120b", aws_region="us-east-1"), {}
+    )
+    assert type(model).__name__.startswith("BedrockMantle")
