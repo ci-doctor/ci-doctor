@@ -41,8 +41,8 @@ the classifier is wrong, that's a bug with a failing test — not a prompt to tu
 - **Useful with no LLM** — ships a deterministic report out of the box: phase, reason,
   terminal command, evidence excerpt, and templated remediation.
 - **Bring-your-own model** — optional LLM step via `openai` (any OpenAI-compatible endpoint,
-  self-hosted or hosted), `anthropic`, `azure`, `bedrock`, or `litellm` (Vertex, Cohere, watsonx,
-  ~100 providers total), selected by config.
+  self-hosted or hosted), `anthropic`, `azure`, `bedrock`, `google`, `groq`, `mistral`, `cohere`,
+  `xai`, `huggingface` and more natively, or `litellm` (watsonx and ~100 others), selected by config.
 - **GitLab & GitHub** — one provider-neutral core; the GitHub adapter was added with *zero*
   changes to core.
 - **Air-gap friendly** — no telemetry, no update checks, no runtime downloads; ship as a
@@ -86,6 +86,7 @@ uv sync                       # or: pip install .
 uv sync --extra openai        # or: pip install '.[openai]'      — Ollama/vLLM/OpenAI-compatible
 uv sync --extra anthropic     # or: pip install '.[anthropic]'   — Anthropic direct
 uv sync --extra bedrock       # or: pip install '.[bedrock]'     — Amazon Bedrock, AWS IAM auth
+uv sync --extra google        # or: pip install '.[google]'      — Gemini / Vertex AI (also: groq, mistral, cohere, xai, huggingface)
 uv sync --extra litellm       # or: pip install '.[litellm]'     — Vertex/Cohere/watsonx/~100 more
 ```
 
@@ -133,7 +134,7 @@ github:
 
 llm:
   enabled: true                       # false => deterministic-only report
-  backend: openai                     # openai | anthropic | azure | bedrock | litellm
+  backend: openai                     # openai | anthropic | azure | bedrock | google | groq | mistral | ... | litellm
   model: qwen2.5-coder:32b
   api_base: http://openai-compatible-endpoint.internal:8000/v1
 
