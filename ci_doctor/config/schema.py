@@ -146,8 +146,9 @@ def _re2(pattern: str) -> str:
     return pattern
 
 
-#: A regex field: validated as RE2 when the config loads.
-Re2 = Annotated[str, AfterValidator(_re2)]
+#: A regex field: non-empty (`''` compiles, and fires on everything or nothing) and
+#: validated as RE2 when the config loads.
+Re2 = Annotated[str, StringConstraints(min_length=1), AfterValidator(_re2)]
 #: A classification tag: lowercase, digits and dashes.
 Tag = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
 

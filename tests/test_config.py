@@ -244,3 +244,17 @@ def test_exclude_is_re2_too(tmp_path):
     body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      exclude: ['(a)\\1']\n"
     with pytest.raises(ValidationError, match="is not valid RE2"):
         load_config(repo_config=_write(tmp_path, body), environ={})
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "extraction:\n  matchers:\n    - id: x\n      pattern: ''\n",  # a matcher that never fires
+        "denoise:\n  noise_patterns: ['']\n",  # drops every non-anchor line
+        "redaction:\n  extra_patterns: ['']\n",  # a marker between every character
+    ],
+)
+def test_an_empty_regex_is_a_config_error(tmp_path, body):
+    """`''` compiles in RE2, and is a silent bug on every regex surface."""
+    with pytest.raises(ValidationError, match="at least 1 character"):
+        load_config(repo_config=_write(tmp_path, body), environ={})
