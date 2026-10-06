@@ -123,7 +123,7 @@ extraction:
   matchers:
     - id: pytest
       pattern: '^MY OWN ANCHOR'
-      priority: 99
+      role: wrapper
     - id: my_pack
       pattern: '^BOOM'
 """
@@ -136,20 +136,20 @@ def test_user_matcher_overrides_default_but_keeps_the_rest(tmp_path):
     shipped = {m.id: m for m in default_config().extraction.matchers}
 
     assert by_id["pytest"].pattern == "^MY OWN ANCHOR"  # the fields the user set win
-    assert by_id["pytest"].priority == 99
+    assert by_id["pytest"].role == "wrapper"
     assert by_id["pytest"].start == shipped["pytest"].start  # untouched fields survive
     assert "my_pack" in by_id  # a new id is added
     assert len(by_id) == len(default_config().extraction.matchers) + 1  # nothing was dropped
 
 
 def test_retuning_one_matcher_field_keeps_the_shipped_regexes(tmp_path):
-    """Setting only `priority` must not blank the regexes into a matcher that never fires."""
-    text = "extraction:\n  matchers:\n    - id: pytest\n      priority: 95\n"
+    """Setting only `role` must not blank the regexes into a matcher that never fires."""
+    text = "extraction:\n  matchers:\n    - id: pytest\n      role: wrapper\n"
     cfg = load_config(repo_config=_write(tmp_path, text), environ={})
     pytest_pack = next(m for m in cfg.extraction.matchers if m.id == "pytest")
     shipped = next(m for m in default_config().extraction.matchers if m.id == "pytest")
 
-    assert pytest_pack.priority == 95
+    assert pytest_pack.role == "wrapper"
     assert (pytest_pack.start, pytest_pack.end) == (shipped.start, shipped.end)
 
 
@@ -212,4 +212,11 @@ def test_latency_knobs_reject_nonsense():
 def test_a_pattern_re2_cannot_compile_is_a_config_error(tmp_path, body):
     """All three user-regex surfaces are RE2, and a bad one fails the load, not the run."""
     with pytest.raises(ValidationError, match="is not valid RE2"):
+        load_config(repo_config=_write(tmp_path, body), environ={})
+
+
+def test_priority_is_gone(tmp_path):
+    """Ranking is (role, position); a stale `priority` key is a typo, not a no-op."""
+    body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      priority: 90\n"
+    with pytest.raises(ValidationError, match="priority"):
         load_config(repo_config=_write(tmp_path, body), environ={})

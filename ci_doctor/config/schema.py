@@ -160,14 +160,19 @@ class MatcherConfig(_Strict):
     id: str = Field(
         description="Unique matcher id. Reusing a shipped id overrides just the fields you set, and logs a warning."
     )
+    role: Literal["tool", "wrapper", "fallback"] = Field(
+        "tool",
+        description=(
+            "How the window ranks under budget pressure: `tool` (the failing tool's own output) "
+            "outranks `wrapper` (npm, make, gradle: reporting that a child process failed), "
+            "which outranks `fallback`. Within a role the later window wins."
+        ),
+    )
     start: Re2 | None = Field(None, description="Regex opening a windowed matcher.")
     end: Re2 | None = Field(None, description="Regex closing a windowed matcher.")
     pattern: Re2 | None = Field(None, description="Regex anchoring a single-line matcher.")
     before: int = Field(0, description="Lines of context kept above a `pattern` hit.")
     after: int = Field(0, description="Lines of context kept below a `pattern` hit.")
-    priority: int = Field(
-        50, description="Higher priority survives budget pressure when the evidence must be trimmed."
-    )
 
 
 class ExtractionConfig(_Strict):

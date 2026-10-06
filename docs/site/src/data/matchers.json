@@ -9,7 +9,7 @@
         "end": "^=+ short test summary",
         "before": 0,
         "after": 0,
-        "priority": 90,
+        "role": "tool",
         "note": "pytest's `=== FAILURES ===` block, from the first failing test through to the short summary."
       },
       {
@@ -19,7 +19,7 @@
         "end": "^Tests:",
         "before": 0,
         "after": 0,
-        "priority": 90,
+        "role": "tool",
         "note": "A jest failure \u2014 the `\u25cf` bullet or a `FAIL src/x.test.ts` header \u2014 up to the `Tests:` tally. The JS filename is what stops it eating `go test`'s own `FAIL` line."
       },
       {
@@ -29,7 +29,7 @@
         "end": "",
         "before": 2,
         "after": 15,
-        "priority": 85,
+        "role": "tool",
         "note": "`go test`'s per-test `--- FAIL` marker, plus the assertion output printed under it."
       },
       {
@@ -39,7 +39,7 @@
         "end": "",
         "before": 3,
         "after": 15,
-        "priority": 80,
+        "role": "tool",
         "note": "Maven's `[ERROR]` lines and the `BUILD FAILURE` banner both Maven and Gradle print."
       },
       {
@@ -49,7 +49,7 @@
         "end": "",
         "before": 1,
         "after": 3,
-        "priority": 80,
+        "role": "tool",
         "note": "A TypeScript compile error (`error TS2345:`) with the source excerpt around it."
       },
       {
@@ -59,7 +59,7 @@
         "end": "",
         "before": 2,
         "after": 10,
-        "priority": 75,
+        "role": "wrapper",
         "note": "`npm ERR!` lines. Ranked under the compilers deliberately \u2014 npm reports the failure it wrapped, never the cause."
       }
     ]
@@ -74,7 +74,7 @@
         "end": "",
         "before": 1,
         "after": 10,
-        "priority": 82,
+        "role": "tool",
         "note": "pnpm's `ERR_PNPM_*` codes and the `ELIFECYCLE` a failed lifecycle script exits with."
       },
       {
@@ -84,7 +84,7 @@
         "end": "",
         "before": 1,
         "after": 8,
-        "priority": 82,
+        "role": "tool",
         "note": "Yarn Classic's `error <Capital>` lines and Berry's `\u27a4 YN####:` diagnostic codes."
       },
       {
@@ -94,7 +94,7 @@
         "end": "",
         "before": 2,
         "after": 12,
-        "priority": 84,
+        "role": "tool",
         "note": "A failed `bun` script or test. Anchors on the `\u2717` marker as well as the summary, because the summary trails the assertion detail."
       },
       {
@@ -104,7 +104,7 @@
         "end": "",
         "before": 12,
         "after": 6,
-        "priority": 84,
+        "role": "tool",
         "note": "An uncaught Node error: internal stack frames, ESM/CJS resolution failures, unhandled rejections. `before: 12` because the message sits *above* the stack."
       }
     ]
@@ -119,7 +119,7 @@
         "end": "",
         "before": 3,
         "after": 8,
-        "priority": 75,
+        "role": "wrapper",
         "note": "BuildKit giving up \u2014 `failed to solve` / `executor failed running` \u2014 around the Dockerfile step that failed."
       },
       {
@@ -129,7 +129,7 @@
         "end": "",
         "before": 5,
         "after": 2,
-        "priority": 95,
+        "role": "tool",
         "note": "The job being killed: exit code 137, `Killed`, `Out of memory`. Top priority \u2014 nothing else in the log explains a SIGKILL."
       }
     ]
@@ -144,7 +144,7 @@
         "end": "^test result:",
         "before": 0,
         "after": 0,
-        "priority": 90,
+        "role": "tool",
         "note": "`cargo test`'s `failures:` block through to the `test result:` line."
       },
       {
@@ -154,7 +154,7 @@
         "end": "",
         "before": 2,
         "after": 8,
-        "priority": 88,
+        "role": "tool",
         "note": "A Rust panic, with the message and the frames that follow it."
       },
       {
@@ -164,7 +164,7 @@
         "end": "",
         "before": 0,
         "after": 8,
-        "priority": 82,
+        "role": "tool",
         "note": "rustc's coded errors (`error[E0308]`) and its own driver messages. A bare `error:` is not Rust enough \u2014 bun prints one too."
       }
     ]
@@ -179,7 +179,7 @@
         "end": "",
         "before": 1,
         "after": 12,
-        "priority": 88,
+        "role": "tool",
         "note": "`dotnet test`: xunit/nunit `[FAIL]` markers and the `Failed!` summary line."
       },
       {
@@ -189,7 +189,7 @@
         "end": "",
         "before": 1,
         "after": 3,
-        "priority": 82,
+        "role": "tool",
         "note": "MSBuild, Roslyn and NuGet error codes \u2014 `error CS0103`, `error NU1101`, `error MSB3073`."
       }
     ]
@@ -204,7 +204,7 @@
         "end": "^\\d+ examples?, \\d+ failures?",
         "before": 0,
         "after": 0,
-        "priority": 90,
+        "role": "tool",
         "note": "RSpec's `Failures:` block through to the `N examples, N failures` tally."
       },
       {
@@ -214,7 +214,7 @@
         "end": "",
         "before": 0,
         "after": 10,
-        "priority": 88,
+        "role": "tool",
         "note": "Minitest's numbered `1) Failure:` entries and the assertion beneath each one."
       },
       {
@@ -224,7 +224,7 @@
         "end": "",
         "before": 2,
         "after": 10,
-        "priority": 80,
+        "role": "tool",
         "note": "An unhandled Ruby exception \u2014 a backtrace frame naming the error class."
       },
       {
@@ -234,7 +234,7 @@
         "end": "",
         "before": 1,
         "after": 6,
-        "priority": 80,
+        "role": "tool",
         "note": "Bundler failing to resolve: a missing gem, or a version conflict it prints the tree for."
       }
     ]
@@ -249,7 +249,7 @@
         "end": "^(FAILURES|ERRORS|OK)",
         "before": 0,
         "after": 0,
-        "priority": 90,
+        "role": "tool",
         "note": "PHPUnit's `There were N failures` block through to its `FAILURES`/`ERRORS`/`OK` footer."
       },
       {
@@ -259,7 +259,7 @@
         "end": "",
         "before": 1,
         "after": 8,
-        "priority": 85,
+        "role": "tool",
         "note": "A PHP fatal or parse error and the stack trace after it."
       },
       {
@@ -269,7 +269,7 @@
         "end": "",
         "before": 1,
         "after": 12,
-        "priority": 80,
+        "role": "tool",
         "note": "Composer's resolver refusing the requirements, with the explanation it prints underneath."
       }
     ]
@@ -284,7 +284,7 @@
         "end": "^\\* (Try|Get more help)",
         "before": 0,
         "after": 0,
-        "priority": 88,
+        "role": "wrapper",
         "note": "Gradle's `* What went wrong:` block, stopping before the `* Try:` boilerplate advice."
       }
     ]
@@ -299,7 +299,7 @@
         "end": "",
         "before": 2,
         "after": 10,
-        "priority": 85,
+        "role": "wrapper",
         "note": "Bazel's `ERROR path:line:col:` and failed targets. The `path:line:col` is what keeps it off `ERROR: Job failed: exit code 1`."
       }
     ]
@@ -314,7 +314,7 @@
         "end": "",
         "before": 0,
         "after": 20,
-        "priority": 88,
+        "role": "tool",
         "note": "A Playwright failure \u2014 the numbered `1) suite \u203a test` header \u2014 plus the 20 lines of trace and diff after it."
       },
       {
@@ -324,7 +324,7 @@
         "end": "",
         "before": 3,
         "after": 12,
-        "priority": 88,
+        "role": "tool",
         "note": "A `CypressError` or a retry timeout, with the command log leading up to it."
       }
     ]
@@ -339,7 +339,7 @@
         "end": "",
         "before": 1,
         "after": 25,
-        "priority": 85,
+        "role": "tool",
         "note": "A Python traceback. Weighted `after`, because the exception type is at the *bottom* of a traceback, not the top."
       },
       {
@@ -349,7 +349,7 @@
         "end": "",
         "before": 2,
         "after": 20,
-        "priority": 88,
+        "role": "tool",
         "note": "A Go `panic:` or runtime `fatal error:` with the goroutine dump beneath it."
       },
       {
@@ -359,7 +359,7 @@
         "end": "",
         "before": 3,
         "after": 8,
-        "priority": 80,
+        "role": "tool",
         "note": "C/C++ builds: CMake errors, `make: ***` failures, and linker `undefined reference` errors."
       }
     ]
@@ -374,7 +374,7 @@
         "end": "",
         "before": 2,
         "after": 6,
-        "priority": 78,
+        "role": "tool",
         "note": "ESLint's `line:col error rule-name` entries and its `\u2716 N problems` footer."
       },
       {
@@ -384,7 +384,7 @@
         "end": "",
         "before": 0,
         "after": 3,
-        "priority": 78,
+        "role": "tool",
         "note": "A `file.py:12: error` diagnostic from mypy, ruff, flake8 or pylint."
       },
       {
@@ -394,7 +394,7 @@
         "end": "",
         "before": 1,
         "after": 12,
-        "priority": 80,
+        "role": "tool",
         "note": "Terraform's boxed `\u2502 Error:` and the `on main.tf line 12` it points at."
       }
     ]
@@ -409,7 +409,7 @@
         "end": "",
         "before": 5,
         "after": 20,
-        "priority": 50,
+        "role": "fallback",
         "note": "The fallback for a tool with no pack of its own: any line starting `ERROR` or `FATAL`. Lowest priority, so it is the first thing shed under budget pressure."
       }
     ]

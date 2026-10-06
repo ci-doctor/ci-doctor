@@ -51,7 +51,7 @@ def _merge_by_id(base: list[dict], over: list[dict], where: str) -> list[dict]:
     """Merge two id-keyed lists: same ``id`` deep-merges field by field.
 
     Only the keys the user actually wrote are overridden, so retuning one field
-    (``priority: 95`` on the shipped ``pytest`` pack) keeps the rest of that pack
+    (``role: wrapper`` on the shipped ``pytest`` pack) keeps the rest of that pack
     instead of blanking it into a matcher that can never fire.
 
     Args:

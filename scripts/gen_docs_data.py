@@ -120,7 +120,7 @@ def build() -> list[dict]:
             "end": m.get("end") or "",
             "before": m.get("before", 0),
             "after": m.get("after", 0),
-            "priority": m.get("priority", 50),
+            "role": m.get("role", "tool"),
             "note": NOTES[m["id"]],
         }
         ordered.setdefault(groups.get(m["id"], _UNGROUPED), []).append(entry)

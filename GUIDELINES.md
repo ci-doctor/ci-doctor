@@ -307,7 +307,7 @@ Real bugs, kept here so they don't recur:
   output, so the test looks fine. Assert on `_windows_for(...)` being non-empty.
 - **The report is the last place evidence can be lost, and it was losing it.**
   `deterministic_report` re-trimmed `bundle.blamed_lines` to a hardcoded `[-15:]`,
-  throwing away the selection that denoise + matcher priority + `budget.fit` had just
+  throwing away the selection that denoise + matcher ranking + `budget.fit` had just
   made — silently, with `bundle.truncated` still `False`. On a two-error rust build it
   kept E0599 and decapitated E0308, the error that *caused* it. Never re-cut the bundle
   by a fixed count; it is already budgeted. If a display cap is genuinely needed, it
@@ -316,7 +316,7 @@ Real bugs, kept here so they don't recur:
   failed job ends with `ERROR: Job failed: exit code N` (GitLab) or
   `##[error]Process completed with exit code N.` (GitHub), so a pack anchored on a bare
   `^ERROR: .*failed` looks covered by every fixture in the suite while proving nothing.
-  `bazel` shipped that way and opened a priority-85 window on 40 of 41 logs.
+  `bazel` shipped that way and opened a high-ranked window on 40 of 41 logs.
   `test_no_pack_fires_on_the_runners_own_trailer` pins it; only `generic_error` (the
   fallback) and `oom` (the trailer's `exit code 137` is the *only* OOM signal GitLab
   gives) are exempt.

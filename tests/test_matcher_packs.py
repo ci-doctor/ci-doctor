@@ -143,7 +143,7 @@ def test_every_diagnostic_in_a_multi_error_build_reaches_the_report():
 # Every failed job ends with the runner saying so, in the runner's own words. A
 # pack that fires on *that* line has coverage on paper for every fixture in the
 # suite while proving nothing about the tool it claims to match — which is how
-# `bazel` came to open a priority-85 window on 40 of 41 logs, on the strength of
+# `bazel` came to open a high-ranked window on 40 of 41 logs, on the strength of
 # `^ERROR: .*(failed|FAILED)` matching "ERROR: Job failed: exit code 1".
 RUNNER_TRAILERS = [
     # GitLab

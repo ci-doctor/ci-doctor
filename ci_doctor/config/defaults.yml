@@ -33,149 +33,152 @@ phases:
   complete_job: post
 
 extraction:
-  # Anchored matchers, highest priority survives budget pressure. `start`/`end`
-  # capture a block; `pattern` captures a single line plus before/after context.
+  # Evidence matchers. Under budget pressure windows are shed by (role, position):
+  # fallback first, then wrapper, then tool — and within a role the earliest first,
+  # since a job stops at its first failing command. `start`/`end` capture a block;
+  # `pattern` captures one line plus `before`/`after` context. Every regex is RE2.
   matchers:
     # --- Test frameworks and the build drivers that wrap them --------------
     - id: pytest
+      role: tool
       start: '^=+ FAILURES =+'
       end: '^=+ short test summary'
-      priority: 90
     - id: jest
+      role: tool
       # `^FAIL ` alone also matches `go test`'s "FAIL example.com/pkg 0.038s",
       # so the JS test filename is what makes it jest.
       start: '^\s*●|^FAIL\s+\S+\.(test|spec)\.[jt]sx?\b'
       end: '^Tests:'
-      priority: 90
     - id: go_test
+      role: tool
       pattern: '^--- FAIL'
       before: 2
       after: 15
-      priority: 85
     - id: maven_gradle
+      role: tool
       pattern: '\[ERROR\]|FAILURE: Build failed|BUILD FAILURE'
       before: 3
       after: 15
-      priority: 80
     - id: tsc
+      role: tool
       pattern: 'error TS\d+:'
       before: 1
       after: 3
-      priority: 80
     - id: npm
+      role: wrapper
       pattern: 'npm ERR!'
       before: 2
       after: 10
-      priority: 75
     # --- Other JS package managers + the node runtime itself ---------------
     - id: pnpm
+      role: tool
       pattern: 'ERR_PNPM_\w+|^\s*ELIFECYCLE\b'
       before: 1
       after: 10
-      priority: 82
     - id: yarn
+      role: tool
       # Classic prints `error <Capital>`; Berry prints `➤ YN####:`.
       pattern: '^error [A-Z]|➤ YN\d{4}'
       before: 1
       after: 8
-      priority: 82
     - id: bun
+      role: tool
       # Anchor on the ✗ marker too: the ` N fail` summary trails the assertion
       # detail, so a summary-only match would window past the actual cause.
       pattern: 'error: script ".+" exited with code|error: No version matching|^\s*✗ |^\s*\d+ fail\b'
       before: 2
       after: 12
-      priority: 84
     - id: node_runtime
+      role: tool
       # The error message sits *above* the stack, hence the large `before`.
       pattern: '^\s*at .+\(node:internal|^Node\.js v\d+\.|ERR_MODULE_NOT_FOUND|ERR_REQUIRE_ESM|UnhandledPromiseRejection'
       before: 12
       after: 6
-      priority: 84
     # --- Containers, and the runner killing the job ------------------------
     - id: docker_build
+      role: wrapper
       pattern: 'failed to solve|executor failed running'
       before: 3
       after: 8
-      priority: 75
     - id: oom
+      role: tool
       pattern: 'exit code 137|Killed|Out of memory'
       before: 5
       after: 2
-      priority: 95
     # --- Rust (cargo) -----------------------------------------------------
     - id: rust_test
+      role: tool
       start: '^failures:$'
       end: '^test result:'
-      priority: 90
     - id: rust_panic
+      role: tool
       pattern: '^thread ''.*'' panicked at'
       before: 2
       after: 8
-      priority: 88
     - id: rust_compile
+      role: tool
       # A bare `^error: ` is not rust enough — bun prints "error: expect(...)".
       # The coded form plus rustc's own driver messages are unambiguous.
       pattern: '^error\[E\d+\]: |^error: (could not compile|aborting due to|linking with)'
       after: 8
-      priority: 82
 
     # --- .NET (dotnet build / dotnet test) --------------------------------
     - id: dotnet_test
+      role: tool
       pattern: '\[FAIL\]|^\s*Failed\s+\S+\s+\[\d|^Failed!\s+-\s+Failed:'
       before: 1
       after: 12
-      priority: 88
     - id: dotnet_build
+      role: tool
       pattern: 'error (CS|MSB|NU|AD)\d+'
       before: 1
       after: 3
-      priority: 82
 
     # --- Ruby (rspec / minitest / bundler) --------------------------------
     - id: rspec
+      role: tool
       start: '^Failures:$'
       end: '^\d+ examples?, \d+ failures?'
-      priority: 90
     - id: minitest
+      role: tool
       pattern: '^\s*\d+\) (Failure|Error):'
       after: 10
-      priority: 88
     - id: ruby_exception
+      role: tool
       pattern: '\.rb:\d+:in .+\(\w*(Error|Exception)\)'
       before: 2
       after: 10
-      priority: 80
     - id: bundler
+      role: tool
       pattern: 'Could not find gem|Bundler::(GemNotFound|VersionConflict)'
       before: 1
       after: 6
-      priority: 80
 
     # --- PHP (phpunit / composer) -----------------------------------------
     - id: phpunit
+      role: tool
       start: '^There (was|were) \d+ (failure|error)'
       end: '^(FAILURES|ERRORS|OK)'
-      priority: 90
     - id: php_fatal
+      role: tool
       pattern: 'PHP (Fatal|Parse) error|^Fatal error:'
       before: 1
       after: 8
-      priority: 85
     - id: composer
+      role: tool
       pattern: 'Your requirements could not be resolved'
       before: 1
       after: 12
-      priority: 80
 
     # --- Gradle (its own block; maven_gradle catches the [ERROR] style) ----
     - id: gradle
+      role: wrapper
       start: '^\* What went wrong:'
       end: '^\* (Try|Get more help)'
-      priority: 88
 
     # --- Bazel ------------------------------------------------------------
     - id: bazel
+      role: wrapper
       # The `path:line:col:` is what makes this bazel and not the runner: a bare
       # `^ERROR: .*failed` also matches "ERROR: Job failed: exit code 1", which
       # ends every failed GitLab job.
@@ -184,58 +187,57 @@ extraction:
       pattern: '^ERROR: \S+:\d+:\d+: .*(failed|FAILED)|^FAILED: Build did NOT complete|^//\S+\s+FAILED in \d'
       before: 2
       after: 10
-      priority: 85
 
     # --- Browser e2e (Playwright / Cypress) -------------------------------
     - id: playwright
+      role: tool
       pattern: '^\s*\d+\) .+ › '
       after: 20
-      priority: 88
     - id: cypress
+      role: tool
       pattern: 'CypressError|Timed out retrying after \d+ms'
       before: 3
       after: 12
-      priority: 88
 
     # --- Language runtimes not covered by a framework matcher -------------
     - id: python_traceback
+      role: tool
       pattern: '^\s*Traceback \(most recent call last\):'
       before: 1
       after: 25
-      priority: 85
     - id: go_panic
+      role: tool
       pattern: '^panic: |^fatal error: '
       before: 2
       after: 20
-      priority: 88
     - id: cc_cpp
+      role: tool
       pattern: 'CMake Error|make(\[\d+\])?: \*\*\* |undefined reference to|collect2: error'
       before: 3
       after: 8
-      priority: 80
 
     # --- Linters / type checkers / IaC ------------------------------------
     - id: eslint
+      role: tool
       pattern: '^\s*\d+:\d+\s+error\s+|✖ \d+ problems?'
       before: 2
       after: 6
-      priority: 78
     - id: python_lint
+      role: tool
       pattern: '^\S+\.py:\d+:(\d+:)? (error|[EFWCN]\d+)'
       after: 3
-      priority: 78
     - id: terraform
+      role: tool
       pattern: '^\s*│\s*Error: |on .+\.tf line \d+'
       before: 1
       after: 12
-      priority: 80
 
     # --- Fallback: a tool with no pack of its own --------------------------
     - id: generic_error
+      role: fallback
       pattern: '^(ERROR|FATAL)\b'
       before: 5
       after: 20
-      priority: 50
 
 denoise:
   noise_patterns:

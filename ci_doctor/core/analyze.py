@@ -82,7 +82,7 @@ def build_bundle(job: Job, attr: Attribution, sections: list[Section], cfg: Conf
 
     clean = denoise(raw, cfg.denoise)
     blamed_budget = int(cfg.llm.max_input_tokens * 0.7)
-    # Budget the *selection* by matcher priority first; `fit` is the last resort
+    # Budget the *selection* by matcher rank first; `fit` is the last resort
     # that cuts inside whatever survives.
     excerpt = extract(clean, cfg.extraction.matchers, cfg.extraction.tail_lines, blamed_budget)
     fitted, truncated = fit(excerpt, blamed_budget)
