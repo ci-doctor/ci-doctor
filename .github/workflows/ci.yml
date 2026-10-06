@@ -23,6 +23,9 @@ jobs:
   # release gate reads commit types to decide whether to ship, so they are worth
   # asserting somewhere that cannot be bypassed.
   conventions:
+    permissions:
+      contents: read
+      pull-requests: read   # commitlint lists the PR's commits through the API
     # Feature work and hotfixes. The development -> master PR is an integration,
     # not a feature branch, and carries no type prefix.
     if: >-
@@ -30,7 +33,7 @@ jobs:
       (github.base_ref == 'development' || startsWith(github.head_ref, 'hotfix/'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # the PR's own commits, not just its tip
           persist-credentials: false
@@ -39,29 +42,17 @@ jobs:
           BRANCH: ${{ github.head_ref }}   # via env, never interpolated into the script
         run: |
           types='feat|fix|docs|test|chore|refactor|perf|ci|build|style|revert|hotfix'
+          # Dependabot names its own branches (dependabot/github_actions/…).
+          [[ "$BRANCH" == dependabot/* ]] && { echo "branch '$BRANCH' ok (dependabot)"; exit 0; }
           if [[ ! "$BRANCH" =~ ^($types)/[a-z0-9][a-z0-9._/-]*$ ]]; then
             echo "::error::branch '$BRANCH' is not <type>/<slug>. Types: ${types//|/, }"
             exit 1
           fi
           echo "branch '$BRANCH' ok"
-      - name: Commits are Conventional Commits
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          # No hotfix here: it names a branch, not a commit type.
-          types='feat|fix|docs|test|chore|refactor|perf|ci|build|style|revert'
-          bad=0
-          while IFS= read -r subject; do
-            # Merge and revert commits are generated, not authored.
-            [[ "$subject" =~ ^(Merge|Revert) ]] && continue
-            if [[ ! "$subject" =~ ^($types)(\(.+\))?!?:\ .+ ]]; then
-              echo "::error::not a Conventional Commit: $subject"
-              bad=1
-            fi
-          done < <(git log --format=%s "$BASE..$HEAD")
-          [[ $bad -eq 0 ]] && echo "every commit subject ok"
-          exit $bad
+      - uses: wagoid/commitlint-github-action@v6
+        with:
+          # Not the body: generated bodies (changelogs, trailers) have long lines.
+          configFile: .commitlintrc.yml
 
   test:
     runs-on: ubuntu-latest
@@ -71,10 +62,10 @@ jobs:
         # Kept in step with the pyproject classifiers by tests/test_python_versions.py.
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
@@ -93,10 +84,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
       - run: uv sync
@@ -118,10 +109,10 @@ jobs:
       run:
         working-directory: docs/site
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -133,12 +124,12 @@ jobs:
   leaks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # scan the PR's whole history, not just the tip
           persist-credentials: false
       # Organisations need a licence key; it is an org secret, so it must be passed in.
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
