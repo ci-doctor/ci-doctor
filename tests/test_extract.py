@@ -125,3 +125,21 @@ def test_a_merged_window_keeps_the_higher_role():
     out = _budgeted(lines, matchers)
     assert "ERROR first" in out and "error TS1: cause" in out
     assert "npm ERR!" not in out
+
+
+def test_exclude_disqualifies_an_anchor_line():
+    """`exclude` is RE2's stand-in for a negative lookahead."""
+    lines = ["FAIL src/cart.test.ts", "FAIL\texample.com/pkg\t0.038s"]
+    m = _m(pattern=r"^FAIL\s+\S+", exclude=[r"\d+\.\d+s$"])
+    out = extract(lines, [m], tail_lines=0)
+    assert "FAIL src/cart.test.ts" in out
+    assert not any("example.com" in line for line in out)
+
+
+def test_exclude_does_not_apply_to_a_blocks_end():
+    """Only anchors are filtered: a block still closes on an `end` line that `exclude` matches."""
+    lines = ["=== FAILURES ===", "detail", "=== short test summary ===", "after"]
+    m = _m(start="FAILURES", end="short test summary", exclude=["short"])
+    out = "\n".join(extract(lines, [m], tail_lines=0))
+    assert "=== short test summary ===" in out
+    assert "after" not in out.replace("elided", "")

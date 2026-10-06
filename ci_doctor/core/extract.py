@@ -57,19 +57,20 @@ def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Windo
         regexes.append(rx)
         return len(regexes) - 1
 
-    plans: list[tuple[MatcherConfig, int, int | None]] = []
+    plans: list[tuple[MatcherConfig, int, set[int], int | None]] = []
     for m in matchers:
+        exclude = {add(rx) for rx in m.exclude}
         if m.pattern:
-            plans.append((m, add(m.pattern), None))
+            plans.append((m, add(m.pattern), exclude, None))
         elif m.start and m.end:
-            plans.append((m, add(m.start), add(m.end)))
+            plans.append((m, add(m.start), exclude, add(m.end)))
     match = pattern_set(regexes)
     hits = [set(match(line)) for line in lines]
 
     wins: list[_Window] = []
-    for m, anchor, end in plans:
+    for m, anchor, exclude, end in plans:
         rank = ROLE_RANK[m.role]
-        anchored = [i for i, hit in enumerate(hits) if anchor in hit]
+        anchored = [i for i, hit in enumerate(hits) if anchor in hit and not hit & exclude]
         if end is None:
             wins += [_Window(max(0, i - m.before), min(len(lines), i + m.after + 1), rank) for i in anchored]
             continue

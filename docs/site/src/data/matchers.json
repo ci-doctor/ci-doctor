@@ -1,416 +1,550 @@
 [
   {
-    "group": "Test frameworks and the build drivers that wrap them",
+    "group": "Python",
     "packs": [
       {
         "id": "pytest",
         "kind": "block",
+        "role": "tool",
+        "tags": [
+          "test"
+        ],
         "match": "^=+ FAILURES =+",
         "end": "^=+ short test summary",
         "before": 0,
         "after": 0,
-        "role": "tool",
         "note": "pytest's `=== FAILURES ===` block, from the first failing test through to the short summary."
       },
       {
-        "id": "jest",
-        "kind": "block",
-        "match": "^\\s*\u25cf|^FAIL\\s+\\S+\\.(test|spec)\\.[jt]sx?\\b",
-        "end": "^Tests:",
-        "before": 0,
-        "after": 0,
-        "role": "tool",
-        "note": "A jest failure \u2014 the `\u25cf` bullet or a `FAIL src/x.test.ts` header \u2014 up to the `Tests:` tally. The JS filename is what stops it eating `go test`'s own `FAIL` line."
-      },
-      {
-        "id": "go_test",
+        "id": "python_traceback",
         "kind": "anchor",
-        "match": "^--- FAIL",
-        "end": "",
-        "before": 2,
-        "after": 15,
         "role": "tool",
-        "note": "`go test`'s per-test `--- FAIL` marker, plus the assertion output printed under it."
-      },
-      {
-        "id": "maven_gradle",
-        "kind": "anchor",
-        "match": "\\[ERROR\\]|FAILURE: Build failed|BUILD FAILURE",
-        "end": "",
-        "before": 3,
-        "after": 15,
-        "role": "tool",
-        "note": "Maven's `[ERROR]` lines and the `BUILD FAILURE` banner both Maven and Gradle print."
-      },
-      {
-        "id": "tsc",
-        "kind": "anchor",
-        "match": "error TS\\d+:",
+        "tags": [
+          "runtime"
+        ],
+        "match": "^\\s*Traceback \\(most recent call last\\):",
         "end": "",
         "before": 1,
-        "after": 3,
-        "role": "tool",
-        "note": "A TypeScript compile error (`error TS2345:`) with the source excerpt around it."
+        "after": 25,
+        "note": "A Python traceback. Weighted `after`, because the exception type is at the *bottom* of a traceback, not the top."
       },
       {
-        "id": "npm",
+        "id": "python_lint",
         "kind": "anchor",
-        "match": "npm ERR!",
+        "role": "tool",
+        "tags": [
+          "lint"
+        ],
+        "match": "^\\S+\\.py:\\d+:(\\d+:)? (error|[EFWCN]\\d+)",
         "end": "",
-        "before": 2,
-        "after": 10,
-        "role": "wrapper",
-        "note": "`npm ERR!` lines. Ranked under the compilers deliberately \u2014 npm reports the failure it wrapped, never the cause."
+        "before": 0,
+        "after": 3,
+        "note": "A `file.py:12: error` diagnostic from mypy, ruff, flake8 or pylint."
       }
     ]
   },
   {
-    "group": "Other JS package managers + the node runtime itself",
+    "group": "JavaScript / TypeScript",
     "packs": [
+      {
+        "id": "jest",
+        "kind": "block",
+        "role": "tool",
+        "tags": [
+          "test"
+        ],
+        "match": "^\\s*\u25cf|^FAIL\\s+\\S+\\.(test|spec)\\.[jt]sx?\\b",
+        "end": "^Tests:",
+        "before": 0,
+        "after": 0,
+        "note": "A jest failure \u2014 the `\u25cf` bullet or a `FAIL src/x.test.ts` header \u2014 up to the `Tests:` tally. The JS filename is what stops it eating `go test`'s own `FAIL` line."
+      },
+      {
+        "id": "tsc",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "build"
+        ],
+        "match": "error TS\\d+:",
+        "end": "",
+        "before": 1,
+        "after": 3,
+        "note": "A TypeScript compile error (`error TS2345:`) with the source excerpt around it."
+      },
+      {
+        "id": "eslint",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "lint"
+        ],
+        "match": "^\\s*\\d+:\\d+\\s+error\\s+|\u2716 \\d+ problems?",
+        "end": "",
+        "before": 2,
+        "after": 6,
+        "note": "ESLint's `line:col error rule-name` entries and its `\u2716 N problems` footer."
+      },
       {
         "id": "pnpm",
         "kind": "anchor",
-        "match": "ERR_PNPM_\\w+|^\\s*ELIFECYCLE\\b",
+        "role": "tool",
+        "tags": [
+          "deps"
+        ],
+        "match": "ERR_PNPM_\\w+",
         "end": "",
         "before": 1,
         "after": 10,
-        "role": "tool",
-        "note": "pnpm's `ERR_PNPM_*` codes and the `ELIFECYCLE` a failed lifecycle script exits with."
+        "note": "pnpm's `ERR_PNPM_*` codes \u2014 the resolver or lockfile refusing, which is the cause itself."
       },
       {
         "id": "yarn",
         "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "deps"
+        ],
         "match": "^error [A-Z]|\u27a4 YN\\d{4}",
         "end": "",
         "before": 1,
         "after": 8,
-        "role": "tool",
         "note": "Yarn Classic's `error <Capital>` lines and Berry's `\u27a4 YN####:` diagnostic codes."
       },
       {
         "id": "bun",
         "kind": "anchor",
-        "match": "error: script \".+\" exited with code|error: No version matching|^\\s*\u2717 |^\\s*\\d+ fail\\b",
+        "role": "tool",
+        "tags": [
+          "test",
+          "deps"
+        ],
+        "match": "error: No version matching|^\\s*\u2717 |^\\s*\\d+ fail\\b",
         "end": "",
         "before": 2,
         "after": 12,
-        "role": "tool",
-        "note": "A failed `bun` script or test. Anchors on the `\u2717` marker as well as the summary, because the summary trails the assertion detail."
+        "note": "A failed `bun test` or install. Anchors on the `\u2717` marker as well as the summary, because the summary trails the assertion detail."
       },
       {
         "id": "node_runtime",
         "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "runtime"
+        ],
         "match": "^\\s*at .+\\(node:internal|^Node\\.js v\\d+\\.|ERR_MODULE_NOT_FOUND|ERR_REQUIRE_ESM|UnhandledPromiseRejection",
         "end": "",
         "before": 12,
         "after": 6,
-        "role": "tool",
-        "note": "An uncaught Node error: internal stack frames, ESM/CJS resolution failures, unhandled rejections. `before: 12` because the message sits *above* the stack."
-      }
-    ]
-  },
-  {
-    "group": "Containers, and the runner killing the job",
-    "packs": [
-      {
-        "id": "docker_build",
-        "kind": "anchor",
-        "match": "failed to solve|executor failed running",
-        "end": "",
-        "before": 3,
-        "after": 8,
-        "role": "wrapper",
-        "note": "BuildKit giving up \u2014 `failed to solve` / `executor failed running` \u2014 around the Dockerfile step that failed."
+        "note": "An uncaught Node error \u2014 internal stack frames, ESM/CJS resolution failures, unhandled rejections. `before` is large because the message sits *above* the stack."
       },
-      {
-        "id": "oom",
-        "kind": "anchor",
-        "match": "exit code 137|Killed|Out of memory",
-        "end": "",
-        "before": 5,
-        "after": 2,
-        "role": "tool",
-        "note": "The job being killed: exit code 137, `Killed`, `Out of memory`. Top priority \u2014 nothing else in the log explains a SIGKILL."
-      }
-    ]
-  },
-  {
-    "group": "Rust (cargo)",
-    "packs": [
-      {
-        "id": "rust_test",
-        "kind": "block",
-        "match": "^failures:$",
-        "end": "^test result:",
-        "before": 0,
-        "after": 0,
-        "role": "tool",
-        "note": "`cargo test`'s `failures:` block through to the `test result:` line."
-      },
-      {
-        "id": "rust_panic",
-        "kind": "anchor",
-        "match": "^thread '.*' panicked at",
-        "end": "",
-        "before": 2,
-        "after": 8,
-        "role": "tool",
-        "note": "A Rust panic, with the message and the frames that follow it."
-      },
-      {
-        "id": "rust_compile",
-        "kind": "anchor",
-        "match": "^error\\[E\\d+\\]: |^error: (could not compile|aborting due to|linking with)",
-        "end": "",
-        "before": 0,
-        "after": 8,
-        "role": "tool",
-        "note": "rustc's coded errors (`error[E0308]`) and its own driver messages. A bare `error:` is not Rust enough \u2014 bun prints one too."
-      }
-    ]
-  },
-  {
-    "group": ".NET (dotnet build / dotnet test)",
-    "packs": [
-      {
-        "id": "dotnet_test",
-        "kind": "anchor",
-        "match": "\\[FAIL\\]|^\\s*Failed\\s+\\S+\\s+\\[\\d|^Failed!\\s+-\\s+Failed:",
-        "end": "",
-        "before": 1,
-        "after": 12,
-        "role": "tool",
-        "note": "`dotnet test`: xunit/nunit `[FAIL]` markers and the `Failed!` summary line."
-      },
-      {
-        "id": "dotnet_build",
-        "kind": "anchor",
-        "match": "error (CS|MSB|NU|AD)\\d+",
-        "end": "",
-        "before": 1,
-        "after": 3,
-        "role": "tool",
-        "note": "MSBuild, Roslyn and NuGet error codes \u2014 `error CS0103`, `error NU1101`, `error MSB3073`."
-      }
-    ]
-  },
-  {
-    "group": "Ruby (rspec / minitest / bundler)",
-    "packs": [
-      {
-        "id": "rspec",
-        "kind": "block",
-        "match": "^Failures:$",
-        "end": "^\\d+ examples?, \\d+ failures?",
-        "before": 0,
-        "after": 0,
-        "role": "tool",
-        "note": "RSpec's `Failures:` block through to the `N examples, N failures` tally."
-      },
-      {
-        "id": "minitest",
-        "kind": "anchor",
-        "match": "^\\s*\\d+\\) (Failure|Error):",
-        "end": "",
-        "before": 0,
-        "after": 10,
-        "role": "tool",
-        "note": "Minitest's numbered `1) Failure:` entries and the assertion beneath each one."
-      },
-      {
-        "id": "ruby_exception",
-        "kind": "anchor",
-        "match": "\\.rb:\\d+:in .+\\(\\w*(Error|Exception)\\)",
-        "end": "",
-        "before": 2,
-        "after": 10,
-        "role": "tool",
-        "note": "An unhandled Ruby exception \u2014 a backtrace frame naming the error class."
-      },
-      {
-        "id": "bundler",
-        "kind": "anchor",
-        "match": "Could not find gem|Bundler::(GemNotFound|VersionConflict)",
-        "end": "",
-        "before": 1,
-        "after": 6,
-        "role": "tool",
-        "note": "Bundler failing to resolve: a missing gem, or a version conflict it prints the tree for."
-      }
-    ]
-  },
-  {
-    "group": "PHP (phpunit / composer)",
-    "packs": [
-      {
-        "id": "phpunit",
-        "kind": "block",
-        "match": "^There (was|were) \\d+ (failure|error)",
-        "end": "^(FAILURES|ERRORS|OK)",
-        "before": 0,
-        "after": 0,
-        "role": "tool",
-        "note": "PHPUnit's `There were N failures` block through to its `FAILURES`/`ERRORS`/`OK` footer."
-      },
-      {
-        "id": "php_fatal",
-        "kind": "anchor",
-        "match": "PHP (Fatal|Parse) error|^Fatal error:",
-        "end": "",
-        "before": 1,
-        "after": 8,
-        "role": "tool",
-        "note": "A PHP fatal or parse error and the stack trace after it."
-      },
-      {
-        "id": "composer",
-        "kind": "anchor",
-        "match": "Your requirements could not be resolved",
-        "end": "",
-        "before": 1,
-        "after": 12,
-        "role": "tool",
-        "note": "Composer's resolver refusing the requirements, with the explanation it prints underneath."
-      }
-    ]
-  },
-  {
-    "group": "Gradle (its own block; maven_gradle catches the [ERROR] style)",
-    "packs": [
-      {
-        "id": "gradle",
-        "kind": "block",
-        "match": "^\\* What went wrong:",
-        "end": "^\\* (Try|Get more help)",
-        "before": 0,
-        "after": 0,
-        "role": "wrapper",
-        "note": "Gradle's `* What went wrong:` block, stopping before the `* Try:` boilerplate advice."
-      }
-    ]
-  },
-  {
-    "group": "Bazel",
-    "packs": [
-      {
-        "id": "bazel",
-        "kind": "anchor",
-        "match": "^ERROR: \\S+:\\d+:\\d+: .*(failed|FAILED)|^FAILED: Build did NOT complete|^//\\S+\\s+FAILED in \\d",
-        "end": "",
-        "before": 2,
-        "after": 10,
-        "role": "wrapper",
-        "note": "Bazel's `ERROR path:line:col:` and failed targets. The `path:line:col` is what keeps it off `ERROR: Job failed: exit code 1`."
-      }
-    ]
-  },
-  {
-    "group": "Browser e2e (Playwright / Cypress)",
-    "packs": [
       {
         "id": "playwright",
         "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "e2e"
+        ],
         "match": "^\\s*\\d+\\) .+ \u203a ",
         "end": "",
         "before": 0,
         "after": 20,
-        "role": "tool",
         "note": "A Playwright failure \u2014 the numbered `1) suite \u203a test` header \u2014 plus the 20 lines of trace and diff after it."
       },
       {
         "id": "cypress",
         "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "e2e"
+        ],
         "match": "CypressError|Timed out retrying after \\d+ms",
         "end": "",
         "before": 3,
         "after": 12,
-        "role": "tool",
         "note": "A `CypressError` or a retry timeout, with the command log leading up to it."
+      },
+      {
+        "id": "npm",
+        "kind": "anchor",
+        "role": "wrapper",
+        "tags": [
+          "deps"
+        ],
+        "match": "npm ERR!",
+        "end": "",
+        "before": 2,
+        "after": 10,
+        "note": "`npm ERR!` lines. A wrapper: npm reports the failure of the script it ran, never the cause."
+      },
+      {
+        "id": "js_script_exit",
+        "kind": "anchor",
+        "role": "wrapper",
+        "tags": [],
+        "match": "^\\s*ELIFECYCLE\\b|error: script \".+\" exited with code",
+        "end": "",
+        "before": 1,
+        "after": 4,
+        "note": "A JS package manager announcing that a lifecycle script exited non-zero \u2014 pnpm's `ELIFECYCLE`, bun's `error: script \"x\" exited with code N`."
       }
     ]
   },
   {
-    "group": "Language runtimes not covered by a framework matcher",
+    "group": "Go",
     "packs": [
       {
-        "id": "python_traceback",
+        "id": "go_test",
         "kind": "anchor",
-        "match": "^\\s*Traceback \\(most recent call last\\):",
-        "end": "",
-        "before": 1,
-        "after": 25,
         "role": "tool",
-        "note": "A Python traceback. Weighted `after`, because the exception type is at the *bottom* of a traceback, not the top."
+        "tags": [
+          "test"
+        ],
+        "match": "^--- FAIL",
+        "end": "",
+        "before": 2,
+        "after": 15,
+        "note": "`go test`'s per-test `--- FAIL` marker, plus the assertion output printed under it."
       },
       {
         "id": "go_panic",
         "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "runtime"
+        ],
         "match": "^panic: |^fatal error: ",
         "end": "",
         "before": 2,
         "after": 20,
-        "role": "tool",
         "note": "A Go `panic:` or runtime `fatal error:` with the goroutine dump beneath it."
-      },
-      {
-        "id": "cc_cpp",
-        "kind": "anchor",
-        "match": "CMake Error|make(\\[\\d+\\])?: \\*\\*\\* |undefined reference to|collect2: error",
-        "end": "",
-        "before": 3,
-        "after": 8,
-        "role": "tool",
-        "note": "C/C++ builds: CMake errors, `make: ***` failures, and linker `undefined reference` errors."
       }
     ]
   },
   {
-    "group": "Linters / type checkers / IaC",
+    "group": "Rust",
     "packs": [
       {
-        "id": "eslint",
+        "id": "rust_test",
+        "kind": "block",
+        "role": "tool",
+        "tags": [
+          "test"
+        ],
+        "match": "^failures:$",
+        "end": "^test result:",
+        "before": 0,
+        "after": 0,
+        "note": "`cargo test`'s `failures:` block through to the `test result:` line."
+      },
+      {
+        "id": "rust_panic",
         "kind": "anchor",
-        "match": "^\\s*\\d+:\\d+\\s+error\\s+|\u2716 \\d+ problems?",
+        "role": "tool",
+        "tags": [
+          "runtime"
+        ],
+        "match": "^thread '.*' panicked at",
         "end": "",
         "before": 2,
-        "after": 6,
-        "role": "tool",
-        "note": "ESLint's `line:col error rule-name` entries and its `\u2716 N problems` footer."
+        "after": 8,
+        "note": "A Rust panic, with the message and the frames that follow it."
       },
       {
-        "id": "python_lint",
+        "id": "rust_compile",
         "kind": "anchor",
-        "match": "^\\S+\\.py:\\d+:(\\d+:)? (error|[EFWCN]\\d+)",
+        "role": "tool",
+        "tags": [
+          "build"
+        ],
+        "match": "^error\\[E\\d+\\]: |^error: (could not compile|aborting due to|linking with)",
         "end": "",
         "before": 0,
-        "after": 3,
+        "after": 8,
+        "note": "rustc's coded errors (`error[E0308]`) and its own driver messages. A bare `error:` is not Rust enough \u2014 bun prints one too."
+      }
+    ]
+  },
+  {
+    "group": "JVM (Maven / Gradle)",
+    "packs": [
+      {
+        "id": "maven_gradle",
+        "kind": "anchor",
         "role": "tool",
-        "note": "A `file.py:12: error` diagnostic from mypy, ruff, flake8 or pylint."
+        "tags": [
+          "build"
+        ],
+        "match": "\\[ERROR\\]",
+        "end": "",
+        "before": 3,
+        "after": 15,
+        "note": "Maven's `[ERROR]` lines \u2014 the compiler and test diagnostics Maven relays."
       },
       {
-        "id": "terraform",
+        "id": "gradle",
+        "kind": "block",
+        "role": "wrapper",
+        "tags": [
+          "build"
+        ],
+        "match": "^\\* What went wrong:",
+        "end": "^\\* (Try|Get more help)",
+        "before": 0,
+        "after": 0,
+        "note": "Gradle's `* What went wrong:` block, stopping before the `* Try:` boilerplate advice. A wrapper \u2014 it names the failed task, the compiler output above it is the cause."
+      },
+      {
+        "id": "build_failure_banner",
         "kind": "anchor",
-        "match": "^\\s*\u2502\\s*Error: |on .+\\.tf line \\d+",
+        "role": "wrapper",
+        "tags": [
+          "build"
+        ],
+        "match": "FAILURE: Build failed|BUILD FAILURE",
+        "end": "",
+        "before": 3,
+        "after": 15,
+        "note": "The `BUILD FAILURE` / `FAILURE: Build failed` banner Maven and Gradle print once the build gave up."
+      }
+    ]
+  },
+  {
+    "group": ".NET",
+    "packs": [
+      {
+        "id": "dotnet_test",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "test"
+        ],
+        "match": "\\[FAIL\\]|^\\s*Failed\\s+\\S+\\s+\\[\\d|^Failed!\\s+-\\s+Failed:",
         "end": "",
         "before": 1,
         "after": 12,
+        "note": "`dotnet test`: xunit/nunit `[FAIL]` markers and the `Failed!` summary line."
+      },
+      {
+        "id": "dotnet_build",
+        "kind": "anchor",
         "role": "tool",
-        "note": "Terraform's boxed `\u2502 Error:` and the `on main.tf line 12` it points at."
+        "tags": [
+          "build"
+        ],
+        "match": "error (CS|MSB|NU|AD)\\d+",
+        "end": "",
+        "before": 1,
+        "after": 3,
+        "note": "MSBuild, Roslyn and NuGet error codes \u2014 `error CS0103`, `error NU1101`, `error MSB3073`."
       }
     ]
   },
   {
-    "group": "Fallback: a tool with no pack of its own",
+    "group": "Ruby",
     "packs": [
+      {
+        "id": "rspec",
+        "kind": "block",
+        "role": "tool",
+        "tags": [
+          "test"
+        ],
+        "match": "^Failures:$",
+        "end": "^\\d+ examples?, \\d+ failures?",
+        "before": 0,
+        "after": 0,
+        "note": "RSpec's `Failures:` block through to the `N examples, N failures` tally."
+      },
+      {
+        "id": "minitest",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "test"
+        ],
+        "match": "^\\s*\\d+\\) (Failure|Error):",
+        "end": "",
+        "before": 0,
+        "after": 10,
+        "note": "Minitest's numbered `1) Failure:` entries and the assertion beneath each one."
+      },
+      {
+        "id": "ruby_exception",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "runtime"
+        ],
+        "match": "\\.rb:\\d+:in .+\\(\\w*(Error|Exception)\\)",
+        "end": "",
+        "before": 2,
+        "after": 10,
+        "note": "An unhandled Ruby exception \u2014 a backtrace frame naming the error class."
+      },
+      {
+        "id": "bundler",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "deps"
+        ],
+        "match": "Could not find gem|Bundler::(GemNotFound|VersionConflict)",
+        "end": "",
+        "before": 1,
+        "after": 6,
+        "note": "Bundler failing to resolve \u2014 a missing gem, or a version conflict it prints the tree for."
+      }
+    ]
+  },
+  {
+    "group": "PHP",
+    "packs": [
+      {
+        "id": "phpunit",
+        "kind": "block",
+        "role": "tool",
+        "tags": [
+          "test"
+        ],
+        "match": "^There (was|were) \\d+ (failure|error)",
+        "end": "^(FAILURES|ERRORS|OK)",
+        "before": 0,
+        "after": 0,
+        "note": "PHPUnit's `There were N failures` block through to its `FAILURES`/`ERRORS`/`OK` footer."
+      },
+      {
+        "id": "php_fatal",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "runtime"
+        ],
+        "match": "PHP (Fatal|Parse) error|^Fatal error:",
+        "end": "",
+        "before": 1,
+        "after": 8,
+        "note": "A PHP fatal or parse error and the stack trace after it."
+      },
+      {
+        "id": "composer",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "deps"
+        ],
+        "match": "Your requirements could not be resolved",
+        "end": "",
+        "before": 1,
+        "after": 12,
+        "note": "Composer's resolver refusing the requirements, with the explanation it prints underneath."
+      }
+    ]
+  },
+  {
+    "group": "C / C++",
+    "packs": [
+      {
+        "id": "cc_cpp",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "build"
+        ],
+        "match": "CMake Error|undefined reference to|collect2: error",
+        "end": "",
+        "before": 3,
+        "after": 8,
+        "note": "C/C++ builds \u2014 CMake configure errors and linker `undefined reference` / `collect2` failures."
+      }
+    ]
+  },
+  {
+    "group": "Language-agnostic",
+    "packs": [
+      {
+        "id": "make",
+        "kind": "anchor",
+        "role": "wrapper",
+        "tags": [
+          "build"
+        ],
+        "match": "make(\\[\\d+\\])?: \\*\\*\\* ",
+        "end": "",
+        "before": 3,
+        "after": 8,
+        "note": "`make: ***` \u2014 make reporting that a recipe it ran failed. The recipe's own output above it is the cause."
+      },
+      {
+        "id": "bazel",
+        "kind": "anchor",
+        "role": "wrapper",
+        "tags": [
+          "build"
+        ],
+        "match": "^ERROR: \\S+:\\d+:\\d+: .*(failed|FAILED)|^FAILED: Build did NOT complete|^//\\S+\\s+FAILED in \\d",
+        "end": "",
+        "before": 2,
+        "after": 10,
+        "note": "Bazel's `ERROR path:line:col:` action failures and failed targets. A wrapper \u2014 the compiler output it relays is the cause. The `path:line:col` keeps it off `ERROR: Job failed: exit code 1`."
+      },
+      {
+        "id": "oom",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [
+          "infra"
+        ],
+        "match": "exit code 137|Killed|Out of memory",
+        "end": "",
+        "before": 5,
+        "after": 2,
+        "note": "The job being killed \u2014 exit code 137, `Killed`, `Out of memory`. Nothing else in the log explains a SIGKILL."
+      },
       {
         "id": "generic_error",
         "kind": "anchor",
+        "role": "fallback",
+        "tags": [],
         "match": "^(ERROR|FATAL)\\b",
         "end": "",
         "before": 5,
         "after": 20,
-        "role": "fallback",
-        "note": "The fallback for a tool with no pack of its own: any line starting `ERROR` or `FATAL`. Lowest priority, so it is the first thing shed under budget pressure."
+        "note": "The fallback for a tool with no pack of its own \u2014 any line starting `ERROR` or `FATAL`. Shed first under budget pressure."
+      }
+    ]
+  },
+  {
+    "group": "Containers",
+    "packs": [
+      {
+        "id": "docker_build",
+        "kind": "anchor",
+        "role": "wrapper",
+        "tags": [
+          "build"
+        ],
+        "match": "failed to solve|executor failed running",
+        "end": "",
+        "before": 3,
+        "after": 8,
+        "note": "BuildKit giving up \u2014 `failed to solve` / `executor failed running` \u2014 around the Dockerfile step that failed. A wrapper: the `RUN` step's own output is the cause."
+      }
+    ]
+  },
+  {
+    "group": "Infrastructure as code",
+    "packs": [
+      {
+        "id": "terraform",
+        "kind": "anchor",
+        "role": "tool",
+        "tags": [],
+        "match": "^\\s*\u2502\\s*Error: |on .+\\.tf line \\d+",
+        "end": "",
+        "before": 1,
+        "after": 12,
+        "note": "Terraform's boxed `\u2502 Error:` and the `on main.tf line 12` it points at."
       }
     ]
   }

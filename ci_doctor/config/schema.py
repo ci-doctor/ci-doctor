@@ -12,7 +12,7 @@ field added without one ships an undocumented knob.
 import logging
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from ci_doctor.core.regex import compile_user
 
@@ -148,13 +148,24 @@ def _re2(pattern: str) -> str:
 
 #: A regex field: validated as RE2 when the config loads.
 Re2 = Annotated[str, AfterValidator(_re2)]
+#: A classification tag: lowercase, digits and dashes.
+Tag = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
+
+
+class MatcherExamples(_Strict):
+    """Lines a matcher's anchor must and must not accept — Semgrep's `ruleid:` / `ok:`."""
+
+    match: list[str] = Field(default_factory=list, description="Lines the anchor must accept.")
+    no_match: list[str] = Field(
+        default_factory=list, description="Lines the anchor must reject, `exclude` applied."
+    )
 
 
 class MatcherConfig(_Strict):
     """One evidence matcher: the log window to pull around a recognised failure.
 
-    Use either ``start``/``end`` (a bounded block) or ``pattern`` with
-    ``before``/``after`` (a single anchor line plus context), not both.
+    Exactly one form: ``pattern`` with ``before``/``after`` (one anchor line plus
+    context), or ``start``/``end`` (a bounded block).
     """
 
     id: str = Field(
@@ -168,11 +179,40 @@ class MatcherConfig(_Strict):
             "which outranks `fallback`. Within a role the later window wins."
         ),
     )
+    classification: list[Tag] = Field(
+        default_factory=list,
+        description="Tags describing the pack, ecosystem first (`[python, test]`). Metadata only.",
+    )
+    description: str | None = Field(None, description="One line: which tool it recognises, what it pulls in.")
     start: Re2 | None = Field(None, description="Regex opening a windowed matcher.")
     end: Re2 | None = Field(None, description="Regex closing a windowed matcher.")
     pattern: Re2 | None = Field(None, description="Regex anchoring a single-line matcher.")
+    exclude: list[Re2] = Field(
+        default_factory=list,
+        description="Regexes that disqualify an anchor line (`pattern`/`start`) — RE2 has no lookaround.",
+    )
     before: int = Field(0, description="Lines of context kept above a `pattern` hit.")
     after: int = Field(0, description="Lines of context kept below a `pattern` hit.")
+    examples: MatcherExamples = Field(
+        default_factory=MatcherExamples, description="Lines proving what the anchor accepts and rejects."
+    )
+
+    @model_validator(mode="after")
+    def _one_form(self) -> "MatcherConfig":
+        """Require exactly one of `pattern`, or `start` and `end` together.
+
+        Returns:
+            The matcher, unchanged.
+
+        Raises:
+            ValueError: On neither form, both, or half a block — each a matcher
+                that silently never fires or fires on the wrong thing.
+        """
+        line = self.pattern is not None and self.start is None and self.end is None
+        block = self.pattern is None and self.start is not None and self.end is not None
+        if not (line or block):
+            raise ValueError(f"matcher {self.id!r}: set exactly one of `pattern`, or `start` and `end`")
+        return self
 
 
 class ExtractionConfig(_Strict):

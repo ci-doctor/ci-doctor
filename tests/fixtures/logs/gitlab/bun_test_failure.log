@@ -25,6 +25,7 @@ $ bun install --frozen-lockfile
 bun install v1.1.18 (aad3abea)
  + zod@3.23.8
  142 packages installed [1.42s]
+$ bun run test
 $ bun test
 bun test v1.1.18 (aad3abea)
 
@@ -43,6 +44,7 @@ src/cart.test.ts:
  1 fail
  4 expect() calls
 Ran 3 tests across 1 files. [24.00ms]
+error: script "test" exited with code 1
 section_end:1736530061:step_script
 section_start:1736530061:after_script
 Running after_script

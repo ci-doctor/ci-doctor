@@ -123,6 +123,8 @@ extraction:
   matchers:
     - id: pytest
       pattern: '^MY OWN ANCHOR'
+      start: null
+      end: null
       role: wrapper
     - id: my_pack
       pattern: '^BOOM'
@@ -137,7 +139,7 @@ def test_user_matcher_overrides_default_but_keeps_the_rest(tmp_path):
 
     assert by_id["pytest"].pattern == "^MY OWN ANCHOR"  # the fields the user set win
     assert by_id["pytest"].role == "wrapper"
-    assert by_id["pytest"].start == shipped["pytest"].start  # untouched fields survive
+    assert by_id["pytest"].classification == shipped["pytest"].classification  # untouched fields survive
     assert "my_pack" in by_id  # a new id is added
     assert len(by_id) == len(default_config().extraction.matchers) + 1  # nothing was dropped
 
@@ -219,4 +221,26 @@ def test_priority_is_gone(tmp_path):
     """Ranking is (role, position); a stale `priority` key is a typo, not a no-op."""
     body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      priority: 90\n"
     with pytest.raises(ValidationError, match="priority"):
+        load_config(repo_config=_write(tmp_path, body), environ={})
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        "role: tool",  # neither form
+        "pattern: 'a'\n      start: 'b'\n      end: 'c'",  # both forms
+        "start: 'b'",  # half a block
+    ],
+)
+def test_a_matcher_has_exactly_one_form(tmp_path, fields):
+    """Semgrep's "one pattern key": anything else never fires or fires wrongly."""
+    body = f"extraction:\n  matchers:\n    - id: x\n      {fields}\n"
+    with pytest.raises(ValidationError, match="exactly one of"):
+        load_config(repo_config=_write(tmp_path, body), environ={})
+
+
+def test_exclude_is_re2_too(tmp_path):
+    """`exclude` is the fourth matcher regex field, validated like the rest."""
+    body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      exclude: ['(a)\\1']\n"
+    with pytest.raises(ValidationError, match="is not valid RE2"):
         load_config(repo_config=_write(tmp_path, body), environ={})
