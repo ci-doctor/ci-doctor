@@ -258,3 +258,10 @@ def test_an_empty_regex_is_a_config_error(tmp_path, body):
     """`''` compiles in RE2, and is a silent bug on every regex surface."""
     with pytest.raises(ValidationError, match="at least 1 character"):
         load_config(repo_config=_write(tmp_path, body), environ={})
+
+
+def test_a_description_is_capped_because_it_goes_into_the_prompt(tmp_path):
+    """Pack text is prompt text: an essay costs tokens on every run that pack fires."""
+    body = f"extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      description: '{'x' * 401}'\n"
+    with pytest.raises(ValidationError, match="at most 400 characters"):
+        load_config(repo_config=_write(tmp_path, body), environ={})

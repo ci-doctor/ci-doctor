@@ -4,5 +4,8 @@ Duration: $duration   Needs: $needs
 Terminal evidence: $terminal
 Secondary (non-causal) phases with warnings: $secondary
 
+--- Matchers that selected the excerpt (descriptions are the pack author's context, not evidence; where one disagrees with the log, the log wins) ---
+$packs
+
 --- Blamed phase ($phase) log excerpt ---
 $excerpt

@@ -209,6 +209,12 @@ because a job stops at its first failing command. A pack whose lines are of both
 two packs. Only windows separated by unselected lines are rankable; adjacent ones merge
 and keep the highest role among them.
 
+**`description` is prompt text.** The LLM sees `id [role]: description` for every pack whose
+window reached the excerpt. It knows jest, not your in-house deploy CLI, so say what the
+tool is and what its failure *means* (`E-LOCK: another deploy holds the lock, not a code
+bug`), not only which lines the window keeps. Capped at 400 characters; the prompt frames
+it as context, and the log wins where the two disagree.
+
 Config **lists replace, mappings deep-merge** — except lists whose entries all carry an
 `id`, which merge per id (`_merge_by_id` in `config/loader.py`). So a user pack with a new
 id is *added* to the shipped ones, and one reusing a shipped id *overrides* that pack and

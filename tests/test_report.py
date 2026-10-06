@@ -11,7 +11,7 @@ from ci_doctor.core.analyze import build_bundle
 from ci_doctor.core.attribution import attribute
 from ci_doctor.core.models import FailureReason, Job
 from ci_doctor.core.phases import assign_phases
-from ci_doctor.llm.report import produce_report
+from ci_doctor.llm.report import _render_prompt, produce_report
 from tests import support
 
 _GOOD = {
@@ -201,3 +201,33 @@ def test_secrets_roundtrip_no_leak():
     blob = report.model_dump_json() + report.handoff_prompt
     for secret in ("glpat-ABCDEFGHIJKLMNOPQRSTUVWX", "hunter2", "s3cr3t-value-xyz"):
         assert secret not in blob, f"leaked: {secret}"
+
+
+_INHOUSE_LOG = (
+    "section_start:1:step_script\n$ acme-deployctl up prod\n"
+    "acme-deployctl: E-LOCK prod is held by deploy #4411\n"
+    "section_end:2:step_script\nERROR: Job failed: exit code 1\n"
+)
+_INHOUSE_PACK = {
+    "id": "acme_deployctl",
+    "pattern": "E-LOCK",
+    "description": "Acme's internal deploy CLI. E-LOCK: another deploy holds the environment lock, not a code bug.",
+}
+
+
+def test_an_in_house_packs_description_reaches_the_prompt():
+    """The model knows jest, not your deploy CLI: the pack's description is all it gets."""
+    job, attr, bundle, _cfg = _pipeline(_INHOUSE_LOG, overrides={"extraction": {"matchers": [_INHOUSE_PACK]}})
+    prompt = _render_prompt(job, attr, bundle, {})
+    assert f"- acme_deployctl [tool]: {_INHOUSE_PACK['description']}" in prompt
+
+
+@pytest.mark.parametrize("provider", support.providers_with("npm_build_failure"))
+def test_the_prompt_names_each_pack_behind_the_excerpt_with_its_role(provider):
+    """A wrapper is labelled as one, so the model can look past npm's epilogue to tsc."""
+    log = support.read_log(provider, "npm_build_failure")
+    job, attr, bundle, _cfg = _pipeline(log, provider=provider)
+    prompt = _render_prompt(job, attr, bundle, {})
+    assert "- tsc [tool]: A TypeScript compile error" in prompt
+    assert "- npm [wrapper]: " in prompt
+    assert "- pytest [" not in prompt, "a pack that matched nothing is not context"

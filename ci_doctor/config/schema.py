@@ -184,7 +184,14 @@ class MatcherConfig(_Strict):
         default_factory=list,
         description="Tags describing the pack, ecosystem first (`[python, test]`). Metadata only.",
     )
-    description: str | None = Field(None, description="One line: which tool it recognises, what it pulls in.")
+    description: str | None = Field(
+        None,
+        max_length=400,
+        description=(
+            "Shown to the LLM beside the windows this pack selected: what the tool is and what "
+            "its failure means. The model knows public tools, not your in-house ones."
+        ),
+    )
     start: Re2 | None = Field(None, description="Regex opening a windowed matcher.")
     end: Re2 | None = Field(None, description="Regex closing a windowed matcher.")
     pattern: Re2 | None = Field(None, description="Regex anchoring a single-line matcher.")

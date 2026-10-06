@@ -323,8 +323,25 @@ def _render_prompt(job: Job, attr: Attribution, bundle: EvidenceBundle, schema: 
         phase=attr.phase,
         secondary=", ".join(str(p) for p in attr.secondary_phases) or "none",
         excerpt="\n".join(bundle.blamed_lines),
+        packs=_packs(bundle),
     )
     return system + "\n\n---\n\n" + user
+
+
+def _packs(bundle: EvidenceBundle) -> str:
+    """One line per pack behind the excerpt: its id, role and author's description.
+
+    Args:
+        bundle: The budgeted evidence.
+
+    Returns:
+        The lines for the prompt's matcher section, or a note that only the log's
+        tail was kept.
+    """
+    lines = [
+        f"- {m.id} [{m.role}]" + (f": {m.description}" if m.description else "") for m in bundle.matchers
+    ]
+    return "\n".join(lines) or "none — the excerpt is the tail of the log"
 
 
 def _load(name: str) -> str:
