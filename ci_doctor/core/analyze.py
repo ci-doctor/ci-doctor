@@ -91,6 +91,8 @@ def build_bundle(job: Job, attr: Attribution, sections: list[Section], cfg: Conf
     by_id = {m.id: m for m in cfg.extraction.matchers}
     matchers = [by_id[i] for i in ids]
     fitted, truncated = fit(excerpt, blamed_budget)
+    if truncated:  # `fit` cut the head; a pack whose lines went with it is not context
+        matchers = [m for m in matchers if select(fitted, [m], tail_lines=0)[1]]
     log.debug(
         "blamed phase %s: denoise %d->%d, extract ->%d, fit ->%d lines (truncated=%s)",
         attr.phase,

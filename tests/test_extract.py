@@ -1,8 +1,10 @@
 """Windowed extraction: anchors, merging, and visible elision."""
 
-from ci_doctor.config.schema import MatcherConfig
+from typing import get_args
+
+from ci_doctor.config.schema import MatcherConfig, Role
 from ci_doctor.core.budget import estimate_tokens
-from ci_doctor.core.extract import extract, select
+from ci_doctor.core.extract import ROLE_RANK, extract, select
 
 
 def _m(**kw):
@@ -43,9 +45,8 @@ def test_start_end_block():
     assert out[-1].startswith("… [")  # "after" elided
 
 
-# Why roles exist. Without budget-aware selection the cut is positional
-# (`budget.fit` keeps the tail), which is exactly backwards here: npm reports the
-# child process failed *after* the compiler said what was wrong.
+# Why roles exist: `budget.fit` alone keeps the tail, but npm reports the child
+# failed *after* the compiler said what was wrong.
 def test_budget_pressure_sheds_the_wrapper_not_the_tool():
     """Under budget the compiler errors survive and the npm epilogue is shed."""
     lines = [f"src/a{i}.ts:1:1 - error TS2345: bad argument" for i in range(40)]
@@ -161,3 +162,32 @@ def test_a_merged_window_reports_every_pack_in_it():
     lines = ["Traceback (most recent call last):", "=== FAILURES ===", "boom"]
     matchers = [_m(id="pytest", pattern="FAILURES"), _m(id="python_traceback", pattern="^Traceback")]
     assert select(lines, matchers, tail_lines=0)[1] == ["python_traceback", "pytest"]
+
+
+def test_the_selection_fits_the_budget_it_was_cut_to():
+    """Elision markers cost tokens too; uncounted, `fit` overflows and cuts the head."""
+    lines = [line for i in range(60) for line in (f"error TS{i}: bad argument", f"  unrelated {i}")]
+    budget = estimate_tokens("\n".join(line for line in lines if "error TS" in line))
+    out = extract(lines, [_m(pattern="error TS")], tail_lines=0, max_tokens=budget)
+    assert estimate_tokens("\n".join(out)) <= budget
+
+
+def test_the_tail_is_shed_before_a_fallback():
+    """The tail is a guess about position; even the fallback recognised something."""
+    lines = [f"ERROR something {i}" for i in range(100)] + [f"  gap {i}" for i in range(20)]
+    lines += [f"  trailing {i}" for i in range(100)]
+    out = "\n".join(
+        extract(
+            lines,
+            [_m(pattern="^ERROR", role="fallback")],
+            tail_lines=100,
+            max_tokens=estimate_tokens("\n".join(lines)) // 2,
+        )
+    )
+    assert "ERROR something" in out
+    assert "trailing" not in out
+
+
+def test_every_role_has_a_rank():
+    """`role` is a schema Literal and `ROLE_RANK` a dict; a role in one only is a KeyError mid-run."""
+    assert set(ROLE_RANK) == set(get_args(Role))

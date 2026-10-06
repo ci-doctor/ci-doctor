@@ -5,7 +5,7 @@ The failing phase is: $phase
 
 Explain the cause WITHIN that phase. Use only the evidence provided; do not invent file names, line numbers, or facts that are not present in the log. If the failure is infrastructure rather than the user's code, say so via is_infra_not_code.
 
-Each matcher behind the excerpt has a role: a `tool` printed the failure itself; a `wrapper` (npm, make, gradle, ...) only reports that something it ran failed, so look for the cause in a `tool`'s lines, not in the wrapper's epilogue.
+Each matcher behind the excerpt has a role: a `tool` printed the failure itself; a `wrapper` (npm, make, gradle, ...) only reports that something it ran failed, so look for the cause in a `tool`'s lines, not in the wrapper's epilogue; a `fallback` is a generic catch-all, the weakest signal.
 
 Respond with a SINGLE JSON object — no markdown, no prose, no code fences — matching this JSON schema:
 $schema

@@ -26,7 +26,7 @@
         "end": "",
         "before": 1,
         "after": 25,
-        "note": "A Python traceback. Weighted `after`, because the exception type is at the *bottom* of a traceback, not the top."
+        "note": "An uncaught Python exception. The exception type and message are on the traceback's last line; the frames above show where it was raised."
       },
       {
         "id": "python_lint",
@@ -57,7 +57,7 @@
         "end": "^Tests:",
         "before": 0,
         "after": 0,
-        "note": "A jest failure \u2014 the `\u25cf` bullet or a `FAIL src/x.test.ts` header \u2014 up to the `Tests:` tally. The JS filename is what stops it eating `go test`'s own `FAIL` line."
+        "note": "A jest test failure \u2014 the `\u25cf` header names the test, and the diff below it shows expected against received."
       },
       {
         "id": "tsc",
@@ -123,7 +123,7 @@
         "end": "",
         "before": 2,
         "after": 12,
-        "note": "A failed `bun test` or install. Anchors on the `\u2717` marker as well as the summary, because the summary trails the assertion detail."
+        "note": "A failed `bun test` (the `\u2717` test and its assertion), or a `bun install` that found no matching version."
       },
       {
         "id": "node_runtime",
@@ -136,7 +136,7 @@
         "end": "",
         "before": 12,
         "after": 6,
-        "note": "An uncaught Node error \u2014 internal stack frames, ESM/CJS resolution failures, unhandled rejections. `before` is large because the message sits *above* the stack."
+        "note": "An uncaught Node error. The message above the stack is the cause; an ESM/CJS resolution error means a missing or mis-declared module."
       },
       {
         "id": "playwright",
@@ -149,7 +149,7 @@
         "end": "",
         "before": 0,
         "after": 20,
-        "note": "A Playwright failure \u2014 the numbered `1) suite \u203a test` header \u2014 plus the 20 lines of trace and diff after it."
+        "note": "A Playwright test failure \u2014 the `1) suite \u203a test` header names the test; its trace and diff follow."
       },
       {
         "id": "cypress",
@@ -261,7 +261,7 @@
         "end": "",
         "before": 0,
         "after": 8,
-        "note": "rustc's coded errors (`error[E0308]`) and its own driver messages. A bare `error:` is not Rust enough \u2014 bun prints one too."
+        "note": "rustc refusing to compile (`error[E0308]`). The first error is usually the cause; later ones often follow from it."
       }
     ]
   },
@@ -486,7 +486,7 @@
         "end": "",
         "before": 2,
         "after": 10,
-        "note": "Bazel's `ERROR path:line:col:` action failures and failed targets. A wrapper \u2014 the compiler output it relays is the cause. The `path:line:col` keeps it off `ERROR: Job failed: exit code 1`."
+        "note": "Bazel reporting that an action or target failed. A wrapper \u2014 the compiler or test output it relays is the cause."
       },
       {
         "id": "oom",
@@ -510,7 +510,7 @@
         "end": "",
         "before": 5,
         "after": 20,
-        "note": "The fallback for a tool with no pack of its own \u2014 any line starting `ERROR` or `FATAL`. Shed first under budget pressure."
+        "note": "A line starting `ERROR` or `FATAL` from a tool with no pack of its own \u2014 the weakest signal; read it in context."
       }
     ]
   },

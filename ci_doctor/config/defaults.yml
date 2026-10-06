@@ -33,10 +33,8 @@ phases:
   complete_job: post
 
 extraction:
-  # Evidence matchers. Under budget pressure windows are shed by (role, position):
-  # fallback first, then wrapper, then tool — and within a role the earliest first,
-  # since a job stops at its first failing command. `start`/`end` capture a block;
-  # `pattern` captures one line plus `before`/`after` context. Every regex is RE2.
+  # Evidence windows, shed under budget by (role, position) — see GUIDELINES §5.1.
+  # `description` is prompt text: say what the tool is and what its failure means.
   matchers:
     # --- Python ------------------------------------------------------------
     - id: pytest
@@ -49,11 +47,12 @@ extraction:
       examples:
         match: ['=================================== FAILURES ===================================']
         no_match: ['=========================== short test summary info ============================']
+    # `after` is large: the exception type sits at the *bottom* of a traceback.
     - id: python_traceback
       role: tool
       classification: [python, runtime]
       description: >-
-        A Python traceback. Weighted `after`, because the exception type is at the *bottom* of a traceback, not the top.
+        An uncaught Python exception. The exception type and message are on the traceback's last line; the frames above show where it was raised.
       pattern: '^\s*Traceback \(most recent call last\):'
       before: 1
       after: 25
@@ -72,11 +71,12 @@ extraction:
         no_match: ['etl/transform.py:88: note: Revealed type is "Decimal"']
 
     # --- JavaScript / TypeScript ---------------------------------------------
+    # The JS filename keeps `^FAIL` off `go test`'s own `FAIL pkg 0.03s` line.
     - id: jest
       role: tool
       classification: [js, test]
       description: >-
-        A jest failure — the `●` bullet or a `FAIL src/x.test.ts` header — up to the `Tests:` tally. The JS filename is what stops it eating `go test`'s own `FAIL` line.
+        A jest test failure — the `●` header names the test, and the diff below it shows expected against received.
       start: '^\s*●|^FAIL\s+\S+\.(test|spec)\.[jt]sx?\b'
       end: '^Tests:'
       examples:
@@ -126,22 +126,24 @@ extraction:
       examples:
         match: ['error Couldn''t find package "@acme/design-tokens@^3.1.0" required by "web@1.0.0" on the "npm" registry.']
         no_match: ['error: expect(received).toBe(expected)']
+    # Anchors on `✗` too: the `N fail` summary trails the assertion detail.
     - id: bun
       role: tool
       classification: [js, test, deps]
       description: >-
-        A failed `bun test` or install. Anchors on the `✗` marker as well as the summary, because the summary trails the assertion detail.
+        A failed `bun test` (the `✗` test and its assertion), or a `bun install` that found no matching version.
       pattern: 'error: No version matching|^\s*✗ |^\s*\d+ fail\b'
       before: 2
       after: 12
       examples:
         match: ['✗ Cart > applies the loyalty discount before tax']
         no_match: ['✓ Cart > adds an item to the cart [0.42ms]']
+    # `before` is large: the message sits *above* the stack.
     - id: node_runtime
       role: tool
       classification: [js, runtime]
       description: >-
-        An uncaught Node error — internal stack frames, ESM/CJS resolution failures, unhandled rejections. `before` is large because the message sits *above* the stack.
+        An uncaught Node error. The message above the stack is the cause; an ESM/CJS resolution error means a missing or mis-declared module.
       pattern: '^\s*at .+\(node:internal|^Node\.js v\d+\.|ERR_MODULE_NOT_FOUND|ERR_REQUIRE_ESM|UnhandledPromiseRejection'
       before: 12
       after: 6
@@ -152,7 +154,7 @@ extraction:
       role: tool
       classification: [js, e2e]
       description: >-
-        A Playwright failure — the numbered `1) suite › test` header — plus the 20 lines of trace and diff after it.
+        A Playwright test failure — the `1) suite › test` header names the test; its trace and diff follow.
       pattern: '^\s*\d+\) .+ › '
       after: 20
       examples:
@@ -238,11 +240,12 @@ extraction:
       examples:
         match: ["thread 'posting::tests::applies_fx_rate' panicked at src/posting.rs:212:9:"]
         no_match: ['note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace']
+    # A bare `^error:` is not rust enough — bun prints `error: expect(...)`.
     - id: rust_compile
       role: tool
       classification: [rust, build]
       description: >-
-        rustc's coded errors (`error[E0308]`) and its own driver messages. A bare `error:` is not Rust enough — bun prints one too.
+        rustc refusing to compile (`error[E0308]`). The first error is usually the cause; later ones often follow from it.
       pattern: '^error\[E\d+\]: |^error: (could not compile|aborting due to|linking with)'
       after: 8
       examples:
@@ -410,11 +413,12 @@ extraction:
       examples:
         match: ['make[2]: *** [CMakeFiles/render.dir/build.make:97: render] Error 1']
         no_match: ["make[1]: Leaving directory '/builds/team/render/build'"]
+    # `path:line:col` keeps it off the runner's `ERROR: Job failed: exit code 1`.
     - id: bazel
       role: wrapper
       classification: [any, build]
       description: >-
-        Bazel's `ERROR path:line:col:` action failures and failed targets. A wrapper — the compiler output it relays is the cause. The `path:line:col` keeps it off `ERROR: Job failed: exit code 1`.
+        Bazel reporting that an action or target failed. A wrapper — the compiler or test output it relays is the cause.
       pattern: '^ERROR: \S+:\d+:\d+: .*(failed|FAILED)|^FAILED: Build did NOT complete|^//\S+\s+FAILED in \d'
       before: 2
       after: 10
@@ -464,7 +468,7 @@ extraction:
       role: fallback
       classification: [any]
       description: >-
-        The fallback for a tool with no pack of its own — any line starting `ERROR` or `FATAL`. Shed first under budget pressure.
+        A line starting `ERROR` or `FATAL` from a tool with no pack of its own — the weakest signal; read it in context.
       pattern: '^(ERROR|FATAL)\b'
       before: 5
       after: 20

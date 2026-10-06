@@ -74,9 +74,8 @@ def pattern_set(patterns: Sequence[str]) -> Callable[[str], list[int]]:
         try:
             return rset.Match(line) or []
         except UnicodeEncodeError:
-            # A lone surrogate (a `surrogateescape` decode) has no UTF-8 form, and RE2
-            # matches bytes. Every shipped log source decodes with "replace", so this
-            # only guards a future one.
+            # A lone surrogate has no UTF-8 form and RE2 matches bytes; shipped log
+            # sources decode with "replace", so this only guards a future one.
             return rset.Match(line.encode("utf-8", "replace")) or []
 
     # ponytail: Set.Match reports *no* hits if RE2 exhausts its DFA memory (8 MiB

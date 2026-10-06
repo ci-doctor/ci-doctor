@@ -17,6 +17,10 @@ from ci_doctor.core.regex import pattern_set
 ROLE_RANK = {"fallback": 0, "wrapper": 1, "tool": 2}
 #: The tail window ranks below every matcher.
 _TAIL = -1
+#: Shared by every line no pattern hits, so a long log costs no set per line.
+_NO_HITS: frozenset[int] = frozenset()
+#: Upper bound on one `… [N lines elided] …` marker plus its line break.
+_MARKER_TOKENS = estimate_tokens("… [9999999 lines elided] …") + 1
 
 
 @dataclass
@@ -67,7 +71,7 @@ def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Windo
         elif m.start and m.end:
             plans.append((m, add(m.start), exclude, add(m.end)))
     match = pattern_set(regexes)
-    hits = [set(match(line)) for line in lines]
+    hits = [frozenset(h) if (h := match(line)) else _NO_HITS for line in lines]
 
     wins: list[_Window] = []
     for m, anchor, exclude, end in plans:
@@ -132,16 +136,14 @@ def _drop_to_fit(lines: list[str], windows: list[_Window], max_tokens: int) -> l
         window can exceed the budget on its own (an unbounded `start`/`end` block
         over a large suite), and truncating *inside* it is `budget.fit`'s job.
     """
-    # Worst first: lowest rank, and within a rank the earliest — the job stopped at
-    # its first failing command, so earlier output of the same rank was survived.
-    # ponytail: inside one compiler's output the *first* error is usually the root
-    # and the rest knock-on, so this sheds the root first; telling commands apart
-    # needs command boundaries the log lines do not carry.
+    # Worst first: lowest rank, then earliest — a job stops at its first failing command.
+    # ponytail: within one compiler's output the first error is the root and is shed first;
+    # fixing it needs command boundaries the log lines do not carry.
     ranked = sorted(
-        ((estimate_tokens("\n".join(lines[w.start : w.end])), w) for w in windows),
+        ((estimate_tokens("\n".join(lines[w.start : w.end])) + _MARKER_TOKENS, w) for w in windows),
         key=lambda cw: (cw[1].rank, cw[1].start),
     )
-    total = sum(cost for cost, _ in ranked)
+    total = _MARKER_TOKENS + sum(cost for cost, _ in ranked)  # each window plus one gap marker
     while len(ranked) > 1 and total > max_tokens:
         total -= ranked.pop(0)[0]
     return sorted((w for _, w in ranked), key=lambda w: w.start)

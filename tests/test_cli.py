@@ -166,3 +166,17 @@ def test_config_validate_reports_ok_and_failure(monkeypatch, capsys, tmp_path):
     assert "invalid config" in capsys.readouterr().err  # named, not raised
 
     assert "config ok" in _run(monkeypatch, capsys, "config", "--validate")
+
+
+def test_analyze_reports_a_bad_config_as_a_config_error(monkeypatch, capsys, tmp_path):
+    """A rejected regex is the user's config, not an internal error."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "bad.yml").write_text("denoise:\n  noise_patterns: ['(?=x)']\n")
+    (tmp_path / "job.log").write_text("boom\n")
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "job.log", "-f", "bad.yml"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    err = capsys.readouterr().err
+    assert exc.value.code == 0
+    assert "invalid config" in err
+    assert "internal error" not in err

@@ -12,7 +12,15 @@ field added without one ships an undocumented knob.
 import logging
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    model_validator,
+)
 
 from ci_doctor.core.regex import compile_user
 
@@ -133,17 +141,38 @@ class AnalysisConfig(_Strict):
     )
 
 
-def _re2(pattern: str) -> str:
+def _re2(pattern: str, info: ValidationInfo) -> str:
     """Reject a pattern RE2 cannot compile, at load time rather than mid-run.
 
     Args:
         pattern: The regex as written in the config.
+        info: Validation context; on a matcher it carries the already-validated `id`,
+            which names the culprit better than its index in the merged list.
 
     Returns:
         The pattern, unchanged.
+
+    Raises:
+        ValueError: If RE2 rejects it, naming the matcher when there is one.
     """
-    compile_user(pattern)
+    try:
+        compile_user(pattern)
+    except ValueError as err:
+        owner = info.data.get("id")
+        raise ValueError(f"matcher {owner!r}: {err}" if owner else str(err)) from None
     return pattern
+
+
+def _one_line(text: str) -> str:
+    """Collapse whitespace: a description is prompt text, and a newline could forge a section.
+
+    Args:
+        text: The description as written.
+
+    Returns:
+        The text on one line.
+    """
+    return " ".join(text.split())
 
 
 #: A regex field: non-empty (`''` compiles, and fires on everything or nothing) and
@@ -151,6 +180,8 @@ def _re2(pattern: str) -> str:
 Re2 = Annotated[str, StringConstraints(min_length=1), AfterValidator(_re2)]
 #: A classification tag: lowercase, digits and dashes.
 Tag = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
+#: What a matcher's output is; ranks its windows (`extract.ROLE_RANK`).
+Role = Literal["tool", "wrapper", "fallback"]
 
 
 class MatcherExamples(_Strict):
@@ -170,9 +201,10 @@ class MatcherConfig(_Strict):
     """
 
     id: str = Field(
-        description="Unique matcher id. Reusing a shipped id overrides just the fields you set, and logs a warning."
+        pattern=r"^[A-Za-z0-9_./-]+$",
+        description="Unique matcher id. Reusing a shipped id overrides just the fields you set, and logs a warning.",
     )
-    role: Literal["tool", "wrapper", "fallback"] = Field(
+    role: Role = Field(
         "tool",
         description=(
             "How the window ranks under budget pressure: `tool` (the failing tool's own output) "
@@ -184,20 +216,19 @@ class MatcherConfig(_Strict):
         default_factory=list,
         description="Tags describing the pack, ecosystem first (`[python, test]`). Metadata only.",
     )
-    description: str | None = Field(
+    description: Annotated[str, StringConstraints(max_length=400), AfterValidator(_one_line)] | None = Field(
         None,
-        max_length=400,
         description=(
             "Shown to the LLM beside the windows this pack selected: what the tool is and what "
             "its failure means. The model knows public tools, not your in-house ones."
         ),
     )
-    start: Re2 | None = Field(None, description="Regex opening a windowed matcher.")
-    end: Re2 | None = Field(None, description="Regex closing a windowed matcher.")
-    pattern: Re2 | None = Field(None, description="Regex anchoring a single-line matcher.")
+    start: Re2 | None = Field(None, description="Regex (RE2) opening a windowed matcher.")
+    end: Re2 | None = Field(None, description="Regex (RE2) closing a windowed matcher.")
+    pattern: Re2 | None = Field(None, description="Regex (RE2) anchoring a single-line matcher.")
     exclude: list[Re2] = Field(
         default_factory=list,
-        description="Regexes that disqualify an anchor line (`pattern`/`start`) — RE2 has no lookaround.",
+        description="Regexes (RE2) that disqualify an anchor line (`pattern`/`start`); RE2 has no lookaround.",
     )
     before: int = Field(0, description="Lines of context kept above a `pattern` hit.")
     after: int = Field(0, description="Lines of context kept below a `pattern` hit.")
@@ -219,7 +250,10 @@ class MatcherConfig(_Strict):
         line = self.pattern is not None and self.start is None and self.end is None
         block = self.pattern is None and self.start is not None and self.end is not None
         if not (line or block):
-            raise ValueError(f"matcher {self.id!r}: set exactly one of `pattern`, or `start` and `end`")
+            raise ValueError(
+                f"matcher {self.id!r}: set exactly one of `pattern`, or `start` and `end` "
+                "(to switch a shipped block pack to `pattern`, also set `start: null` and `end: null`)"
+            )
         return self
 
 

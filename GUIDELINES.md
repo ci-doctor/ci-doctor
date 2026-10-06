@@ -166,7 +166,7 @@ Pure data — no Python. In `config/defaults.yml` under `extraction.matchers`:
   role: tool                          # tool | wrapper | fallback
   classification: [python, test]      # ecosystem first; metadata only
   description: >-
-    What mytool prints when it fails, and what the window pulls in.
+    Acme's build CLI. `MYTOOL ERROR <file>:<line>` is a config error in that file, not a code bug.
   pattern: '^MYTOOL ERROR'            # or start:/end: for a block — exactly one form
   exclude: ['^MYTOOL ERROR: retrying'] # anchor lines to reject; RE2 has no lookaround
   before: 2
@@ -196,8 +196,9 @@ Windows are `before`/`after` lines around the anchor.
 Every regex is **RE2** (`core/regex.py`), compiled when the config loads: no lookaround
 (use `exclude`), no backreferences, `\z` not `\Z`, repeats of at most 1000, and
 `\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). `examples` are run by
-`test_every_example_is_accepted_or_rejected_by_the_anchor`; a `no_match` line is the
-cheapest place to pin a wrong-tool trap from §7.
+`test_every_example_is_accepted_or_rejected_by_the_anchor` for shipped packs only — in a
+user's `.ci-doctor.yml` they are documentation until `packs verify` (E11). A `no_match`
+line is the cheapest place to pin a wrong-tool trap from §7.
 
 **Ranking.** When the evidence exceeds the token budget, `extract.py` sheds whole windows
 by `(role, position)` before `budget.py` truncates what is left: `fallback` first, then

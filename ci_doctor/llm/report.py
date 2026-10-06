@@ -335,13 +335,12 @@ def _packs(bundle: EvidenceBundle) -> str:
         bundle: The budgeted evidence.
 
     Returns:
-        The lines for the prompt's matcher section, or a note that only the log's
-        tail was kept.
+        The lines for the prompt's matcher section, or a note that no pack matched.
     """
     lines = [
         f"- {m.id} [{m.role}]" + (f": {m.description}" if m.description else "") for m in bundle.matchers
     ]
-    return "\n".join(lines) or "none — the excerpt is the tail of the log"
+    return "\n".join(lines) or "none — no pack matched; the excerpt is the log's tail, or all of it"
 
 
 def _load(name: str) -> str:

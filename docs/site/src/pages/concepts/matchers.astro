@@ -195,7 +195,9 @@ ci-doctor analyze path/to/failing-job.log`;
     <p>
         The <code>description</code> is not only for this page: the LLM sees it beside
         the lines your pack selected. The model knows public tools, not your in-house
-        ones — so say what the tool is and what its failure means.
+        ones — so say what the tool is and what its failure means. The
+        <code>examples</code> are checked by the test suite for shipped packs only;
+        in your own config they document intent but are not run yet.
     </p>
 
     <p>Reusing a shipped id retunes that pack instead, field by field:</p>

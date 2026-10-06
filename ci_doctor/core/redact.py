@@ -94,6 +94,7 @@ def redact_text(
     if not cfg.enabled:
         return text
     environ = os.environ if environ is None else environ
+    text = text.encode("utf-8", "replace").decode()  # RE2 extras need UTF-8; a lone surrogate has none
     for literal in _env_secret_literals(environ):
         text = text.replace(literal, "[REDACTED:env]")
     text = _URL_CREDS.sub(r"\1[REDACTED:credentials]@", text)
