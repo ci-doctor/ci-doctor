@@ -13,7 +13,7 @@ from ci_doctor.config.schema import Config, MatcherConfig
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.budget import estimate_tokens, fit
 from ci_doctor.core.denoise import denoise
-from ci_doctor.core.extract import select
+from ci_doctor.core.extract import extract, fired
 from ci_doctor.core.models import SYNTHETIC_SECTIONS, Job, Phase, Section, walk_sections
 
 log = logging.getLogger("ci_doctor.analyze")
@@ -87,12 +87,10 @@ def build_bundle(job: Job, attr: Attribution, sections: list[Section], cfg: Conf
     blamed_budget = int(cfg.llm.max_input_tokens * 0.7)
     # Budget the *selection* by matcher rank first; `fit` is the last resort
     # that cuts inside whatever survives.
-    excerpt, ids = select(clean, cfg.extraction.matchers, cfg.extraction.tail_lines, blamed_budget)
-    by_id = {m.id: m for m in cfg.extraction.matchers}
-    matchers = [by_id[i] for i in ids]
+    excerpt = extract(clean, cfg.extraction.matchers, cfg.extraction.tail_lines, blamed_budget)
     fitted, truncated = fit(excerpt, blamed_budget)
-    if truncated:  # `fit` cut the head; a pack whose lines went with it is not context
-        matchers = [m for m in matchers if select(fitted, [m], tail_lines=0)[1]]
+    by_id = {m.id: m for m in cfg.extraction.matchers}
+    matchers = [by_id[i] for i in fired(fitted, cfg.extraction.matchers)]
     log.debug(
         "blamed phase %s: denoise %d->%d, extract ->%d, fit ->%d lines (truncated=%s)",
         attr.phase,

@@ -5,7 +5,7 @@ tail-only view would miss them). Overlapping windows merge. Every gap between
 selected windows is marked with an explicit elision count — never a silent cut.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ci_doctor.config.schema import MatcherConfig
 from ci_doctor.core.budget import estimate_tokens
@@ -33,13 +33,11 @@ class _Window:
         rank: `ROLE_RANK` of the matcher that produced it, `_TAIL` for the tail.
             Survives merging as the max of the merged windows, so a tool window
             never loses rank by touching a wrapper's.
-        ids: The matchers whose hits it holds; merging keeps them all.
     """
 
     start: int
     end: int  # exclusive
     rank: int
-    ids: list[str] = field(default_factory=list)
 
 
 def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Window]:
@@ -78,10 +76,7 @@ def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Windo
         rank = ROLE_RANK[m.role]
         anchored = [i for i, hit in enumerate(hits) if anchor in hit and not hit & exclude]
         if end is None:
-            wins += [
-                _Window(max(0, i - m.before), min(len(lines), i + m.after + 1), rank, [m.id])
-                for i in anchored
-            ]
+            wins += [_Window(max(0, i - m.before), min(len(lines), i + m.after + 1), rank) for i in anchored]
             continue
         resume = 0  # a block's scan resumes after its end, so blocks never nest
         for i in anchored:
@@ -89,7 +84,7 @@ def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Windo
                 continue
             j = next((k for k in range(i + 1, len(lines)) if end in hits[k]), len(lines))
             resume = min(len(lines), j + 1)
-            wins.append(_Window(i, resume, rank, [m.id]))
+            wins.append(_Window(i, resume, rank))
     return wins
 
 
@@ -112,7 +107,6 @@ def _merge(wins: list[_Window]) -> list[_Window]:
         if w.start <= last.end:  # overlapping or adjacent
             last.end = max(last.end, w.end)
             last.rank = max(last.rank, w.rank)
-            last.ids += [i for i in w.ids if i not in last.ids]
         else:
             merged.append(w)
     return merged
@@ -149,10 +143,10 @@ def _drop_to_fit(lines: list[str], windows: list[_Window], max_tokens: int) -> l
     return sorted((w for _, w in ranked), key=lambda w: w.start)
 
 
-def select(
+def extract(
     lines: list[str], matchers: list[MatcherConfig], tail_lines: int, max_tokens: int | None = None
-) -> tuple[list[str], list[str]]:
-    """Reduce a log to the lines worth showing, and name the packs they came from.
+) -> list[str]:
+    """Reduce a log to the lines worth showing.
 
     Args:
         lines: The denoised log lines.
@@ -166,35 +160,35 @@ def select(
 
     Returns:
         The selected lines with "… [N lines elided] …" markers where content was
-        dropped (every line when nothing matched and there is no tail), and the
-        ids of the matchers whose windows survived, in log order.
+        dropped. Falls back to every line when nothing matched and there is no tail.
     """
     wins = _windows_for(lines, matchers)
     if tail_lines > 0 and lines:
         wins.append(_Window(max(0, len(lines) - tail_lines), len(lines), _TAIL))
     merged = _merge(wins)
     if not merged:
-        return list(lines), []
+        return list(lines)
     if max_tokens is not None:
         merged = _drop_to_fit(lines, merged, max_tokens)
-    return _render(lines, merged), list(dict.fromkeys(i for w in merged for i in w.ids))
+    return _render(lines, merged)
 
 
-def extract(
-    lines: list[str], matchers: list[MatcherConfig], tail_lines: int, max_tokens: int | None = None
-) -> list[str]:
-    """The lines `select` keeps, without the pack ids.
+def fired(lines: list[str], matchers: list[MatcherConfig]) -> list[str]:
+    """Name the packs that anchor in these lines — asked of the final evidence.
 
     Args:
-        lines: The denoised log lines.
+        lines: The evidence as it will be sent, after every cut.
         matchers: Matcher packs from `extraction.matchers`.
-        tail_lines: Trailing lines to always keep; see `select`.
-        max_tokens: Evidence budget; see `select`.
 
     Returns:
-        The selected lines with explicit elision markers.
+        Ids of the matchers with at least one anchor in `lines`, in log order.
     """
-    return select(lines, matchers, tail_lines, max_tokens)[0]
+    first = {}
+    for m in matchers:
+        # before=0: a window then starts on its anchor, which is what log order means here
+        if wins := _windows_for(lines, [m.model_copy(update={"before": 0})]):
+            first[m.id] = min(w.start for w in wins)
+    return sorted(first, key=first.__getitem__)
 
 
 def _render(lines: list[str], windows: list[_Window]) -> list[str]:

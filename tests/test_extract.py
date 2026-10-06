@@ -4,7 +4,7 @@ from typing import get_args
 
 from ci_doctor.config.schema import MatcherConfig, Role
 from ci_doctor.core.budget import estimate_tokens
-from ci_doctor.core.extract import ROLE_RANK, extract, select
+from ci_doctor.core.extract import ROLE_RANK, extract, fired
 
 
 def _m(**kw):
@@ -146,22 +146,25 @@ def test_exclude_does_not_apply_to_a_blocks_end():
     assert "after" not in out.replace("elided", "")
 
 
-def test_select_names_the_packs_whose_windows_survived():
-    """Only packs still in the excerpt are reported, in log order; a shed one is not."""
+def test_fired_names_the_packs_anchored_in_the_final_lines_in_log_order():
+    """Asked once, of the evidence actually sent: a shed pack is not in it."""
     lines = [f"error TS2345: bad argument {i}" for i in range(100)]
     lines += [f"  building chunk {i}" for i in range(20)]
     lines += [f"npm ERR! code ELIFECYCLE {i}" for i in range(100)]
     matchers = [_m(id="npm", pattern="npm ERR!", role="wrapper"), _m(id="tsc", pattern="error TS")]
-    assert select(lines, matchers, tail_lines=0)[1] == ["tsc", "npm"]
-    budget = estimate_tokens("\n".join(lines)) // 2
-    assert select(lines, matchers, tail_lines=0, max_tokens=budget)[1] == ["tsc"]
+    assert fired(lines, matchers) == ["tsc", "npm"]
+    kept = extract(lines, matchers, tail_lines=0, max_tokens=estimate_tokens("\n".join(lines)) // 2)
+    assert fired(kept, matchers) == ["tsc"]
 
 
-def test_a_merged_window_reports_every_pack_in_it():
-    """Touching windows fuse, and each pack that contributed stays named."""
+def test_fired_names_a_pack_whose_anchor_is_only_context_of_another_window():
+    """Its line is in the evidence, so the model should know which tool printed it."""
     lines = ["Traceback (most recent call last):", "=== FAILURES ===", "boom"]
-    matchers = [_m(id="pytest", pattern="FAILURES"), _m(id="python_traceback", pattern="^Traceback")]
-    assert select(lines, matchers, tail_lines=0)[1] == ["python_traceback", "pytest"]
+    matchers = [
+        _m(id="pytest", pattern="FAILURES", before=1),
+        _m(id="python_traceback", pattern="^Traceback"),
+    ]
+    assert fired(extract(lines, [matchers[0]], tail_lines=0), matchers) == ["python_traceback", "pytest"]
 
 
 def test_the_selection_fits_the_budget_it_was_cut_to():
