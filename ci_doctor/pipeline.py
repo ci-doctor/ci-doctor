@@ -203,6 +203,8 @@ def run_from_file(path: Path) -> Run:
     Raises:
         OSError: If the file cannot be read.
     """
-    raw = path.read_text()
+    # "replace": one non-UTF-8 byte from a tool must not cost the whole analysis, and it
+    # keeps lone surrogates (which RE2 cannot encode) out of the pipeline entirely.
+    raw = path.read_text(errors="replace")
     job = Job(id="local", name=path.stem, status="failed", failure_reason=FailureReason.UNKNOWN, log=raw)
     return Run(id="local", jobs=[job])

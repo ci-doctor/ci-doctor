@@ -60,3 +60,9 @@ def test_cuts_noisy_log_over_70pct_and_retains_anchor():
     assert reduction > 0.70, f"only cut {reduction:.0%}"
     assert "ERROR: Job failed: exit code 1" in out  # anchor retained
     assert "E   assert 1 == 2" in out
+
+
+def test_empty_noise_patterns_drop_nothing():
+    """A user who empties the shipped noise list gets every non-blank line back."""
+    lines = ["", "keep me", "   "]
+    assert denoise(lines, DenoiseConfig(noise_patterns=[], dedupe_repeats=False)) == lines

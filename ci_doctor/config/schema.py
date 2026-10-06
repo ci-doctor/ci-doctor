@@ -10,9 +10,11 @@ field added without one ships an undocumented knob.
 """
 
 import logging
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+
+from ci_doctor.core.regex import compile_user
 
 log = logging.getLogger("ci_doctor.config")
 
@@ -131,6 +133,23 @@ class AnalysisConfig(_Strict):
     )
 
 
+def _re2(pattern: str) -> str:
+    """Reject a pattern RE2 cannot compile, at load time rather than mid-run.
+
+    Args:
+        pattern: The regex as written in the config.
+
+    Returns:
+        The pattern, unchanged.
+    """
+    compile_user(pattern)
+    return pattern
+
+
+#: A regex field: validated as RE2 when the config loads.
+Re2 = Annotated[str, AfterValidator(_re2)]
+
+
 class MatcherConfig(_Strict):
     """One evidence matcher: the log window to pull around a recognised failure.
 
@@ -141,9 +160,9 @@ class MatcherConfig(_Strict):
     id: str = Field(
         description="Unique matcher id. Reusing a shipped id overrides just the fields you set, and logs a warning."
     )
-    start: str | None = Field(None, description="Regex opening a windowed matcher.")
-    end: str | None = Field(None, description="Regex closing a windowed matcher.")
-    pattern: str | None = Field(None, description="Regex anchoring a single-line matcher.")
+    start: Re2 | None = Field(None, description="Regex opening a windowed matcher.")
+    end: Re2 | None = Field(None, description="Regex closing a windowed matcher.")
+    pattern: Re2 | None = Field(None, description="Regex anchoring a single-line matcher.")
     before: int = Field(0, description="Lines of context kept above a `pattern` hit.")
     after: int = Field(0, description="Lines of context kept below a `pattern` hit.")
     priority: int = Field(
@@ -171,8 +190,8 @@ class DenoiseConfig(_Strict):
         True, description=r"Collapse \r progress bars to their final rendered state."
     )
     dedupe_repeats: bool = Field(True, description='Fold repeated lines into "<line>  (×47)".')
-    noise_patterns: list[str] = Field(
-        default_factory=list, description="Regexes whose matching lines are dropped outright."
+    noise_patterns: list[Re2] = Field(
+        default_factory=list, description="Regexes (RE2) whose matching lines are dropped outright."
     )
 
 
@@ -194,8 +213,8 @@ class RedactionConfig(_Strict):
     enabled: bool = Field(
         True, description="Scrub tokens, credentials in URLs and env secrets from all output."
     )
-    extra_patterns: list[str] = Field(
-        default_factory=list, description="Additional regexes to scrub, on top of the built-in set."
+    extra_patterns: list[Re2] = Field(
+        default_factory=list, description="Additional regexes (RE2) to scrub, on top of the built-in set."
     )
 
 

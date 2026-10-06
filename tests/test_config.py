@@ -198,3 +198,18 @@ def test_latency_knobs_reject_nonsense():
         load_config(environ={}, overrides={"llm": {"max_retries": -1}})
     with pytest.raises(ValidationError):
         load_config(environ={}, overrides={"analysis": {"max_parallel_jobs": 0}})
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "extraction:\n  matchers:\n    - id: x\n      pattern: '(?=lookahead)'\n",
+        "extraction:\n  matchers:\n    - id: x\n      start: 'a'\n      end: '(a)\\1'\n",
+        "denoise:\n  noise_patterns: ['(?<=x)y']\n",
+        "redaction:\n  extra_patterns: ['tok\\Z']\n",
+    ],
+)
+def test_a_pattern_re2_cannot_compile_is_a_config_error(tmp_path, body):
+    """All three user-regex surfaces are RE2, and a bad one fails the load, not the run."""
+    with pytest.raises(ValidationError, match="is not valid RE2"):
+        load_config(repo_config=_write(tmp_path, body), environ={})

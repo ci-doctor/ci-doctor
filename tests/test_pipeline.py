@@ -2,7 +2,7 @@
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Job, Run
-from ci_doctor.pipeline import _ordered, analyze_run
+from ci_doctor.pipeline import _ordered, analyze_run, run_from_file
 from tests import support
 
 
@@ -107,3 +107,15 @@ def test_analyze_run_builds_one_llm_client_for_the_whole_run(monkeypatch):
     _run, _provider, results = analyze_run("42", cfg)
     assert len(results) == 4
     assert len(built) == 1
+
+
+def test_a_log_with_a_non_utf8_byte_still_loads(tmp_path):
+    """One Latin-1 byte from a tool must not cost the whole analysis.
+
+    It is shown as U+FFFD instead, which also means no lone surrogate can ever
+    reach RE2, which matches UTF-8 bytes.
+    """
+    path = tmp_path / "job.log"
+    path.write_bytes(b"$ make\ncaf\xe9 au lait\nERROR: Job failed: exit code 1\n")
+    log = run_from_file(path).jobs[0].log
+    assert "caf� au lait" in log

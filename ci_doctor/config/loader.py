@@ -22,6 +22,10 @@ from ci_doctor.config.schema import Config
 
 log = logging.getLogger(__name__)
 
+#: libyaml's safe loader when the wheel ships it (~10x faster than pure Python, and
+#: the packs make `defaults.yml` the largest document parsed per run), else pure Python.
+_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
 _ENV_PREFIX = "CI_DOCTOR_"
 _TOP_LEVEL = set(Config.model_fields)  # provider, gitlab, llm, ...
 _DEFAULT_REPO_CONFIG = Path(".ci-doctor.yml")
@@ -105,7 +109,7 @@ def _load_yaml(text: str) -> dict:
     Raises:
         ValueError: If the document's root is not a mapping.
     """
-    data = yaml.safe_load(text) or {}
+    data = yaml.load(text, Loader=_LOADER) or {}  # noqa: S506 - _LOADER is a *safe* loader
     if not isinstance(data, dict):
         raise ValueError("config root must be a mapping")
     return data

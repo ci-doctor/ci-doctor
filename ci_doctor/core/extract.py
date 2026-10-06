@@ -5,11 +5,11 @@ tail-only view would miss them). Overlapping windows merge. Every gap between
 selected windows is marked with an explicit elision count — never a silent cut.
 """
 
-import re
 from dataclasses import dataclass
 
 from ci_doctor.config.schema import MatcherConfig
 from ci_doctor.core.budget import estimate_tokens
+from ci_doctor.core.regex import pattern_set
 
 
 @dataclass
@@ -32,6 +32,9 @@ class _Window:
 def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Window]:
     """Run every matcher over the log and collect the windows they anchor.
 
+    Every regex of every matcher goes into one RE2 set, so each line is matched
+    once, not once per pattern — see `core/regex.py` for why that matters.
+
     Args:
         lines: The denoised log lines.
         matchers: Matcher packs from `extraction.matchers`.
@@ -41,26 +44,36 @@ def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Windo
         matched — which is why a pack that never fires fails *silently*, and why
         each one needs a fixture in `test_matcher_packs.py`.
     """
-    wins: list[_Window] = []
+    regexes: list[str] = []
+
+    def add(rx: str) -> int:
+        regexes.append(rx)
+        return len(regexes) - 1
+
+    plans: list[tuple[MatcherConfig, int, int | None]] = []
     for m in matchers:
         if m.pattern:
-            rx = re.compile(m.pattern)
-            for i, line in enumerate(lines):
-                if rx.search(line):
-                    wins.append(_Window(max(0, i - m.before), min(len(lines), i + m.after + 1), m.priority))
+            plans.append((m, add(m.pattern), None))
         elif m.start and m.end:
-            srx, erx = re.compile(m.start), re.compile(m.end)
-            i = 0
-            while i < len(lines):
-                if srx.search(lines[i]):
-                    j = i + 1
-                    while j < len(lines) and not erx.search(lines[j]):
-                        j += 1
-                    end = min(len(lines), j + 1)
-                    wins.append(_Window(i, end, m.priority))
-                    i = end
-                else:
-                    i += 1
+            plans.append((m, add(m.start), add(m.end)))
+    match = pattern_set(regexes)
+    hits = [set(match(line)) for line in lines]
+
+    wins: list[_Window] = []
+    for m, anchor, end in plans:
+        anchored = [i for i, hit in enumerate(hits) if anchor in hit]
+        if end is None:
+            wins += [
+                _Window(max(0, i - m.before), min(len(lines), i + m.after + 1), m.priority) for i in anchored
+            ]
+            continue
+        resume = 0  # a block's scan resumes after its end, so blocks never nest
+        for i in anchored:
+            if i < resume:
+                continue
+            j = next((k for k in range(i + 1, len(lines)) if end in hits[k]), len(lines))
+            resume = min(len(lines), j + 1)
+            wins.append(_Window(i, resume, m.priority))
     return wins
 
 

@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from ci_doctor.config.schema import RedactionConfig
+from ci_doctor.core.regex import Regex, compile_user
 
 if TYPE_CHECKING:
     # Only for the annotation: `core/` must not import `llm/` at runtime.
@@ -39,7 +40,7 @@ _DEFAULT_PATTERNS = {
 }
 
 
-def _compiled(cfg: RedactionConfig) -> list[tuple[str, re.Pattern[str]]]:
+def _compiled(cfg: RedactionConfig) -> list[tuple[str, re.Pattern[str] | Regex]]:
     """Compile the built-in patterns plus the user's extras.
 
     Args:
@@ -48,9 +49,11 @@ def _compiled(cfg: RedactionConfig) -> list[tuple[str, re.Pattern[str]]]:
     Returns:
         ``(kind, compiled_regex)`` pairs; user extras are labelled `customN`.
     """
-    pats = [(k, re.compile(v)) for k, v in _DEFAULT_PATTERNS.items()]
+    pats: list[tuple[str, re.Pattern[str] | Regex]] = [
+        (k, re.compile(v)) for k, v in _DEFAULT_PATTERNS.items()
+    ]
     for i, extra in enumerate(cfg.extra_patterns):
-        pats.append((f"custom{i}", re.compile(extra)))
+        pats.append((f"custom{i}", compile_user(extra)))  # user input: RE2
     return pats
 
 
