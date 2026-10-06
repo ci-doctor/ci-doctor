@@ -1,4 +1,13 @@
-extends: ['@commitlint/config-conventional']
+# Self-contained on purpose: mise installs the CLI in isolation, so `extends:
+# '@commitlint/config-conventional'` would not resolve. CI reads this same file.
+# The release workflow reads the type to decide whether to ship the next alpha.
 rules:
-  body-max-line-length: [0]
-  footer-max-line-length: [0]
+  type-enum:
+    - 2
+    - always
+    - [feat, fix, docs, test, chore, refactor, perf, ci, build, style, revert]
+  type-case: [2, always, lower-case]
+  type-empty: [2, never]
+  scope-case: [2, always, lower-case]
+  subject-empty: [2, never]
+  header-max-length: [2, always, 72]
