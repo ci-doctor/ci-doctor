@@ -46,7 +46,7 @@ jobs:
 
       # Caching off: this job publishes, and a restored cache is writable by any
       # branch's workflow. Saves seconds, widens the supply chain.
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
         if: steps.gate.outputs.release == 'true'
         with:
           enable-cache: false
