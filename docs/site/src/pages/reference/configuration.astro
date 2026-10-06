@@ -68,16 +68,16 @@ phases:                          # section/step name -> phase (merged onto the s
 
 extraction:
   tail_lines: 120
-  matchers:                      # anchored windows; higher priority survives budget pressure
+  matchers:                      # evidence windows, ranked by (role, position) under budget
                                  # Merged by id onto the shipped language packs: a new
                                  # id adds a pack, a shipped id retunes one (and warns).
     - id: my_service_errors      # new id -> added alongside the shipped packs
+      role: tool                 # tool | wrapper | fallback
       pattern: '^(ERROR|FATAL)\\b'
       before: 5
       after: 20
-      priority: 50
     - id: pytest                 # shipped id -> only these fields change, the rest is inherited
-      priority: 90
+      role: wrapper
 
 denoise:
   collapse_carriage_returns: true   # collapse \\r progress bars to their final state
@@ -206,6 +206,25 @@ redaction:
         <code>llm.temperature</code> has no effect on this backend, because
         <code>claude -p</code> exposes no temperature flag.
     </div>
+
+    <h2>Regex syntax</h2>
+    <p>
+        Every regex you can configure — matcher <code>pattern</code>,
+        <code>start</code>, <code>end</code> and <code>exclude</code>,
+        <code>denoise.noise_patterns</code>, <code>redaction.extra_patterns</code> —
+        is <a href="https://github.com/google/re2/wiki/Syntax">RE2</a>, compiled when
+        the config loads. RE2 matches in linear time, so no pattern can hang a job.
+        What that rules out:
+    </p>
+    <ul>
+        <li>No lookaround (<code>(?=</code>, <code>(?!</code>, <code>(?&lt;=</code>,
+            <code>(?&lt;!</code>) — on a matcher, list the lines to reject under
+            <code>exclude</code>.</li>
+        <li>No backreferences (<code>\1</code>), and <code>\z</code> rather than <code>\Z</code>.</li>
+        <li>Repeats of at most 1000 (<code>{"a{1001}"}</code> is rejected).</li>
+        <li><code>\d \s \w \b</code> are ASCII-only. Use <code>{"\\p{Nd}"}</code> or
+            <code>{"\\p{L}"}</code> for Unicode.</li>
+    </ul>
 
     <h2>Full reference</h2>
     <p>

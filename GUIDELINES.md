@@ -163,10 +163,17 @@ Pure data — no Python. In `config/defaults.yml` under `extraction.matchers`:
 
 ```yaml
 - id: mytool
-  pattern: '^MYTOOL ERROR'   # or start:/end: for a block
+  role: tool                          # tool | wrapper | fallback
+  classification: [python, test]      # ecosystem first; metadata only
+  description: >-
+    What mytool prints when it fails, and what the window pulls in.
+  pattern: '^MYTOOL ERROR'            # or start:/end: for a block — exactly one form
+  exclude: ['^MYTOOL ERROR: retrying'] # anchor lines to reject; RE2 has no lookaround
   before: 2
   after: 10
-  priority: 85
+  examples:
+    match: ['MYTOOL ERROR: config.yaml:3: unknown key']
+    no_match: ['MYTOOL ERROR: retrying in 5s']
 ```
 
 Then **add the fixture and a row in `test_matcher_packs.py`**, or the pack proves
@@ -186,27 +193,38 @@ two runner/wrong-tool traps in §7 before choosing a regex.
 
 Windows are `before`/`after` lines around the anchor.
 
-`priority` decides who gets cut when the evidence exceeds the token budget: `extract.py`
-sheds whole low-priority windows before `budget.py` truncates what is left. Rank a pack
-by how *diagnostic* it is, not how loud — `npm ERR!` (75) trails the compiler errors that
-caused it, so it must lose to `tsc` (80). Only windows separated by unselected lines are
-rankable; adjacent ones merge and take the highest priority among them.
+Every regex is **RE2** (`core/regex.py`), compiled when the config loads: no lookaround
+(use `exclude`), no backreferences, `\z` not `\Z`, repeats of at most 1000, and
+`\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). `examples` are run by
+`test_every_example_is_accepted_or_rejected_by_the_anchor`; a `no_match` line is the
+cheapest place to pin a wrong-tool trap from §7.
+
+**Ranking.** When the evidence exceeds the token budget, `extract.py` sheds whole windows
+by `(role, position)` before `budget.py` truncates what is left: `fallback` first, then
+`wrapper`, then `tool`, and within a role the earliest first. `role` says what the output
+*is*: a `tool` prints the failure itself (tsc, pytest, a traceback); a `wrapper` reports
+that a child process failed (npm, make, gradle, BuildKit) and prints *after* it, so a
+wrapper never outranks a tool wherever it sits. Within a role the later window wins,
+because a job stops at its first failing command. A pack whose lines are of both kinds is
+two packs. Only windows separated by unselected lines are rankable; adjacent ones merge
+and keep the highest role among them.
 
 Config **lists replace, mappings deep-merge** — except lists whose entries all carry an
 `id`, which merge per id (`_merge_by_id` in `config/loader.py`). So a user pack with a new
 id is *added* to the shipped ones, and one reusing a shipped id *overrides* that pack and
-logs a warning naming it. The override is field by field: `priority: 95` on the shipped
+logs a warning naming it. The override is field by field: `role: wrapper` on the shipped
 `pytest` pack keeps its `start`/`end`, because blanking them would leave a matcher that
-can never fire. A user `pattern` still wins over an inherited `start`/`end` — `extract.py`
-checks `pattern` first.
+can never fire. To switch a block pack to a `pattern`, null its `start` and `end` — a
+matcher has exactly one form.
 
 Every field you add to `config/schema.py` needs a `description=` — it becomes the text in
 the published `ci-doctor.schema.json`, and `test_json_schema_documents_every_field` fails
 without it.
 
-The docs site's matcher catalogue is **generated** from `defaults.yml`, including the
-`# --- Group ---` comment headers that organise it. After adding or retuning a pack, run
-`mise run docs:data`; `test_docs_data_is_current` fails if the committed JSON drifts.
+The docs site's matcher catalogue is **generated** from `defaults.yml`: each pack's
+`description`, `role` and `classification`, grouped by the first tag (a new ecosystem
+needs a `GROUPS` heading in `scripts/gen_docs_data.py`). After adding or retuning a pack,
+run `mise run docs:data`; `test_docs_data_is_current` fails if the committed JSON drifts.
 
 ### 5.2 Where a pattern goes: the classifier or the catalogue
 
@@ -216,7 +234,7 @@ different questions at different stages:
 | | `_ERROR_RE` in `core/attribution.py` | `extraction.matchers` in `defaults.yml` |
 |---|---|---|
 | Question | did anything in this **section** fail? | which **lines** are the evidence? |
-| Output | one boolean per line | a windowed excerpt, prioritised |
+| Output | one boolean per line | a windowed excerpt, ranked |
 | Runs | before extraction, and only on rule 6 (last resort) | after the phase is already decided |
 | Tunable | no — `attribute()` takes no `Config`, by design (invariant #7) | yes, per repo, merged by id |
 
@@ -239,6 +257,8 @@ would mean matching tool-specific regexes (pytest, tsc, go…) that duplicate th
 catalogue and belong to the model. So without an LLM the category is honestly `unknown`
 — the deterministic pipeline still decides the **phase** (where it broke); the model
 decides the category (what kind). Do not reintroduce log-signature category guessing here.
+A matcher's `role` and `classification` rank and describe *evidence*; neither ever sets
+the category.
 
 ### 5.4 Add a provider
 

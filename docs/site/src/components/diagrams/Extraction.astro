@@ -25,8 +25,8 @@
         >The denoised lines of the blamed section are fed to every matcher,
         which turns each hit into a window either from a pattern with
         before/after context or from a start/end block; a tail window is added
-        separately. Overlapping windows merge, keeping the highest priority
-        they absorbed, whole windows are shed lowest-priority-first until the
+        separately. Overlapping windows merge, keeping the highest role
+        they absorbed, whole windows are shed lowest-ranked-first until the
         budget fits, and what remains is rendered with elision markers.</desc
       >
 
@@ -147,7 +147,7 @@
       <rect class="dg-tag" x="568" y="174" width="32" height="12" rx="2" />
       <text class="dg-tag-text" x="584" y="183" text-anchor="middle">TAIL</text>
       <text class="dg-name" x="696" y="200" text-anchor="middle">Tail window</text>
-      <text class="dg-sub" x="696" y="215" text-anchor="middle">priority 0</text>
+      <text class="dg-sub" x="696" y="215" text-anchor="middle">ranked last</text>
 
       <rect class="dg-mask" x="176" y="288" width="272" height="56" rx="6" />
       <rect class="dg-node" x="176" y="288" width="272" height="56" rx="6" />
@@ -166,7 +166,7 @@
       >
       <text class="dg-name" x="480" y="440" text-anchor="middle">Merge overlaps</text>
       <text class="dg-sub" x="480" y="455" text-anchor="middle"
-        >window keeps the highest priority</text
+        >window keeps the highest role</text
       >
 
       <rect class="dg-mask" x="176" y="528" width="272" height="56" rx="6" />
@@ -179,7 +179,7 @@
         >Shed whole windows</text
       >
       <text class="dg-sub" x="312" y="575" text-anchor="middle"
-        >lowest priority first, until it fits</text
+        >lowest role, earliest first, until it fits</text
       >
 
       <rect class="dg-mask" x="560" y="528" width="272" height="56" rx="6" />
@@ -196,7 +196,7 @@
       <text class="dg-legend-label" x="40" y="628">LEGEND</text>
 
       <rect class="dg-node-focal" x="40" y="644" width="14" height="10" rx="2" />
-      <text class="dg-legend-text" x="60" y="652">Where priority decides</text>
+      <text class="dg-legend-text" x="60" y="652">Where ranking decides</text>
 
       <rect class="dg-node" x="260" y="644" width="14" height="10" rx="2" />
       <text class="dg-legend-text" x="280" y="652">Pipeline step</text>
