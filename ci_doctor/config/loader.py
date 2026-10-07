@@ -103,11 +103,11 @@ def _load_yaml(text: str) -> dict:
         The parsed mapping; an empty dict for empty input.
 
     Raises:
-        ValueError: If the document's root is not a mapping.
+        TypeError: If the document's root is not a mapping.
     """
     data = yaml.safe_load(text) or {}
     if not isinstance(data, dict):
-        raise ValueError("config root must be a mapping")
+        raise TypeError("config root must be a mapping")
     return data
 
 

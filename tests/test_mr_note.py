@@ -30,7 +30,7 @@ class _Notes:
         self._list = existing
         self.created = []
 
-    def list(self, all=True):  # noqa: A002 - matches python-gitlab signature
+    def list(self, all=True):
         """Return every note."""
         return self._list
 
