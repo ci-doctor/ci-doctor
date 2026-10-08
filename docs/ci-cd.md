@@ -162,7 +162,9 @@ version. A hotfix, which skips `development`, widens the gap the same way. Once 
 
 It runs on `workflow_run` for each of the four and acts only when the last one
 finishes: the others find a pipeline still running (or failed) and stop, so a release
-that did not settle never gets back-merged. It checks out nothing; it reads run
+that did not settle never gets back-merged. The latest `master` release anchors the
+check; `ci` and `security` are matched to its commit, and `docs` by time, because a
+`workflow_run` run carries the default branch's commit, not `master`'s. It checks out nothing; it reads run
 results through the API and skips if `development` already contains `master` or a
 back-merge PR is open. `workflow_run` only fires from the file on the default branch,
 so a change to `backmerge.yml` takes effect once it is on `development`, not when it
