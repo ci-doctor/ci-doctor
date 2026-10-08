@@ -24,8 +24,8 @@ flowchart TD
     REL --> PUB["PyPI · Docker Hub · GitHub Release"]
     REL -->|on success| DOC["docs.yml → GitHub Pages"]
 
-    H -.->|on merge| BM[backmerge.yml]
-    BM -.->|opens PR| D
+    M -.->|ci · security · release · docs all green| BM[backmerge.yml]
+    BM -.->|hotfix only: opens PR| D
 ```
 
 Dotted is the backmerge: it opens a PR rather than pushing, so the hotfix lands
@@ -37,7 +37,7 @@ in `development` through the same review as anything else.
 | `hotfix/<slug>` → `master` | `ci` · `security` · `release-gate` |
 | `development` → `master` | `ci` · `security` · `release-gate` |
 | push to `master` | `release`, then `docs` on its success |
-| hotfix merged | `backmerge` |
+| `ci` · `security` · `release` · `docs` all green on a hotfix's merge commit | `backmerge` |
 
 A hotfix gets the release gate because a hotfix ships — the same packaging and
 image checks apply to it as to an integration.
@@ -156,7 +156,18 @@ that did not ship. `workflow_dispatch` is the manual retry.
 
 A hotfix reaches `master` without passing through `development`, so `development`
 ends up missing it — and the next `development → master` integration silently
-reverts the fix. On a merged `hotfix/*` PR, this opens a `master → development` PR.
+reverts the fix. Once a merged `hotfix/*` PR has passed everything that runs on
+`master` — `ci`, `security`, `release`, `docs` — this opens a `master → development` PR.
+
+It runs on `workflow_run` for each of the four and acts only when the last one
+finishes: the others find a pipeline still running (or failed) and stop. A hotfix
+that failed to ship therefore never gets back-merged. It looks the hotfix up from the
+merge commit's PR, so it checks out nothing. `workflow_run` only fires from the file
+on the default branch, so a change to `backmerge.yml` takes effect once it is on
+`development`, not when it merges to `master`.
+
+The repo setting *Actions → General → Allow GitHub Actions to create and approve pull
+requests* must be on, or `gh pr create` is refused.
 
 Only for hotfixes, deliberately: a normal integration merge also leaves `master`
 ahead of `development`, so a plain "is master ahead?" check would fire on every

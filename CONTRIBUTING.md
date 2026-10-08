@@ -97,7 +97,8 @@ Two hops for normal work, plus one shortcut for emergencies:
 
 hotfix/<slug>  ─────────────PR──────────────▶  master
                                               ci + security + release-gate
-                                              then: back-merge PR into development
+                                              then, once ci + security + release + docs
+                                              are green: back-merge PR into development
 ```
 
 - **`<type>/<slug>`** — branch off `development`, named with the same types the
@@ -114,8 +115,8 @@ hotfix/<slug>  ─────────────PR────────
   `release.yml` is about to do, minus publishing.
 - **`hotfix/<slug>`** — branch off `master`, not `development`. `hotfix` is a valid
   branch prefix but **not** a valid commit type, so the commits inside it are still
-  `fix:`. When the PR merges, `backmerge.yml` opens a `master → development` PR;
-  merge it, or the next integration will revert the fix.
+  `fix:`. Once the merged hotfix has passed `ci`, `security`, `release` and `docs` on
+  `master`, `backmerge.yml` opens a `master → development` PR; merge it, or the next integration will revert the fix.
 
 What each job does, and why it lives where it does, is [docs/ci-cd.md](docs/ci-cd.md).
 
