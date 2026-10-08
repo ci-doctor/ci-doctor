@@ -39,9 +39,8 @@ SEGMENTERS: dict[str, str] = {
 #: Segmenter used when the configured CI system has none of its own.
 _FALLBACK_SEGMENTER = SEGMENTERS["github"]
 
-#: What a runner prints that no other runner does, for the one case where the
-#: config cannot answer: replaying a log file, where `ci` is a default nobody
-#: chose. Deliberately unanchored — GitHub prefixes every line with an ISO
+#: What a runner prints that no other does, for replaying a log file where `ci` is a
+#: default nobody chose. Unanchored on purpose: GitHub prefixes every line with a
 #: timestamp and GitLab wraps its markers in ANSI, so neither sits at column 0.
 _LOG_SIGNATURES: dict[str, re.Pattern[str]] = {
     "github": re.compile(r"##\[(?:group|endgroup|error|warning)\]"),
@@ -92,7 +91,7 @@ def make_ci_provider(cfg: Config) -> CIProvider:
     """
     adapter = make_adapter(cfg.ci, cfg)
     if not isinstance(adapter, CIProvider):
-        raise ValueError(f"unsupported CI system: {cfg.ci}")
+        raise ValueError(f"unsupported CI system: {cfg.ci}")  # noqa: TRY004 - an unknown name, not a type error
     return adapter
 
 

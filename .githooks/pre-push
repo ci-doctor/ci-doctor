@@ -12,6 +12,20 @@ echo "pre-push: types"
 # ci_doctor only, matching the CI job — tests are not type-checked.
 uv run ty check ci_doctor || fail=1
 
+# The commit-msg hook is skipped by --no-verify, rebases and web edits; this catches
+# what slipped past, since the release gate reads these commit types.
+echo "pre-push: commits"
+if command -v commitlint >/dev/null 2>&1; then
+  base=$(git merge-base HEAD origin/development 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null || true)
+  if [[ -n "$base" ]]; then
+    commitlint --from "$base" --to HEAD || fail=1
+  else
+    echo "pre-push: commits (skipped — no origin/development or origin/master to compare)"
+  fi
+else
+  echo "pre-push: commits (skipped — commitlint not installed; \`mise install\`)"
+fi
+
 # Optional: only runs if you have it. mise install puts it on PATH.
 if command -v gitleaks >/dev/null 2>&1; then
   echo "pre-push: leaks"

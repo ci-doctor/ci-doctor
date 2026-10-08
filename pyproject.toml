@@ -31,7 +31,7 @@ classifiers = [
 readme = "README.md"
 
 [project.urls]
-Homepage = "https://fennet82.github.io/ci-doctor/"
+Homepage = "https://docs.cidoc.dev/"
 Repository = "https://github.com/fennet82/ci-doctor"
 Issues = "https://github.com/fennet82/ci-doctor/issues"
 Changelog = "https://github.com/fennet82/ci-doctor/blob/master/CHANGELOG.md"
@@ -50,7 +50,7 @@ dev = [
     "pytest>=8",
     "pytest-cov>=7.1.0",
     "pytest-github-actions-annotate-failures>=0.4.2",
-    "ruff>=0.15,<0.16",  # 0.16 widened the DEFAULT rule set; adopting it is its own change
+    "ruff>=0.15,<0.17",  # 0.16 widened the DEFAULT rule set; adopting it is its own change
     "ty>=0.0.65,<0.1",  # pre-1.0: pinned so new diagnostics can't redden an unrelated PR
 ]
 
