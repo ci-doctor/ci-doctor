@@ -1,13 +1,14 @@
 import { defineConfig } from 'astro/config';
 
-// Project site on GitHub Pages: https://fennet82.github.io/ci-doctor
+// GitHub Pages site on a custom domain: https://docs.cidoc.dev (served from the root,
+// so `base` is "/"; the domain is set in the repo's Pages settings and DNS).
 //
-// `base` must match the repo name. It is the one setting that silently breaks
-// every internal link when it changes, so nothing hardcodes a leading "/" —
-// links go through `url()` and assets through `asset()` in src/lib/url.ts.
+// `base` is the one setting that silently breaks every internal link when it
+// changes, so nothing hardcodes a leading "/" — links go through `url()` and
+// assets through `asset()` in src/lib/url.ts.
 export default defineConfig({
-  site: 'https://fennet82.github.io',
-  base: '/ci-doctor',
+  site: 'https://docs.cidoc.dev',
+  base: '/',
   build: { format: 'directory' },
 
   // Astro's HTML compressor drops the whitespace either side of a tag when that
