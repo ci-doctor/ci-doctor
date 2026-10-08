@@ -1,21 +1,18 @@
 name: backmerge
 
-# A hotfix reaches master without passing through development, so development ends
-# up missing it and the next integration silently reverts the fix. This opens the
-# master -> development PR, but only once everything that runs on master has passed
-# for the hotfix's merge commit: ci, security, release, docs. A back-merge of a hotfix
-# that then failed to ship would hand development a fix master has not released.
-#
-# Only hotfixes: a normal development -> master merge also leaves master ahead, so a
-# plain "is master ahead" check would fire on every release.
+# release.yml commits to master: the version bump in pyproject.toml and uv.lock, plus
+# the tag. Nothing carries that back, so development keeps showing the previous version
+# until someone syncs it. A hotfix, which never passes through development, widens the
+# gap the same way. This opens the master -> development PR that closes it, once
+# everything that runs on master has passed for the commit that triggered it: ci,
+# security, release, docs. A failed pipeline means the release is not settled yet.
 #
 # Each of the four finishing wakes this up; all but the last find a pipeline still
 # running (or failed) and stop. The last one finds them all green and opens the PR.
 # Note workflow_run only fires from the file on the default branch (development).
 on:
-  # zizmor: ignore[dangerous-triggers] — checks out nothing and runs no PR code: it reads
-  # run conclusions and the merged PR's branch name through the API, and the branch name
-  # reaches the script through env, never the script text.
+  # zizmor: ignore[dangerous-triggers] — checks out nothing and runs no PR code: it only
+  # reads run conclusions and branch state through the API.
   workflow_run:
     workflows: [ci, security, release, docs]
     types: [completed]
@@ -57,13 +54,6 @@ jobs:
             fi
           done
 
-          hotfix=$(gh api "repos/$GH_REPO/commits/$SHA/pulls" --jq \
-            '[.[] | select(.merged_at != null and .base.ref == "master" and (.head.ref | startswith("hotfix/")))] | .[0].head.ref // empty')
-          if [[ -z "$hotfix" ]]; then
-            echo "$SHA did not come from a hotfix/ PR — nothing to back-merge"
-            exit 0
-          fi
-
           ahead=$(gh api "repos/$GH_REPO/compare/development...master" --jq .ahead_by)
           if [[ "$ahead" -eq 0 ]]; then
             echo "development already contains master"
@@ -78,4 +68,6 @@ jobs:
           # --head master, not a snapshot branch, so the PR tracks the tip as master moves.
           gh pr create --base development --head master \
             --title "chore: back-merge master into development" \
-            --body "$(printf '`%s` shipped straight to master and passed ci, security, release and docs. Merge this so development does not revert it.' "$hotfix")"
+            --body "Syncs development with master after a release. The release workflow commits the version bump (\`pyproject.toml\`, \`uv.lock\`) and tag straight to master, so development shows the previous version until this lands. A hotfix, which skips development, is carried back by the same PR.
+
+ci, security, release and docs have all passed on master. Merge with a **merge commit**, not a squash: a squash leaves development behind master again."
