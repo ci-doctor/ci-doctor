@@ -1,10 +1,7 @@
 name: ci
 
-# Jobs are independent on purpose: one red check should name the kind of problem.
-#
-# Runs on every hop — <type>/<slug> -> development -> master, and hotfix/<slug> ->
-# master — plus pushes to either branch, so a merge that skipped a PR is still
-# checked. Security scanning is security.yml; release readiness is release-gate.yml.
+# Jobs are independent: one red check names the kind of problem. Runs on PRs into and
+# pushes to development and master, so a merge that skipped a PR is still checked.
 on:
   pull_request:
     branches: [development, master]
@@ -19,15 +16,12 @@ permissions:
   contents: read
 
 jobs:
-  # The git hooks check both of these locally, and `--no-verify` skips them. The
-  # release gate reads commit types to decide whether to ship, so they are worth
-  # asserting somewhere that cannot be bypassed.
+  # The git hooks check these locally but `--no-verify` skips them, and release reads the types.
   conventions:
     permissions:
       contents: read
       pull-requests: read   # commitlint lists the PR's commits through the API
-    # Feature work and hotfixes. The development -> master PR is an integration,
-    # not a feature branch, and carries no type prefix.
+    # Feature branches and hotfixes; the development -> master PR has no type prefix.
     if: >-
       github.event_name == 'pull_request' &&
       (github.base_ref == 'development' || startsWith(github.head_ref, 'hotfix/'))
@@ -51,7 +45,7 @@ jobs:
           echo "branch '$BRANCH' ok"
       - uses: wagoid/commitlint-github-action@v6
         with:
-          # Not the body: generated bodies (changelogs, trailers) have long lines.
+          # The config skips the body: generated bodies have long lines.
           configFile: .commitlintrc.yml
 
   test:
@@ -70,11 +64,9 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - run: uv sync
-      # Failures annotate the diff inline: the pytest-github-actions-annotate-failures
-      # dev dependency emits GitHub's ::error commands, so there is no step for it here.
+      # Failures annotate the diff via the pytest-github-actions-annotate-failures dev dep.
       - run: uv run pytest -q --cov
-      # $GITHUB_STEP_SUMMARY is markdown rendered on the run page — GitHub's answer to
-      # GitLab's report artifacts. Informational only: pytest already gated the floor.
+      # Informational: the previous step already gates the coverage floor.
       - name: Coverage summary
         if: always()
         run: |
@@ -95,8 +87,7 @@ jobs:
         run: uv run ruff check ci_doctor tests
       - name: ruff format
         run: uv run ruff format --check ci_doctor tests
-      # --preview is scoped to *.md so Python stays on ruff's stable rules. It
-      # reformats Python blocks inside docs, not prose.
+      # --preview only for *.md: it formats Python blocks inside docs, not prose.
       - name: ruff format (markdown code blocks)
         run: uv run ruff format --preview --check $(git ls-files '*.md' ':!:.claude/**')
       # ci_doctor only: a type error in the shipped package is what reaches a user.
