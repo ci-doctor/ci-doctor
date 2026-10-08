@@ -31,7 +31,7 @@ classifiers = [
 readme = "README.md"
 
 [project.urls]
-Homepage = "https://fennet82.github.io/ci-doctor/"
+Homepage = "https://docs.cidoc.dev/"
 Repository = "https://github.com/fennet82/ci-doctor"
 Issues = "https://github.com/fennet82/ci-doctor/issues"
 Changelog = "https://github.com/fennet82/ci-doctor/blob/master/CHANGELOG.md"

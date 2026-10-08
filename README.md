@@ -108,7 +108,7 @@ uv run ci-doctor analyze 18234567890
 
 `ci-doctor config` prints the effective config; `--diff` shows only what your layers
 changed, `--schema` emits the JSON Schema. Full CLI and config reference on the
-[documentation site](https://fennet82.github.io/ci-doctor).
+[documentation site](https://docs.cidoc.dev).
 
 When a pipeline has several failed jobs, the report is framed as a pipeline: a header
 with a code-vs-infra triage count, then each job under its own separator, in the order
@@ -138,7 +138,7 @@ analysis:
 ```
 
 Every knob, and the three LLM backends, are documented on the
-[configuration page](https://fennet82.github.io/ci-doctor/configuration/). The LLM step is
+[configuration page](https://docs.cidoc.dev/reference/configuration/). The LLM step is
 optional throughout — disabled, unconfigured or unreachable, ci-doctor emits the
 deterministic report instead of failing.
 
@@ -159,7 +159,7 @@ steps:
 
 Outputs `phase`, `category`, `confidence`, `is-infra-not-code`, and the two report
 paths, so a workflow can branch on the verdict. Inputs, PR comments and GitHub
-Enterprise are on the [action page](https://fennet82.github.io/ci-doctor/action/);
+Enterprise are on the [action page](https://docs.cidoc.dev/cicd/github/);
 the full workflow is in
 [examples/github-actions.example.yml](https://github.com/fennet82/ci-doctor/blob/master/examples/github-actions.example.yml).
 
@@ -207,13 +207,13 @@ standard `HTTPS_PROXY` / `NO_PROXY` / `REQUESTS_CA_BUNDLE` variables are honoure
 
 ## Documentation
 
-**[fennet82.github.io/ci-doctor](https://fennet82.github.io/ci-doctor)** — overview,
+**[docs.cidoc.dev](https://docs.cidoc.dev)** — overview,
 requirements, configuration, usage, the GitHub Action, and CI/CD examples. Source in
 [`docs/site/`](https://github.com/fennet82/ci-doctor/tree/master/docs/site) (Astro); `mise run docs` previews it locally.
 
-Start with **[Concepts](https://fennet82.github.io/ci-doctor/concepts/)** — the pipeline
+Start with **[Concepts](https://docs.cidoc.dev/concepts/)** — the pipeline
 end to end, what each module decides, and what a phase, a matcher or a redaction pass
-actually is. **[Matchers](https://fennet82.github.io/ci-doctor/matchers/)** lists every
+actually is. **[Matchers](https://docs.cidoc.dev/concepts/matchers/)** lists every
 shipped pack; that page is generated from `config/defaults.yml`, so run
 `mise run docs:data` after changing a pack (a test fails if it drifts).
 

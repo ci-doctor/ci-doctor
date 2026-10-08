@@ -1,6 +1,6 @@
 # Documentation site guidelines
 
-How the docs site at <https://fennet82.github.io/ci-doctor> is organised, and the
+How the docs site at <https://docs.cidoc.dev> is organised, and the
 rules a change to it has to follow. The code equivalent is
 [GUIDELINES.md](../../GUIDELINES.md); the *why* behind the architecture is
 [PLAN.md](../PLAN.md).
@@ -104,8 +104,8 @@ for each entry — they cost nothing.
 
 ## 3. Links and assets
 
-The site is served from `/ci-doctor`, **not** `/`. Astro does not rewrite plain
-`href`/`src` attributes, so a hardcoded internal link works on `astro dev` and
+The site's `base` (in `astro.config.mjs`) is currently `/`, but it can change. Astro does
+not rewrite plain `href`/`src` attributes, so a hardcoded internal link works on `astro dev` and
 404s in production — the exact kind of break nobody notices until it ships.
 
 ```astro
