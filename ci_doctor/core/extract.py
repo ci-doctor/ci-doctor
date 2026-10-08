@@ -5,11 +5,22 @@ tail-only view would miss them). Overlapping windows merge. Every gap between
 selected windows is marked with an explicit elision count — never a silent cut.
 """
 
-import re
 from dataclasses import dataclass
 
 from ci_doctor.config.schema import MatcherConfig
 from ci_doctor.core.budget import estimate_tokens
+from ci_doctor.core.regex import pattern_set
+
+#: Budget rank of a matcher's role. A wrapper prints *after* the tool it ran
+#: (`npm ERR!` trails tsc's diagnosis), so a tool must outrank it whatever their
+#: positions; the fallback is the guess for a tool with no pack at all.
+ROLE_RANK = {"fallback": 0, "wrapper": 1, "tool": 2}
+#: The tail window ranks below every matcher.
+_TAIL = -1
+#: Shared by every line no pattern hits, so a long log costs no set per line.
+_NO_HITS: frozenset[int] = frozenset()
+#: Upper bound on one `… [N lines elided] …` marker plus its line break.
+_MARKER_TOKENS = estimate_tokens("… [9999999 lines elided] …") + 1
 
 
 @dataclass
@@ -19,18 +30,21 @@ class _Window:
     Attributes:
         start: First line index, inclusive.
         end: Last line index, exclusive.
-        priority: From the matcher that produced it. Survives merging as the max
-            of the merged windows, so a high-priority window never loses rank by
-            touching a low-priority neighbour.
+        rank: `ROLE_RANK` of the matcher that produced it, `_TAIL` for the tail.
+            Survives merging as the max of the merged windows, so a tool window
+            never loses rank by touching a wrapper's.
     """
 
     start: int
     end: int  # exclusive
-    priority: int
+    rank: int
 
 
 def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Window]:
     """Run every matcher over the log and collect the windows they anchor.
+
+    Every regex of every matcher goes into one RE2 set, so each line is matched
+    once, not once per pattern — see `core/regex.py` for why that matters.
 
     Args:
         lines: The denoised log lines.
@@ -41,26 +55,36 @@ def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Windo
         matched — which is why a pack that never fires fails *silently*, and why
         each one needs a fixture in `test_matcher_packs.py`.
     """
-    wins: list[_Window] = []
+    regexes: list[str] = []
+
+    def add(rx: str) -> int:
+        regexes.append(rx)
+        return len(regexes) - 1
+
+    plans: list[tuple[MatcherConfig, int, set[int], int | None]] = []
     for m in matchers:
+        exclude = {add(rx) for rx in m.exclude}
         if m.pattern:
-            rx = re.compile(m.pattern)
-            for i, line in enumerate(lines):
-                if rx.search(line):
-                    wins.append(_Window(max(0, i - m.before), min(len(lines), i + m.after + 1), m.priority))
+            plans.append((m, add(m.pattern), exclude, None))
         elif m.start and m.end:
-            srx, erx = re.compile(m.start), re.compile(m.end)
-            i = 0
-            while i < len(lines):
-                if srx.search(lines[i]):
-                    j = i + 1
-                    while j < len(lines) and not erx.search(lines[j]):
-                        j += 1
-                    end = min(len(lines), j + 1)
-                    wins.append(_Window(i, end, m.priority))
-                    i = end
-                else:
-                    i += 1
+            plans.append((m, add(m.start), exclude, add(m.end)))
+    match = pattern_set(regexes)
+    hits = [frozenset(h) if (h := match(line)) else _NO_HITS for line in lines]
+
+    wins: list[_Window] = []
+    for m, anchor, exclude, end in plans:
+        rank = ROLE_RANK[m.role]
+        anchored = [i for i, hit in enumerate(hits) if anchor in hit and not hit & exclude]
+        if end is None:
+            wins += [_Window(max(0, i - m.before), min(len(lines), i + m.after + 1), rank) for i in anchored]
+            continue
+        resume = 0  # a block's scan resumes after its end, so blocks never nest
+        for i in anchored:
+            if i < resume:
+                continue
+            j = next((k for k in range(i + 1, len(lines)) if end in hits[k]), len(lines))
+            resume = min(len(lines), j + 1)
+            wins.append(_Window(i, resume, rank))
     return wins
 
 
@@ -72,7 +96,7 @@ def _merge(wins: list[_Window]) -> list[_Window]:
 
     Returns:
         Non-overlapping windows sorted by start, each carrying the highest
-        priority among those it absorbed.
+        rank among those it absorbed.
     """
     if not wins:
         return []
@@ -82,7 +106,7 @@ def _merge(wins: list[_Window]) -> list[_Window]:
         last = merged[-1]
         if w.start <= last.end:  # overlapping or adjacent
             last.end = max(last.end, w.end)
-            last.priority = max(last.priority, w.priority)
+            last.rank = max(last.rank, w.rank)
         else:
             merged.append(w)
     return merged
@@ -106,13 +130,14 @@ def _drop_to_fit(lines: list[str], windows: list[_Window], max_tokens: int) -> l
         window can exceed the budget on its own (an unbounded `start`/`end` block
         over a large suite), and truncating *inside* it is `budget.fit`'s job.
     """
-    # Worst first: lowest priority, and among equals the earliest, since later
-    # output sits closer to the failure.
+    # Worst first: lowest rank, then earliest — a job stops at its first failing command.
+    # ponytail: within one compiler's output the first error is the root and is shed first;
+    # fixing it needs command boundaries the log lines do not carry.
     ranked = sorted(
-        ((estimate_tokens("\n".join(lines[w.start : w.end])), w) for w in windows),
-        key=lambda cw: (cw[1].priority, -cw[1].start),
+        ((estimate_tokens("\n".join(lines[w.start : w.end])) + _MARKER_TOKENS, w) for w in windows),
+        key=lambda cw: (cw[1].rank, cw[1].start),
     )
-    total = sum(cost for cost, _ in ranked)
+    total = _MARKER_TOKENS + sum(cost for cost, _ in ranked)  # each window plus one gap marker
     while len(ranked) > 1 and total > max_tokens:
         total -= ranked.pop(0)[0]
     return sorted((w for _, w in ranked), key=lambda w: w.start)
@@ -126,12 +151,12 @@ def extract(
     Args:
         lines: The denoised log lines.
         matchers: Matcher packs from `extraction.matchers`.
-        tail_lines: How many trailing lines to always keep, at lowest priority.
-            Pass 0 to test a pack in isolation — otherwise the tail masks a
-            matcher that never fired.
-        max_tokens: Evidence budget. When given, low-priority windows are dropped
-            before rendering rather than left for `budget.fit` to cut blindly off
-            the head. None keeps every window, whatever it costs.
+        tail_lines: How many trailing lines to always keep, ranked below every
+            matcher. Pass 0 to test a pack in isolation — otherwise the tail masks
+            a matcher that never fired.
+        max_tokens: Evidence budget. When given, the lowest-ranked windows are
+            dropped before rendering rather than left for `budget.fit` to cut
+            blindly off the head. None keeps every window, whatever it costs.
 
     Returns:
         The selected lines with "… [N lines elided] …" markers where content was
@@ -139,13 +164,31 @@ def extract(
     """
     wins = _windows_for(lines, matchers)
     if tail_lines > 0 and lines:
-        wins.append(_Window(max(0, len(lines) - tail_lines), len(lines), 0))  # tail, lowest priority
+        wins.append(_Window(max(0, len(lines) - tail_lines), len(lines), _TAIL))
     merged = _merge(wins)
     if not merged:
         return list(lines)
     if max_tokens is not None:
         merged = _drop_to_fit(lines, merged, max_tokens)
     return _render(lines, merged)
+
+
+def fired(lines: list[str], matchers: list[MatcherConfig]) -> list[str]:
+    """Name the packs that anchor in these lines — asked of the final evidence.
+
+    Args:
+        lines: The evidence as it will be sent, after every cut.
+        matchers: Matcher packs from `extraction.matchers`.
+
+    Returns:
+        Ids of the matchers with at least one anchor in `lines`, in log order.
+    """
+    first = {}
+    for m in matchers:
+        # before=0: a window then starts on its anchor, which is what log order means here
+        if wins := _windows_for(lines, [m.model_copy(update={"before": 0})]):
+            first[m.id] = min(w.start for w in wins)
+    return sorted(first, key=first.__getitem__)
 
 
 def _render(lines: list[str], windows: list[_Window]) -> list[str]:

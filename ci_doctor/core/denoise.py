@@ -15,6 +15,7 @@ import re
 from collections.abc import Callable
 
 from ci_doctor.config.schema import DenoiseConfig
+from ci_doctor.core.regex import pattern_set
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")  # CSI sequences (SGR colour, cursor, ...)
 _ERRORISH = re.compile(
@@ -80,13 +81,13 @@ def denoise(lines: list[str], cfg: DenoiseConfig, *, keep: Callable[[str], bool]
         The cleaned lines.
     """
     keep = keep or _default_keep
-    noise = [re.compile(p) for p in cfg.noise_patterns]
+    noise = pattern_set(cfg.noise_patterns)
     out: list[str] = []
     for raw in lines:
         line = strip_ansi(raw)
         if cfg.collapse_carriage_returns:
             line = _collapse_cr(line)
-        if not keep(line) and any(n.search(line) for n in noise):
+        if not keep(line) and noise(line):
             continue  # noise — but an anchor line is never dropped here
         out.append(line)
     return _dedupe_consecutive(out) if cfg.dedupe_repeats else out

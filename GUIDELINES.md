@@ -163,10 +163,17 @@ Pure data — no Python. In `config/defaults.yml` under `extraction.matchers`:
 
 ```yaml
 - id: mytool
-  pattern: '^MYTOOL ERROR'   # or start:/end: for a block
+  role: tool                          # tool | wrapper | fallback
+  classification: [python, test]      # ecosystem first; metadata only
+  description: >-
+    Acme's build CLI. `MYTOOL ERROR <file>:<line>` is a config error in that file, not a code bug.
+  pattern: '^MYTOOL ERROR'            # or start:/end: for a block — exactly one form
+  exclude: ['^MYTOOL ERROR: retrying'] # anchor lines to reject; RE2 has no lookaround
   before: 2
   after: 10
-  priority: 85
+  examples:
+    match: ['MYTOOL ERROR: config.yaml:3: unknown key']
+    no_match: ['MYTOOL ERROR: retrying in 5s']
 ```
 
 Then **add the fixture and a row in `test_matcher_packs.py`**, or the pack proves
@@ -186,27 +193,45 @@ two runner/wrong-tool traps in §7 before choosing a regex.
 
 Windows are `before`/`after` lines around the anchor.
 
-`priority` decides who gets cut when the evidence exceeds the token budget: `extract.py`
-sheds whole low-priority windows before `budget.py` truncates what is left. Rank a pack
-by how *diagnostic* it is, not how loud — `npm ERR!` (75) trails the compiler errors that
-caused it, so it must lose to `tsc` (80). Only windows separated by unselected lines are
-rankable; adjacent ones merge and take the highest priority among them.
+Every regex is **RE2** (`core/regex.py`), compiled when the config loads: no lookaround
+(use `exclude`), no backreferences, `\z` not `\Z`, repeats of at most 1000, and
+`\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). `examples` are run by
+`test_every_example_is_accepted_or_rejected_by_the_anchor` for shipped packs only — in a
+user's `.ci-doctor.yml` they are documentation until `packs verify` (E11). A `no_match`
+line is the cheapest place to pin a wrong-tool trap from §7.
+
+**Ranking.** When the evidence exceeds the token budget, `extract.py` sheds whole windows
+by `(role, position)` before `budget.py` truncates what is left: `fallback` first, then
+`wrapper`, then `tool`, and within a role the earliest first. `role` says what the output
+*is*: a `tool` prints the failure itself (tsc, pytest, a traceback); a `wrapper` reports
+that a child process failed (npm, make, gradle, BuildKit) and prints *after* it, so a
+wrapper never outranks a tool wherever it sits. Within a role the later window wins,
+because a job stops at its first failing command. A pack whose lines are of both kinds is
+two packs. Only windows separated by unselected lines are rankable; adjacent ones merge
+and keep the highest role among them.
+
+**`description` is prompt text.** The LLM sees `id [role]: description` for every pack whose
+window reached the excerpt. It knows jest, not your in-house deploy CLI, so say what the
+tool is and what its failure *means* (`E-LOCK: another deploy holds the lock, not a code
+bug`), not only which lines the window keeps. Capped at 400 characters; the prompt frames
+it as context, and the log wins where the two disagree.
 
 Config **lists replace, mappings deep-merge** — except lists whose entries all carry an
 `id`, which merge per id (`_merge_by_id` in `config/loader.py`). So a user pack with a new
 id is *added* to the shipped ones, and one reusing a shipped id *overrides* that pack and
-logs a warning naming it. The override is field by field: `priority: 95` on the shipped
+logs a warning naming it. The override is field by field: `role: wrapper` on the shipped
 `pytest` pack keeps its `start`/`end`, because blanking them would leave a matcher that
-can never fire. A user `pattern` still wins over an inherited `start`/`end` — `extract.py`
-checks `pattern` first.
+can never fire. To switch a block pack to a `pattern`, null its `start` and `end` — a
+matcher has exactly one form.
 
 Every field you add to `config/schema.py` needs a `description=` — it becomes the text in
 the published `ci-doctor.schema.json`, and `test_json_schema_documents_every_field` fails
 without it.
 
-The docs site's matcher catalogue is **generated** from `defaults.yml`, including the
-`# --- Group ---` comment headers that organise it. After adding or retuning a pack, run
-`mise run docs:data`; `test_docs_data_is_current` fails if the committed JSON drifts.
+The docs site's matcher catalogue is **generated** from `defaults.yml`: each pack's
+`description`, `role` and `classification`, grouped by the first tag (a new ecosystem
+needs a `GROUPS` heading in `scripts/gen_docs_data.py`). After adding or retuning a pack,
+run `mise run docs:data`; `test_docs_data_is_current` fails if the committed JSON drifts.
 
 ### 5.2 Where a pattern goes: the classifier or the catalogue
 
@@ -216,7 +241,7 @@ different questions at different stages:
 | | `_ERROR_RE` in `core/attribution.py` | `extraction.matchers` in `defaults.yml` |
 |---|---|---|
 | Question | did anything in this **section** fail? | which **lines** are the evidence? |
-| Output | one boolean per line | a windowed excerpt, prioritised |
+| Output | one boolean per line | a windowed excerpt, ranked |
 | Runs | before extraction, and only on rule 6 (last resort) | after the phase is already decided |
 | Tunable | no — `attribute()` takes no `Config`, by design (invariant #7) | yes, per repo, merged by id |
 
@@ -239,6 +264,8 @@ would mean matching tool-specific regexes (pytest, tsc, go…) that duplicate th
 catalogue and belong to the model. So without an LLM the category is honestly `unknown`
 — the deterministic pipeline still decides the **phase** (where it broke); the model
 decides the category (what kind). Do not reintroduce log-signature category guessing here.
+A matcher's `role` and `classification` rank and describe *evidence*; neither ever sets
+the category.
 
 ### 5.4 Add a provider
 
@@ -307,7 +334,7 @@ Real bugs, kept here so they don't recur:
   output, so the test looks fine. Assert on `_windows_for(...)` being non-empty.
 - **The report is the last place evidence can be lost, and it was losing it.**
   `deterministic_report` re-trimmed `bundle.blamed_lines` to a hardcoded `[-15:]`,
-  throwing away the selection that denoise + matcher priority + `budget.fit` had just
+  throwing away the selection that denoise + matcher ranking + `budget.fit` had just
   made — silently, with `bundle.truncated` still `False`. On a two-error rust build it
   kept E0599 and decapitated E0308, the error that *caused* it. Never re-cut the bundle
   by a fixed count; it is already budgeted. If a display cap is genuinely needed, it
@@ -316,7 +343,7 @@ Real bugs, kept here so they don't recur:
   failed job ends with `ERROR: Job failed: exit code N` (GitLab) or
   `##[error]Process completed with exit code N.` (GitHub), so a pack anchored on a bare
   `^ERROR: .*failed` looks covered by every fixture in the suite while proving nothing.
-  `bazel` shipped that way and opened a priority-85 window on 40 of 41 logs.
+  `bazel` shipped that way and opened a high-ranked window on 40 of 41 logs.
   `test_no_pack_fires_on_the_runners_own_trailer` pins it; only `generic_error` (the
   fallback) and `oom` (the trailer's `exit code 137` is the *only* OOM signal GitLab
   gives) are exempt.

@@ -10,9 +10,19 @@ field added without one ships an undocumented knob.
 """
 
 import logging
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    model_validator,
+)
+
+from ci_doctor.core.regex import compile_user
 
 log = logging.getLogger("ci_doctor.config")
 
@@ -131,24 +141,120 @@ class AnalysisConfig(_Strict):
     )
 
 
+def _re2(pattern: str, info: ValidationInfo) -> str:
+    """Reject a pattern RE2 cannot compile, at load time rather than mid-run.
+
+    Args:
+        pattern: The regex as written in the config.
+        info: Validation context; on a matcher it carries the already-validated `id`,
+            which names the culprit better than its index in the merged list.
+
+    Returns:
+        The pattern, unchanged.
+
+    Raises:
+        ValueError: If RE2 rejects it, naming the matcher when there is one.
+    """
+    try:
+        compile_user(pattern)
+    except ValueError as err:
+        owner = info.data.get("id")
+        raise ValueError(f"matcher {owner!r}: {err}" if owner else str(err)) from None
+    return pattern
+
+
+def _one_line(text: str) -> str:
+    """Collapse whitespace: a description is prompt text, and a newline could forge a section.
+
+    Args:
+        text: The description as written.
+
+    Returns:
+        The text on one line.
+    """
+    return " ".join(text.split())
+
+
+#: A regex field: non-empty (`''` compiles, and fires on everything or nothing) and
+#: validated as RE2 when the config loads.
+Re2 = Annotated[str, StringConstraints(min_length=1), AfterValidator(_re2)]
+#: A classification tag: lowercase, digits and dashes.
+Tag = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
+#: What a matcher's output is; ranks its windows (`extract.ROLE_RANK`).
+Role = Literal["tool", "wrapper", "fallback"]
+
+
+class MatcherExamples(_Strict):
+    """Lines a matcher's anchor must and must not accept — Semgrep's `ruleid:` / `ok:`."""
+
+    match: list[str] = Field(default_factory=list, description="Lines the anchor must accept.")
+    no_match: list[str] = Field(
+        default_factory=list, description="Lines the anchor must reject, `exclude` applied."
+    )
+
+
 class MatcherConfig(_Strict):
     """One evidence matcher: the log window to pull around a recognised failure.
 
-    Use either ``start``/``end`` (a bounded block) or ``pattern`` with
-    ``before``/``after`` (a single anchor line plus context), not both.
+    Exactly one form: ``pattern`` with ``before``/``after`` (one anchor line plus
+    context), or ``start``/``end`` (a bounded block).
     """
 
     id: str = Field(
-        description="Unique matcher id. Reusing a shipped id overrides just the fields you set, and logs a warning."
+        pattern=r"^[A-Za-z0-9_./-]+$",
+        description="Unique matcher id. Reusing a shipped id overrides just the fields you set, and logs a warning.",
     )
-    start: str | None = Field(None, description="Regex opening a windowed matcher.")
-    end: str | None = Field(None, description="Regex closing a windowed matcher.")
-    pattern: str | None = Field(None, description="Regex anchoring a single-line matcher.")
+    role: Role = Field(
+        "tool",
+        description=(
+            "How the window ranks under budget pressure: `tool` (the failing tool's own output) "
+            "outranks `wrapper` (npm, make, gradle: reporting that a child process failed), "
+            "which outranks `fallback`. Within a role the later window wins."
+        ),
+    )
+    classification: list[Tag] = Field(
+        default_factory=list,
+        description="Tags describing the pack, ecosystem first (`[python, test]`). Metadata only.",
+    )
+    description: Annotated[str, StringConstraints(max_length=400), AfterValidator(_one_line)] | None = Field(
+        None,
+        description=(
+            "Shown to the LLM beside the windows this pack selected: what the tool is and what "
+            "its failure means. The model knows public tools, not your in-house ones."
+        ),
+    )
+    start: Re2 | None = Field(None, description="Regex (RE2) opening a windowed matcher.")
+    end: Re2 | None = Field(None, description="Regex (RE2) closing a windowed matcher.")
+    pattern: Re2 | None = Field(None, description="Regex (RE2) anchoring a single-line matcher.")
+    exclude: list[Re2] = Field(
+        default_factory=list,
+        description="Regexes (RE2) that disqualify an anchor line (`pattern`/`start`); RE2 has no lookaround.",
+    )
     before: int = Field(0, description="Lines of context kept above a `pattern` hit.")
     after: int = Field(0, description="Lines of context kept below a `pattern` hit.")
-    priority: int = Field(
-        50, description="Higher priority survives budget pressure when the evidence must be trimmed."
+    examples: MatcherExamples = Field(
+        default_factory=MatcherExamples, description="Lines proving what the anchor accepts and rejects."
     )
+
+    @model_validator(mode="after")
+    def _one_form(self) -> "MatcherConfig":
+        """Require exactly one of `pattern`, or `start` and `end` together.
+
+        Returns:
+            The matcher, unchanged.
+
+        Raises:
+            ValueError: On neither form, both, or half a block — each a matcher
+                that silently never fires or fires on the wrong thing.
+        """
+        line = self.pattern is not None and self.start is None and self.end is None
+        block = self.pattern is None and self.start is not None and self.end is not None
+        if not (line or block):
+            raise ValueError(
+                f"matcher {self.id!r}: set exactly one of `pattern`, or `start` and `end` "
+                "(to switch a shipped block pack to `pattern`, also set `start: null` and `end: null`)"
+            )
+        return self
 
 
 class ExtractionConfig(_Strict):
@@ -171,8 +277,8 @@ class DenoiseConfig(_Strict):
         True, description=r"Collapse \r progress bars to their final rendered state."
     )
     dedupe_repeats: bool = Field(True, description='Fold repeated lines into "<line>  (×47)".')
-    noise_patterns: list[str] = Field(
-        default_factory=list, description="Regexes whose matching lines are dropped outright."
+    noise_patterns: list[Re2] = Field(
+        default_factory=list, description="Regexes (RE2) whose matching lines are dropped outright."
     )
 
 
@@ -194,8 +300,8 @@ class RedactionConfig(_Strict):
     enabled: bool = Field(
         True, description="Scrub tokens, credentials in URLs and env secrets from all output."
     )
-    extra_patterns: list[str] = Field(
-        default_factory=list, description="Additional regexes to scrub, on top of the built-in set."
+    extra_patterns: list[Re2] = Field(
+        default_factory=list, description="Additional regexes (RE2) to scrub, on top of the built-in set."
     )
 
 

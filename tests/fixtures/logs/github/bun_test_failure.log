@@ -34,13 +34,14 @@
 2026-07-24T20:04:13.9399999Z ##[group]Run bun --version
 2026-07-24T20:04:14.3499999Z bun --version
 2026-07-24T20:04:14.7599999Z bun install --frozen-lockfile
-2026-07-24T20:04:15.1699999Z bun test
+2026-07-24T20:04:15.1699999Z bun run test
 2026-07-24T20:04:15.5799999Z shell: /usr/bin/bash -e {0}
 2026-07-24T20:04:15.9899999Z ##[endgroup]
 2026-07-24T20:04:16.3999999Z 1.1.18
 2026-07-24T20:04:16.8099999Z bun install v1.1.18 (aad3abea)
 2026-07-24T20:04:17.2199999Z  + zod@3.23.8
 2026-07-24T20:04:17.6299999Z  142 packages installed [1.42s]
+2026-07-24T20:04:17.9999999Z $ bun test
 2026-07-24T20:04:18.0399999Z bun test v1.1.18 (aad3abea)
 2026-07-24T20:04:18.4499999Z 
 2026-07-24T20:04:18.8599999Z src/cart.test.ts:
@@ -58,6 +59,7 @@
 2026-07-24T20:04:23.7799999Z  1 fail
 2026-07-24T20:04:24.1899999Z  4 expect() calls
 2026-07-24T20:04:24.5999999Z Ran 3 tests across 1 files. [24.00ms]
+2026-07-24T20:04:24.6099999Z error: script "test" exited with code 1
 2026-07-24T20:04:25.0099999Z ##[error]Process completed with exit code 1.
 2026-07-24T20:04:25.4199999Z ##[group]Post Run actions/checkout@v4
 2026-07-24T20:04:25.8299999Z ##[endgroup]

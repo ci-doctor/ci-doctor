@@ -4,14 +4,17 @@ Deterministic path, LLM path with recorded responses, repair retry, degraded
 fallback, and the end-to-end secret round-trip. No network.
 """
 
+from typing import get_args
+
 import pytest
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.core.analyze import build_bundle
+from ci_doctor.config.schema import MatcherConfig, Role
+from ci_doctor.core.analyze import EvidenceBundle, build_bundle
 from ci_doctor.core.attribution import attribute
-from ci_doctor.core.models import FailureReason, Job
+from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.phases import assign_phases
-from ci_doctor.llm.report import produce_report
+from ci_doctor.llm.report import _packs, _render_prompt, produce_report
 from tests import support
 
 _GOOD = {
@@ -37,9 +40,11 @@ class FakeClient:
         """Queue the responses to replay, last one repeating once exhausted."""
         self.responses = list(responses)
         self.calls = 0
+        self.prompts = []
 
     def complete_structured(self, prompt):
         """Return the next queued response, or raise it if it is an exception."""
+        self.prompts.append(prompt)
         r = self.responses[min(self.calls, len(self.responses) - 1)]
         self.calls += 1
         if isinstance(r, Exception):
@@ -201,3 +206,77 @@ def test_secrets_roundtrip_no_leak():
     blob = report.model_dump_json() + report.handoff_prompt
     for secret in ("glpat-ABCDEFGHIJKLMNOPQRSTUVWX", "hunter2", "s3cr3t-value-xyz"):
         assert secret not in blob, f"leaked: {secret}"
+
+
+_INHOUSE_LOG = (
+    "section_start:1:step_script\n$ acme-deployctl up prod\n"
+    "acme-deployctl: E-LOCK prod is held by deploy #4411\n"
+    "section_end:2:step_script\nERROR: Job failed: exit code 1\n"
+)
+_INHOUSE_PACK = {
+    "id": "acme_deployctl",
+    "pattern": "E-LOCK",
+    "description": "Acme's internal deploy CLI. E-LOCK: another deploy holds the environment lock, not a code bug.",
+}
+
+
+def test_an_in_house_packs_description_reaches_the_prompt():
+    """The model knows jest, not your deploy CLI: the pack's description is all it gets."""
+    job, attr, bundle, _cfg = _pipeline(_INHOUSE_LOG, overrides={"extraction": {"matchers": [_INHOUSE_PACK]}})
+    prompt = _render_prompt(job, attr, bundle, {})
+    assert f"- acme_deployctl [tool]: {_INHOUSE_PACK['description']}" in prompt
+
+
+@pytest.mark.parametrize("provider", support.providers_with("npm_build_failure"))
+def test_the_prompt_names_each_pack_behind_the_excerpt_with_its_role(provider):
+    """A wrapper is labelled as one, so the model can look past npm's epilogue to tsc."""
+    log = support.read_log(provider, "npm_build_failure")
+    job, attr, bundle, _cfg = _pipeline(log, provider=provider)
+    prompt = _render_prompt(job, attr, bundle, {})
+    assert "- tsc [tool]: " in prompt
+    assert "- npm [wrapper]: " in prompt
+    assert "- pytest [" not in prompt, "a pack that matched nothing is not context"
+
+
+def test_a_pack_whose_lines_fit_cut_is_not_named():
+    """`fit` trims the head of an oversized window; a pack it emptied is not context."""
+    lines = [f"src/a{i}.ts:1:1 - error TS2345: bad argument" for i in range(5)]
+    lines += [f"npm ERR! code ELIFECYCLE {i}" for i in range(400)]
+    log = (
+        "section_start:1:step_script\n"
+        + "\n".join(lines)
+        + "\nsection_end:2:step_script\nERROR: Job failed: exit code 1\n"
+    )
+    _job, _attr, bundle, _cfg = _pipeline(log, overrides={"llm": {"max_input_tokens": 400}})
+    assert not any("error TS" in line for line in bundle.blamed_lines)
+    assert [m.id for m in bundle.matchers] == ["npm"]
+
+
+def test_a_pack_without_a_description_is_still_named():
+    """Role alone still tells the model a wrapper from a tool."""
+    bundle = EvidenceBundle(Phase.SCRIPT, [], [], {}, 0, False, [MatcherConfig(id="x", pattern="a")])
+    assert _packs(bundle) == "- x [tool]"
+
+
+def test_no_pack_says_so():
+    """With nothing matched the excerpt is the raw log, and the prompt does not pretend otherwise."""
+    assert "no pack matched" in _packs(EvidenceBundle(Phase.SCRIPT, [], [], {}, 0))
+
+
+def test_a_secret_in_a_description_is_redacted_in_the_prompt():
+    """Pack text is prompt text, and invariant #5 covers every byte that leaves."""
+    pack = {**_INHOUSE_PACK, "description": "Deploy CLI; token glpat-abcdefghij0123456789 rotates nightly."}
+    job, attr, bundle, cfg = _pipeline(
+        _INHOUSE_LOG, overrides={**_LLM_ON, "extraction": {"matchers": [pack]}}
+    )
+    client = FakeClient([_GOOD])
+    produce_report(job, attr, bundle, cfg, client=client)
+    assert "glpat-abcdefghij0123456789" not in client.prompts[0]
+    assert "[REDACTED:" in client.prompts[0]
+
+
+@pytest.mark.parametrize("role", get_args(Role))
+def test_the_system_prompt_explains_every_role(role):
+    """A role the model was never told about is a label it will guess at."""
+    job, attr, bundle, _cfg = _pipeline(_SIMPLE_LOG)
+    assert f"`{role}`" in _render_prompt(job, attr, bundle, {}).split("\n---\n")[0]

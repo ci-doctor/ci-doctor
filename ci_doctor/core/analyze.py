@@ -7,13 +7,13 @@ already-segmented job plus its Attribution.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schema import Config, MatcherConfig
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.budget import estimate_tokens, fit
 from ci_doctor.core.denoise import denoise
-from ci_doctor.core.extract import extract
+from ci_doctor.core.extract import extract, fired
 from ci_doctor.core.models import SYNTHETIC_SECTIONS, Job, Phase, Section, walk_sections
 
 log = logging.getLogger("ci_doctor.analyze")
@@ -31,6 +31,8 @@ class EvidenceBundle:
         token_estimate: Approximate prompt cost of the whole bundle.
         truncated: Whether the budget dropped lines. Always surfaced in the
             report — a silent truncation would be a lie about the evidence.
+        matchers: The packs whose windows made it into `blamed_lines`, in log
+            order — the model's only context for a tool it has never seen.
     """
 
     blamed_phase: Phase
@@ -39,6 +41,7 @@ class EvidenceBundle:
     metadata: dict
     token_estimate: int
     truncated: bool = False
+    matchers: list[MatcherConfig] = field(default_factory=list)
 
 
 def _blamed_section(sections: list[Section], phase: Phase) -> Section | None:
@@ -82,10 +85,12 @@ def build_bundle(job: Job, attr: Attribution, sections: list[Section], cfg: Conf
 
     clean = denoise(raw, cfg.denoise)
     blamed_budget = int(cfg.llm.max_input_tokens * 0.7)
-    # Budget the *selection* by matcher priority first; `fit` is the last resort
+    # Budget the *selection* by matcher rank first; `fit` is the last resort
     # that cuts inside whatever survives.
     excerpt = extract(clean, cfg.extraction.matchers, cfg.extraction.tail_lines, blamed_budget)
     fitted, truncated = fit(excerpt, blamed_budget)
+    by_id = {m.id: m for m in cfg.extraction.matchers}
+    matchers = [by_id[i] for i in fired(fitted, cfg.extraction.matchers)]
     log.debug(
         "blamed phase %s: denoise %d->%d, extract ->%d, fit ->%d lines (truncated=%s)",
         attr.phase,
@@ -111,5 +116,6 @@ def build_bundle(job: Job, attr: Attribution, sections: list[Section], cfg: Conf
         "confidence": attr.confidence,
         "terminal_evidence": attr.terminal_evidence,
     }
-    token_estimate = estimate_tokens("\n".join(fitted) + "\n".join(secondary) + str(metadata))
-    return EvidenceBundle(attr.phase, fitted, secondary, metadata, token_estimate, truncated)
+    descriptions = "".join(m.description or "" for m in matchers)
+    token_estimate = estimate_tokens("\n".join(fitted) + "\n".join(secondary) + str(metadata) + descriptions)
+    return EvidenceBundle(attr.phase, fitted, secondary, metadata, token_estimate, truncated, matchers)
