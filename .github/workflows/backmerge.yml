@@ -1,18 +1,10 @@
 name: backmerge
 
-# release.yml commits to master: the version bump in pyproject.toml and uv.lock, plus
-# the tag. Nothing carries that back, so development keeps showing the previous version
-# until someone syncs it. A hotfix, which never passes through development, widens the
-# gap the same way. This opens the master -> development PR that closes it, once
-# everything that runs on master has passed for the commit that triggered it: ci,
-# security, release, docs. A failed pipeline means the release is not settled yet.
-#
-# Each of the four finishing wakes this up; all but the last find a pipeline still
-# running (or failed) and stop. The last one finds them all green and opens the PR.
-# Note workflow_run only fires from the file on the default branch (development).
+# Syncs development with master after release.yml commits the version bump (hotfixes too).
+# Opens the PR once ci, security, release and docs are all green for the commit; the last
+# one to finish does it. workflow_run only fires from the default branch's copy.
 on:
-  # zizmor: ignore[dangerous-triggers] — checks out nothing and runs no PR code: it only
-  # reads run conclusions and branch state through the API.
+  # zizmor: ignore[dangerous-triggers] — checks out nothing, runs no PR code; API reads only.
   workflow_run:
     workflows: [ci, security, release, docs]
     types: [completed]
@@ -21,8 +13,6 @@ on:
 permissions:
   contents: read
 
-# The four finish minutes apart, but a re-run can land two at once; queue so the
-# second sees the PR the first opened.
 concurrency:
   group: backmerge
   cancel-in-progress: false
@@ -39,8 +29,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          # The merge commit the pipelines ran on, not the tip: release pushes a bump
-          # commit after it, and that one carries [skip ci] so it has no runs at all.
+          # The commit the pipelines ran on, not the tip: the bump commit is [skip ci].
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
@@ -72,7 +61,7 @@ jobs:
           EOF
           )
 
-          # --head master, not a snapshot branch, so the PR tracks the tip as master moves.
+          # --head master, not a snapshot branch: the PR tracks the tip as master moves.
           gh pr create --base development --head master \
             --title "chore: back-merge master into development" \
             --body "$body"
