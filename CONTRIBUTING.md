@@ -93,11 +93,12 @@ Two hops for normal work, plus one shortcut for emergencies:
 ```
 <type>/<slug>  ──PR──▶  development  ──PR──▶  master
    ci + security         ci + security        ci + security + release-gate
-                                              then: release.yml, then docs.yml
+                                              then: release.yml, then docs.yml,
+                                              then: back-merge PR into development
 
 hotfix/<slug>  ─────────────PR──────────────▶  master
                                               ci + security + release-gate
-                                              then: back-merge PR into development
+                                              then: as above
 ```
 
 - **`<type>/<slug>`** — branch off `development`, named with the same types the
@@ -114,8 +115,12 @@ hotfix/<slug>  ─────────────PR────────
   `release.yml` is about to do, minus publishing.
 - **`hotfix/<slug>`** — branch off `master`, not `development`. `hotfix` is a valid
   branch prefix but **not** a valid commit type, so the commits inside it are still
-  `fix:`. When the PR merges, `backmerge.yml` opens a `master → development` PR;
-  merge it, or the next integration will revert the fix.
+  `fix:`.
+- **Back-merge** — `release.yml` commits the version bump to `master`, so `development`
+  is always one commit behind after a release, and a hotfix skips it entirely. Once
+  `ci`, `security`, `release` and `docs` have all passed on `master`, `backmerge.yml`
+  opens a `master → development` PR. Merge it with a merge commit, or the next
+  integration will revert the hotfix and `development` will keep the stale version.
 
 What each job does, and why it lives where it does, is [docs/ci-cd.md](docs/ci-cd.md).
 

@@ -91,6 +91,8 @@ jobs:
 
       # One build: loaded locally for the air-gap tarball, and pushed to Docker Hub
       # unless the secret is absent (then the release still ships, minus the push).
+      # Only fully-qualified tags here: `push: true` pushes *every* tag, and a bare
+      # `ci-doctor:X` resolves to docker.io/library/ci-doctor, which we cannot write to.
       - name: Build the Docker image
         id: push
         if: steps.gate.outputs.release == 'true'
@@ -100,16 +102,19 @@ jobs:
           load: true
           push: ${{ env.DOCKERHUB_USERNAME != '' }}
           tags: |
-            ci-doctor:${{ steps.bump.outputs.version }}
             docker.io/fennet/ci-doctor:${{ steps.bump.outputs.version }}
             docker.io/fennet/ci-doctor:latest
 
       # The tarball is the air-gap path and stays regardless of whether the push runs.
+      # The bare name is added after the push, locally only, so `docker load` gives the
+      # same `ci-doctor:X` the docs tell people to retag for an internal registry.
       - name: Save the Docker image as a gzipped tar
         if: steps.gate.outputs.release == 'true'
         env:
           VERSION: ${{ steps.bump.outputs.version }}
-        run: docker save "ci-doctor:$VERSION" | gzip -9 > "ci-doctor-$VERSION-image.tar.gz"
+        run: |
+          docker tag "docker.io/fennet/ci-doctor:$VERSION" "ci-doctor:$VERSION"
+          docker save "ci-doctor:$VERSION" | gzip -9 > "ci-doctor-$VERSION-image.tar.gz"
 
       # The JSON Schema for .ci-doctor.yml, generated from the pydantic model so it can
       # never drift from the code. Editors resolve it via the $id baked into the schema,
