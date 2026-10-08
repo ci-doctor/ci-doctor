@@ -65,9 +65,14 @@ jobs:
             exit 0
           fi
 
+          body=$(cat <<'EOF'
+          Syncs development with master after a release. The release workflow commits the version bump (`pyproject.toml`, `uv.lock`) and tag straight to master, so development shows the previous version until this lands. A hotfix, which skips development, is carried back by the same PR.
+
+          ci, security, release and docs have all passed on master. Merge with a **merge commit**, not a squash: a squash leaves development behind master again.
+          EOF
+          )
+
           # --head master, not a snapshot branch, so the PR tracks the tip as master moves.
           gh pr create --base development --head master \
             --title "chore: back-merge master into development" \
-            --body "Syncs development with master after a release. The release workflow commits the version bump (\`pyproject.toml\`, \`uv.lock\`) and tag straight to master, so development shows the previous version until this lands. A hotfix, which skips development, is carried back by the same PR.
-
-ci, security, release and docs have all passed on master. Merge with a **merge commit**, not a squash: a squash leaves development behind master again."
+            --body "$body"
