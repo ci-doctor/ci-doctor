@@ -3,15 +3,15 @@ revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai'",
-    "(python_full_version < '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or (python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai')",
     "python_full_version >= '3.14' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "(python_full_version < '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai') or (python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai')",
     "python_full_version >= '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
+    "(python_full_version < '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or (python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai')",
+    "(python_full_version < '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai') or (python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai')",
     "(python_full_version < '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai') or (python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai')",
 ]
 conflicts = [[
@@ -431,7 +431,7 @@ wheels = [
 
 [[package]]
 name = "ci-doctorr"
-version = "0.0.1a9"
+version = "0.0.1a10"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -540,14 +540,14 @@ name = "cohere"
 version = "7.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "fastavro" },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "pydantic-core" },
-    { name = "requests" },
-    { name = "tokenizers" },
-    { name = "types-requests" },
-    { name = "typing-extensions" },
+    { name = "fastavro", marker = "python_full_version < '3.12' or (python_full_version >= '3.14' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or sys_platform != 'emscripten'" },
+    { name = "httpx", marker = "python_full_version < '3.12' or (python_full_version >= '3.14' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or sys_platform != 'emscripten'" },
+    { name = "pydantic", marker = "python_full_version < '3.12' or (python_full_version >= '3.14' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or sys_platform != 'emscripten'" },
+    { name = "pydantic-core", marker = "python_full_version < '3.12' or (python_full_version >= '3.14' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or sys_platform != 'emscripten'" },
+    { name = "requests", marker = "python_full_version < '3.12' or (python_full_version >= '3.14' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or sys_platform != 'emscripten'" },
+    { name = "tokenizers", marker = "python_full_version < '3.12' or (python_full_version >= '3.14' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or sys_platform != 'emscripten'" },
+    { name = "types-requests", marker = "python_full_version < '3.12' or (python_full_version >= '3.14' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or sys_platform != 'emscripten'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.12' or (python_full_version >= '3.14' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/69/49/631a5fac290b704ba0be751d0370f8fb931ad7cb2de3c2f8e4b6a4ffb141/cohere-7.2.0.tar.gz", hash = "sha256:eb74b46882dcff913f826945ae9630cee6b67237ca05d763005c4ad9c4ad5bba", size = 219040, upload-time = "2026-09-28T20:41:03.903Z" }
 wheels = [
@@ -1751,8 +1751,8 @@ version = "3.24.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
     "(python_full_version < '3.14' and sys_platform != 'emscripten') or (python_full_version < '3.12' and sys_platform == 'emscripten')",
 ]
 dependencies = [
@@ -2812,7 +2812,7 @@ name = "tokenizers"
 version = "0.23.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "huggingface-hub" },
+    { name = "huggingface-hub", marker = "python_full_version < '3.12' or sys_platform != 'emscripten' or extra == 'extra-10-ci-doctorr-litellm'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c1/60/21f715d9faba5f5407ff759472ade058ec4a507ad62bcea47cb847239a73/tokenizers-0.23.1.tar.gz", hash = "sha256:1feeeadf865a7915adc25445dea30e9933e593c31bb96c277cee36de227c8bfa", size = 365748, upload-time = "2026-04-27T14:43:25.606Z" }
 wheels = [
@@ -2954,7 +2954,7 @@ name = "types-requests"
 version = "2.33.0.20261006"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "urllib3" },
+    { name = "urllib3", marker = "python_full_version < '3.12' or (python_full_version >= '3.14' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm') or (python_full_version < '3.14' and extra == 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai') or sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/57/15/9b7e2e2e7c87d01366185b198b3febc6bc0c973f2bf21a62da4ab7d3495e/types_requests-2.33.0.20261006.tar.gz", hash = "sha256:0652999e9306aea345f40732d58fa49a7f6cade6a0d74d92119c5c8d82eddaf0", size = 25316, upload-time = "2026-10-06T08:15:57.782Z" }
 wheels = [
