@@ -38,13 +38,13 @@ class FakeClient:
         self.responses = list(responses)
         self.calls = 0
 
-    def complete_structured(self, prompt):
-        """Return the next queued response, or raise it if it is an exception."""
+    def complete_structured(self, prompt, output_type):
+        """Return the next queued response validated as `output_type`, or raise it if it is an exception."""
         r = self.responses[min(self.calls, len(self.responses) - 1)]
         self.calls += 1
         if isinstance(r, Exception):
             raise r
-        return r
+        return output_type.model_validate(r)
 
 
 def _pipeline(log, reason=FailureReason.SCRIPT_FAILURE, overrides=None, provider="gitlab"):

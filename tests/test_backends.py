@@ -38,13 +38,12 @@ class _StubReport(BaseModel):
 
 def _llm(**over):
     """Build an LLMConfig from the shipped defaults, overridden by kwargs."""
+    backend = over.get("backend")
+    if backend in ("bedrock", "bedrock-mantle"):
+        over.setdefault("aws", {})
+    elif backend == "google-cloud":
+        over.setdefault("gcp", {})
     return load_config(environ={}, overrides={"llm": over}).llm
-
-
-@pytest.fixture(autouse=True)
-def _use_stub_report_schema(monkeypatch):
-    """Every PydanticAILLMClient in this file validates against `_StubReport`, not `Report`."""
-    monkeypatch.setattr("ci_doctor.llm.backends.Report", _StubReport)
 
 
 class _FakeProvider:
@@ -153,7 +152,7 @@ def test_a_missing_sdk_names_the_extra_to_install(monkeypatch):
 
     monkeypatch.setattr(backends, "_generic_model", boom)
     with pytest.raises(ImportError, match=r"ci-doctorr\[openai\]"):
-        make_client(_llm(backend="azure", model="m", azure_endpoint="https://x"))
+        make_client(_llm(backend="azure", model="m", azure={"endpoint": "https://x", "api_version": "v1"}))
 
 
 def test_ca_bundle_becomes_an_http_client_only_where_accepted(fake_pydantic_ai):
@@ -169,10 +168,10 @@ def test_ca_bundle_becomes_an_http_client_only_where_accepted(fake_pydantic_ai):
 
 @pytest.mark.parametrize(
     "backend,kind",
-    [("openai", "openai-chat"), ("groq", "groq"), ("google-cloud", "google-cloud"), ("bedrock", "bedrock")],
+    [("groq", "groq"), ("google-cloud", "google-cloud"), ("bedrock", "bedrock")],
 )
 def test_model_id_uses_pydantic_ais_provider_kind(fake_pydantic_ai, backend, kind):
-    """`openai` maps to Chat Completions; the rest keep their name. Colons in a model id survive."""
+    """The backend name is Pydantic AI's provider kind. Colons in a model id survive."""
     fake_pydantic_ai["provider_class"] = _AnyProvider
     backends._generic_model(_llm(backend=backend, model="a.b-v1:0"), {})
     assert fake_pydantic_ai["kinds"] == [kind]
@@ -181,9 +180,9 @@ def test_model_id_uses_pydantic_ais_provider_kind(fake_pydantic_ai, backend, kin
 
 def test_openai_gets_a_placeholder_key_for_local_servers(fake_pydantic_ai):
     """The OpenAI SDK refuses an empty key; a keyless local server gets a placeholder."""
-    backends._generic_model(_llm(backend="openai", model="m", api_base="http://stub"), {})
+    backends._build_provider(_llm(backend="openai", model="m", api_base="http://stub"), {})
     assert _FakeProvider.built["api_key"] == "no-key"
-    backends._generic_model(
+    backends._build_provider(
         _llm(backend="openai", model="m", api_base="http://stub", api_key_env="K"), {"K": "real"}
     )
     assert _FakeProvider.built["api_key"] == "real"
@@ -200,7 +199,7 @@ def test_azure_extras(fake_pydantic_ai):
 
     fake_pydantic_ai["provider_class"] = _Azure
     cfg = _llm(
-        backend="azure", model="m", azure_endpoint="https://x", azure_api_version="v1", api_key_env="K"
+        backend="azure", model="m", azure={"endpoint": "https://x", "api_version": "v1"}, api_key_env="K"
     )
     backends._generic_model(cfg, {"K": "k"})
     assert _Azure.built == {"e": "https://x", "v": "v1", "k": "k"}
@@ -210,14 +209,14 @@ def test_azure_extras(fake_pydantic_ai):
 def test_bedrock_family_gets_the_region(fake_pydantic_ai, backend):
     """Bedrock takes a region, no key; unset falls through to the AWS environment."""
     fake_pydantic_ai["provider_class"] = _RegionProvider
-    backends._generic_model(_llm(backend=backend, model="m", aws_region="eu-west-1"), {})
+    backends._generic_model(_llm(backend=backend, model="m", aws={"region": "eu-west-1"}), {})
     assert _RegionProvider.built == {"region_name": "eu-west-1"}
     backends._generic_model(_llm(backend=backend, model="m"), {})
     assert _RegionProvider.built == {"region_name": None}
 
 
-def test_google_cloud_passes_project_and_location_only_when_set(fake_pydantic_ai):
-    """Unset project/location are omitted, so Application Default Credentials can supply them."""
+def test_google_cloud_passes_project_and_location(fake_pydantic_ai):
+    """Unset project/location stay None, so Application Default Credentials can supply them."""
 
     class _GCloud:
         built: ClassVar[dict] = {}
@@ -229,7 +228,7 @@ def test_google_cloud_passes_project_and_location_only_when_set(fake_pydantic_ai
     backends._generic_model(_llm(backend="google-cloud", model="m"), {})
     assert _GCloud.built == {"project": None, "location": None}
     backends._generic_model(
-        _llm(backend="google-cloud", model="m", gcp_project="p", gcp_location="global"), {}
+        _llm(backend="google-cloud", model="m", gcp={"project": "p", "location": "global"}), {}
     )
     assert _GCloud.built == {"project": "p", "location": "global"}
 
@@ -237,9 +236,15 @@ def test_google_cloud_passes_project_and_location_only_when_set(fake_pydantic_ai
 @pytest.mark.parametrize("backend", sorted(_KNOWN))
 def test_make_client_builds_a_client_for_every_backend(backend, monkeypatch, fake_pydantic_ai):
     """Every name the config accepts builds a PydanticAILLMClient (litellm's bridge faked too)."""
-    monkeypatch.setitem(backends._OVERRIDES, "litellm", lambda cfg, environ: TestModel())
+    for overridden in ("openai", "litellm"):
+        monkeypatch.setitem(backends._OVERRIDES, overridden, lambda cfg, environ: TestModel())
     fake_pydantic_ai["provider_class"] = _AnyProvider
-    kwargs = {"backend": backend, "model": "m", "api_base": "http://stub", "azure_endpoint": "https://x"}
+    kwargs = {
+        "backend": backend,
+        "model": "m",
+        "api_base": "http://stub",
+        "azure": {"endpoint": "https://x", "api_version": "v1"},
+    }
     assert isinstance(make_client(_llm(**kwargs)), PydanticAILLMClient)
 
 
@@ -261,12 +266,10 @@ def test_a_backend_needs_only_a_model(backend):
     assert backend_ready(_llm(backend=backend)) is False
 
 
-def test_openai_and_azure_need_their_endpoint():
-    """Openai needs api_base; azure needs azure_endpoint."""
+def test_openai_needs_its_endpoint():
+    """Openai needs api_base."""
     assert backend_ready(_llm(backend="openai", model="m", api_base="http://x")) is True
     assert backend_ready(_llm(backend="openai", model="m")) is False
-    assert backend_ready(_llm(backend="azure", model="m", azure_endpoint="https://x")) is True
-    assert backend_ready(_llm(backend="azure", model="m")) is False
 
 
 def test_a_missing_model_is_a_clear_error(fake_pydantic_ai):
@@ -280,11 +283,26 @@ def _reply(json_text: str) -> ModelResponse:
     return ModelResponse(parts=[TextPart(content=json_text)])
 
 
-def test_complete_structured_returns_a_validated_dict():
-    """One call, no repair needed: the reply is parsed and returned as a dict."""
+def test_complete_structured_returns_a_validated_instance():
+    """One call, no repair needed: the reply is parsed and returned as the requested type."""
     model = FunctionModel(lambda messages, info: _reply('{"summary": "ok", "score": 1}'))
     client = PydanticAILLMClient(model, _llm(model="m"))
-    assert client.complete_structured("prompt") == {"summary": "ok", "score": 1}
+    assert client.complete_structured("prompt", _StubReport) == _StubReport(summary="ok", score=1)
+
+
+def test_one_client_serves_different_output_types():
+    """The output type is chosen per call, so one reused Agent answers for any model."""
+
+    class _Other(BaseModel):
+        verdict: str
+
+    def fake_llm(messages, info):
+        schema = str(messages)
+        return _reply('{"verdict": "fine"}' if "verdict" in schema else '{"summary": "ok", "score": 1}')
+
+    client = PydanticAILLMClient(FunctionModel(fake_llm), _llm(model="m"))
+    assert client.complete_structured("p", _StubReport) == _StubReport(summary="ok", score=1)
+    assert client.complete_structured("p", _Other) == _Other(verdict="fine")
 
 
 def test_agent_is_built_once_and_reused():
@@ -297,8 +315,8 @@ def test_agent_is_built_once_and_reused():
 
     client = PydanticAILLMClient(FunctionModel(fake_llm), _llm(model="m"))
     first = client._agent_for()
-    client.complete_structured("first")
-    client.complete_structured("second")
+    client.complete_structured("first", _StubReport)
+    client.complete_structured("second", _StubReport)
     assert client._agent_for() is first
     assert calls["n"] == 2
 
@@ -316,8 +334,8 @@ def test_parallel_calls_share_one_event_loop():
 
     client = PydanticAILLMClient(FunctionModel(fake_llm), _llm(model="m"))
     with ThreadPoolExecutor(6) as pool:
-        results = list(pool.map(client.complete_structured, ["p"] * 12))
-    assert all(r == {"summary": "ok", "score": 1} for r in results)
+        results = list(pool.map(lambda p: client.complete_structured(p, _StubReport), ["p"] * 12))
+    assert all(r == _StubReport(summary="ok", score=1) for r in results)
     assert len(loops) == 1
 
 
@@ -343,7 +361,7 @@ def test_close_closes_the_sdk_client_and_stops_the_loop_thread():
     model = _ClosableModel(custom_output_text='{"summary": "ok", "score": 1}')
     client = PydanticAILLMClient(model, _llm(model="m"))
     before = set(threading.enumerate())  # other tests leave their own loop threads running
-    client.complete_structured("prompt")
+    client.complete_structured("prompt", _StubReport)
     (thread,) = set(threading.enumerate()) - before
     client.close()
     thread.join(timeout=5)
@@ -370,7 +388,7 @@ def test_close_never_raises():
     client = PydanticAILLMClient(
         _Exploding(custom_output_text='{"summary": "ok", "score": 1}'), _llm(model="m")
     )
-    client.complete_structured("prompt")
+    client.complete_structured("prompt", _StubReport)
     client.close()
 
 
@@ -395,7 +413,7 @@ def test_one_repair_retry_on_invalid_then_valid_reply():
         return _reply("not json at all" if calls["n"] == 1 else '{"summary": "ok", "score": 1}')
 
     client = PydanticAILLMClient(FunctionModel(fake_llm), _llm(model="m"))
-    assert client.complete_structured("prompt") == {"summary": "ok", "score": 1}
+    assert client.complete_structured("prompt", _StubReport) == _StubReport(summary="ok", score=1)
     assert calls["n"] == 2
 
 
@@ -405,7 +423,7 @@ def test_still_invalid_after_the_retry_raises():
         FunctionModel(lambda messages, info: _reply("still not json")), _llm(model="m")
     )
     with pytest.raises(Exception):  # noqa: B017 - pydantic-ai's own exhausted-retries error type
-        client.complete_structured("prompt")
+        client.complete_structured("prompt", _StubReport)
 
 
 def test_temperature_and_timeout_reach_the_agent():
@@ -444,7 +462,7 @@ def test_timeout_is_a_wall_clock_budget_for_the_whole_call():
     client = PydanticAILLMClient(FunctionModel(slow), _llm(model="m", timeout_seconds=1))
     started = time.monotonic()
     with pytest.raises(TimeoutError):
-        client.complete_structured("prompt")
+        client.complete_structured("prompt", _StubReport)
     assert time.monotonic() - started < 5
 
 
@@ -472,7 +490,7 @@ _REAL = [
         "azure",
         "openai",
         "OpenAIChatModel",
-        {"azure_endpoint": "https://x.openai.azure.com", "azure_api_version": "v1"},
+        {"azure": {"endpoint": "https://x.openai.azure.com", "api_version": "v1"}},
     ),
     ("anthropic", "anthropic", "AnthropicModel", {}),
     ("google", "google.genai", "GoogleModel", {}),
@@ -485,12 +503,30 @@ _REAL = [
 ]
 
 
+@pytest.mark.parametrize(
+    ("api", "model_class"),
+    [(None, "OpenAIChatModel"), ("chat", "OpenAIChatModel"), ("responses", "OpenAIResponsesModel")],
+)
+def test_openai_api_picks_the_model_class(api, model_class):
+    """`llm.openai.api` chooses Chat Completions (the default) or the Responses API."""
+    pytest.importorskip("openai")
+    extra = {"openai": {"api": api}} if api else {}
+    cfg = _llm(backend="openai", model="m", api_base="http://stub", **extra)
+    assert type(backends._openai_model(cfg, {})).__name__ == model_class
+
+
+def test_openai_api_rejects_an_unknown_value():
+    """Only the two APIs exist; a typo fails at load, not at the first call."""
+    with pytest.raises(ValueError, match="openai"):
+        _llm(backend="openai", openai={"api": "completions"})
+
+
 @pytest.mark.parametrize("backend,sdk,model_class,extra", _REAL, ids=[r[0] for r in _REAL])
 def test_real_provider_builds_the_right_model(backend, sdk, model_class, extra):
-    """The generic path constructs each provider's own Model class from a key in the environment."""
+    """Each backend constructs its provider's own Model class from a key in the environment."""
     pytest.importorskip(sdk)
     cfg = _llm(backend=backend, model="some-model", api_key_env="K", **extra)
-    model = backends._generic_model(cfg, {"K": "fake"})
+    model = backends._OVERRIDES.get(backend, backends._generic_model)(cfg, {"K": "fake"})
     assert type(model).__name__ == model_class
     assert model.model_name == "some-model"
 
@@ -518,7 +554,7 @@ def test_bedrock_builds_with_only_a_region(aws_env):
     """Bedrock's auth is AWS IAM; a region is enough, and a colon in the model id survives."""
     pytest.importorskip("boto3")
     model = backends._generic_model(
-        _llm(backend="bedrock", model="anthropic.claude-opus-4-6-v1:0", aws_region="us-east-1"), {}
+        _llm(backend="bedrock", model="anthropic.claude-opus-4-6-v1:0", aws={"region": "us-east-1"}), {}
     )
     assert type(model).__name__ == "BedrockConverseModel"
     assert model.model_name == "anthropic.claude-opus-4-6-v1:0"
@@ -529,7 +565,7 @@ def test_bedrock_ca_bundle_reaches_the_boto_client(aws_env, monkeypatch):
     pytest.importorskip("boto3")
     monkeypatch.delenv("AWS_CA_BUNDLE", raising=False)
     model = backends._generic_model(
-        _llm(backend="bedrock", model="m", aws_region="us-east-1", ca_bundle=certifi.where()), {}
+        _llm(backend="bedrock", model="m", aws={"region": "us-east-1"}, ca_bundle=certifi.where()), {}
     )
     assert model.client._endpoint.http_session._verify == certifi.where()
     assert "AWS_CA_BUNDLE" not in os.environ
@@ -549,14 +585,14 @@ def test_bedrock_keeps_the_providers_own_setup_with_a_ca_bundle(aws_env, monkeyp
     pytest.importorskip("boto3")
     monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "tok")
     model = backends._generic_model(
-        _llm(backend="bedrock", model="m", aws_region="us-east-1", ca_bundle=certifi.where()), {}
+        _llm(backend="bedrock", model="m", aws={"region": "us-east-1"}, ca_bundle=certifi.where()), {}
     )
     assert model.client.meta.config.signature_version == "bearer"
     assert model.client.meta.config.read_timeout == 300
 
 
 def test_bedrock_falls_back_to_the_aws_region_env_var(aws_env, monkeypatch):
-    """No aws_region configured -> AWS_DEFAULT_REGION is used."""
+    """No aws.region configured -> AWS_DEFAULT_REGION is used."""
     pytest.importorskip("boto3")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-west-2")
     backends._generic_model(_llm(backend="bedrock", model="anthropic.claude-opus-4-6-v1:0"), {})
@@ -567,6 +603,28 @@ def test_bedrock_mantle_builds_an_openai_shaped_model(aws_env):
     pytest.importorskip("boto3")
     pytest.importorskip("openai")
     model = backends._generic_model(
-        _llm(backend="bedrock-mantle", model="openai.gpt-oss-120b", aws_region="us-east-1"), {}
+        _llm(backend="bedrock-mantle", model="openai.gpt-oss-120b", aws={"region": "us-east-1"}), {}
     )
     assert type(model).__name__.startswith("BedrockMantle")
+
+
+@pytest.mark.parametrize(
+    ("backend", "block"),
+    [("azure", "azure"), ("bedrock", "aws"), ("bedrock-mantle", "aws"), ("google-cloud", "gcp")],
+)
+def test_a_cloud_backend_requires_its_settings_block(backend, block):
+    """Choosing a cloud backend without its block fails at load, naming the block."""
+    with pytest.raises(ValueError, match=f"llm.{block}:"):
+        load_config(environ={}, overrides={"llm": {"backend": backend, "model": "m"}})
+
+
+def test_the_old_flat_cloud_keys_are_rejected():
+    """The flat fields moved into blocks; `extra=forbid` flags the old spelling."""
+    with pytest.raises(ValueError, match="aws_region"):
+        load_config(environ={}, overrides={"llm": {"backend": "bedrock", "aws": {}, "aws_region": "x"}})
+
+
+def test_an_unused_settings_block_is_ignored():
+    """A block for a backend that is not selected is harmless, so switching backends is one line."""
+    cfg = _llm(backend="openai", azure={"endpoint": "https://x", "api_version": "v1"})
+    assert cfg.azure is not None

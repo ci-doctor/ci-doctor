@@ -6,11 +6,15 @@ provider or the LLM stack into core.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
+    from pydantic import BaseModel
+
     from ci_doctor.core.models import Job, MergeRequestRef, Run, Section
     from ci_doctor.llm.schema import Report
+
+_T = TypeVar("_T", bound="BaseModel")
 
 
 class CIProvider(ABC):
@@ -87,7 +91,7 @@ class LogSegmenter(ABC):
 
 
 class LLMClient(ABC):
-    """A backend that answers with JSON matching the reply schema.
+    """A backend that answers with a validated instance of the schema the caller names.
 
     Prompt-and-parse: correctness is enforced by validation, not by the
     endpoint, since none of the endpoints we target enforce a schema
@@ -96,19 +100,20 @@ class LLMClient(ABC):
     """
 
     @abstractmethod
-    def complete_structured(self, prompt: str) -> dict[str, Any]:
-        """Run one completion and parse the response as JSON.
+    def complete_structured(self, prompt: str, output_type: type[_T]) -> _T:
+        """Run one completion and validate the response against `output_type`.
 
         Args:
             prompt: The fully rendered prompt.
+            output_type: The pydantic model the reply must match.
 
         Returns:
-            The parsed response. Callers validate it — a backend may return
-            something schema-invalid; the schema-repair retry is the backend's own.
+            The validated reply. The schema-repair retry is the backend's own.
 
         Raises:
-            Exception: Any backend failure. Callers degrade to the deterministic
-                report rather than failing the run.
+            Exception: Any backend failure, including a reply still invalid after the
+                repair retry. Callers degrade to the deterministic report rather than
+                failing the run.
         """
 
     def close(self) -> None:  # noqa: B027 - a deliberate no-op default, not a forgotten abstract

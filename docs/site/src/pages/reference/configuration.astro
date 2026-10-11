@@ -53,11 +53,16 @@ llm:
   api_base: null                 # OpenAI-compatible / litellm base URL
   api_key_env: null              # optional; local servers often need none
   ca_bundle: null                # LLM endpoint's own CA, independent of the provider's
-  azure_endpoint: null           # required for backend: azure
-  azure_api_version: null        # required for backend: azure
-  aws_region: null               # bedrock, bedrock-mantle; falls back to AWS_DEFAULT_REGION/AWS_REGION
-  gcp_project: null              # backend: google-cloud; falls back to the environment's
-  gcp_location: null             # backend: google-cloud, e.g. us-central1 or global
+  openai:
+    api: chat                    # backend: openai; chat (Chat Completions) | responses (Responses API)
+  azure: null                    # backend: azure; required there
+  #   endpoint: https://<resource>.openai.azure.com
+  #   api_version: "2024-10-21"
+  aws: null                      # bedrock, bedrock-mantle; required there
+  #   region: us-east-1          # optional; falls back to AWS_DEFAULT_REGION/AWS_REGION
+  gcp: null                      # backend: google-cloud; required there
+  #   project: my-project        # optional; falls back to the environment's
+  #   location: us-central1      # optional; e.g. us-central1 or global
   max_input_tokens: 12000
   temperature: 0.1
   timeout_seconds: 120           # wall-clock budget for one call, retries included
@@ -166,7 +171,9 @@ redaction:
                     >Any OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp,
                     internal gateway) or OpenAI itself</td
                 ><td
-                    ><code>model</code> + <code>api_base</code>; <code
+                    ><code>model</code> + <code>api_base</code>; optionally
+                    <code>openai.api: responses</code> for the Responses API
+                    (default <code>chat</code>); <code
                         >pip install ci-doctorr[openai]</code
                     ></td
                 ></tr
@@ -184,7 +191,7 @@ redaction:
                 ><td><code>azure</code></td><td
                     >Azure OpenAI</td
                 ><td
-                    ><code>model</code>, <code>azure_endpoint</code>, <code
+                    ><code>model</code>, <code>azure.endpoint</code>, <code>azure.api_version</code>, <code
                         >api_key_env</code
                     >; <code>pip install ci-doctorr[openai]</code></td
                 ></tr
@@ -194,7 +201,7 @@ redaction:
                     >Amazon Bedrock, AWS IAM auth (env vars, profile, or instance
                     role) — not an API key</td
                 ><td
-                    ><code>model</code>; <code>aws_region</code> or
+                    ><code>model</code>; <code>aws.region</code> or
                     <code>AWS_DEFAULT_REGION</code>; <code
                         >pip install ci-doctorr[bedrock]</code
                     ></td
@@ -204,7 +211,7 @@ redaction:
                 ><td><code>bedrock-mantle</code></td><td
                     >Bedrock's OpenAI-shaped models, AWS IAM auth</td
                 ><td
-                    ><code>model</code>; <code>aws_region</code>; <code>pip install ci-doctorr[bedrock-mantle]</code></td
+                    ><code>model</code>; <code>aws</code> (<code>region</code> optional); <code>pip install ci-doctorr[bedrock-mantle]</code></td
                 ></tr
             >
             <tr
@@ -218,7 +225,7 @@ redaction:
                 ><td><code>google-cloud</code></td><td
                     >Vertex AI, Google Cloud auth</td
                 ><td
-                    ><code>model</code>; <code>gcp_project</code>/<code>gcp_location</code> with Application Default Credentials, or an API key; <code>pip install ci-doctorr[google]</code></td
+                    ><code>model</code>; <code>gcp.project</code>/<code>gcp.location</code> with Application Default Credentials, or an API key; <code>pip install ci-doctorr[google]</code></td
                 ></tr
             >
             <tr
@@ -274,7 +281,9 @@ redaction:
         <strong>Reach for <code>openai</code> first.</strong> The OpenAI Chat
         Completions shape is what Ollama, vLLM, llama.cpp, Together, Groq, DeepSeek,
         Mistral and most others already speak; a provider with its own backend above
-        (Groq, Mistral, Google, ...) talks to its native API instead. There is no default SDK in the base
+        (Groq, Mistral, Google, ...) talks to its native API instead. Keep
+        <code>openai.api</code> on <code>chat</code> for self-hosted servers; only
+        OpenAI itself and some gateways offer the newer Responses API. There is no default SDK in the base
         install any more — every backend needs its own extra, picked for exactly the
         provider you're using.
     </div>

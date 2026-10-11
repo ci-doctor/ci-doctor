@@ -174,8 +174,7 @@ def _call_and_validate(client: LLMClient, prompt: str) -> Report | None:
         the deterministic report either way.
     """
     try:
-        data = client.complete_structured(prompt)
-        return Report.model_validate(data)
+        return client.complete_structured(prompt, Report)
     except (ValidationError, ValueError, json.JSONDecodeError) as exc:
         log.info("LLM reply invalid; using deterministic fallback: %s", exc)
         return None

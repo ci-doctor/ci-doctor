@@ -1,16 +1,19 @@
 """LLM backend registry.
 
 Every backend builds one `PydanticAILLMClient` wrapping a `pydantic_ai.models.Model`,
-selected by `llm.backend`. Each uses `PromptedOutput(Report)` and one built-in repair
-retry (`Agent(retries=1)`) — no hand-rolled JSON parsing or retry loop here.
+selected by `llm.backend`. Each wraps the caller's output type in `PromptedOutput` per
+call, with one built-in repair retry (`Agent(retries=1)`) — no hand-rolled JSON parsing
+or retry loop here.
 
 Any Pydantic AI-native provider goes through one generic path: Pydantic AI's own
 `infer_model` picks the `Model` class, and the provider is built from the constructor
 arguments it actually accepts (`api_key`, `base_url`, `http_client`). Adding a provider
-is a name in `LLMConfig.backend` and a pip extra. Only a provider with unusual
-constructor arguments gets an entry in `_EXTRA_KWARGS`. `litellm` is the one real
-override: it is the community `pydantic-ai-litellm` bridge, which routes in-process to
-~100 providers by litellm's own model-string convention (`vertex_ai/gemini-1.5-pro`).
+is a name in `LLMConfig.backend` and a pip extra. A provider with settings of its own
+adds a block under `config/types/` that dumps to its constructor arguments (see
+`LLMConfig.provider_settings`). Two backends override the generic path: `openai` picks
+Chat Completions or the Responses API, and `litellm` is the community `pydantic-ai-litellm`
+bridge, which routes in-process to ~100 providers by litellm's own model-string
+convention (`vertex_ai/gemini-1.5-pro`).
 
 Every backend needs its own pip extra; there is no default SDK in the base install.
 `openai`/`azure` and `litellm` are mutually exclusive — litellm pins `openai<3.0`,
@@ -28,24 +31,22 @@ import os
 import ssl
 import threading
 from collections.abc import Callable, Iterator, Mapping
-from typing import TYPE_CHECKING, Any, get_args
+from typing import TYPE_CHECKING, Any, TypeVar, get_args
+
+from pydantic import BaseModel
 
 from ci_doctor.config.schema import LLMConfig
 from ci_doctor.core.ports import LLMClient
-from ci_doctor.llm.schema import Report
 
 log = logging.getLogger("ci_doctor.llm")
 
 if TYPE_CHECKING:
     from pydantic_ai import Agent
     from pydantic_ai.models import Model
+    from pydantic_ai.providers import Provider
 
 #: Every name `llm.backend` accepts — the config Literal is the single source.
 _KNOWN = frozenset(get_args(LLMConfig.model_fields["backend"].annotation))
-
-#: Where our name differs from Pydantic AI's: its bare `openai` is the Responses API,
-#: and self-hosted servers speak Chat Completions.
-_KIND = {"openai": "openai-chat"}
 
 
 def _api_key(cfg: LLMConfig, environ: Mapping[str, str]) -> str | None:
@@ -97,19 +98,7 @@ def _aws_ca_bundle(path: str | None) -> Iterator[None]:
             os.environ["AWS_CA_BUNDLE"] = previous
 
 
-#: Arguments a provider needs beyond the generic three. Each takes the config and the
-#: kwargs built so far, and returns what to add or replace.
-_EXTRA_KWARGS: dict[str, Callable[[LLMConfig, dict[str, Any]], dict[str, Any]]] = {
-    # The OpenAI SDK refuses an empty key; local servers ignore whatever they get.
-    "openai": lambda cfg, kw: {"api_key": kw.get("api_key") or "no-key"},
-    "azure": lambda cfg, kw: {"azure_endpoint": cfg.azure_endpoint, "api_version": cfg.azure_api_version},
-    # AWS auth comes from the environment/IAM (boto3's chain), not an API key.
-    "bedrock": lambda cfg, kw: {"region_name": cfg.aws_region},
-    "bedrock-mantle": lambda cfg, kw: {"region_name": cfg.aws_region},
-    "google-cloud": lambda cfg, kw: {
-        k: v for k, v in {"project": cfg.gcp_project, "location": cfg.gcp_location}.items() if v
-    },
-}
+_M = TypeVar("_M", bound=BaseModel)
 
 
 def _apply_max_retries(provider: object, cfg: LLMConfig) -> None:
@@ -125,20 +114,41 @@ def _apply_max_retries(provider: object, cfg: LLMConfig) -> None:
         client.max_retries = cfg.max_retries
 
 
-def _generic_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
-    """Any Pydantic AI-native provider: Anthropic, Google, Groq, Mistral, Cohere, xAI, Bedrock, ..."""
-    from pydantic_ai.models import infer_model, infer_provider_class
+def _build_provider(cfg: LLMConfig, environ: Mapping[str, str]) -> "Provider[Any]":
+    """Build the Pydantic AI provider for `cfg.backend` from the config."""
+    from pydantic_ai.models import infer_provider_class
 
-    model_name = _require_model(cfg)
-    kind = _KIND.get(cfg.backend, cfg.backend)
-    provider_class = infer_provider_class(kind)
+    provider_class = infer_provider_class(cfg.backend)
     kwargs = _provider_kwargs(provider_class, cfg, environ)
-    if extra := _EXTRA_KWARGS.get(cfg.backend):
-        kwargs.update(extra(cfg, kwargs))
+    if cfg.backend == "openai":
+        # The OpenAI SDK refuses an empty key; local servers ignore whatever they get.
+        kwargs["api_key"] = kwargs.get("api_key") or "no-key"
+    if block := cfg.provider_settings:
+        # AWS auth itself comes from the environment/IAM (boto3's chain), not an API key.
+        kwargs.update(block.model_dump(by_alias=True, exclude_none=True))
     with _aws_ca_bundle(cfg.ca_bundle if cfg.backend == "bedrock" else None):
         provider = provider_class(**kwargs)
     _apply_max_retries(provider, cfg)
-    return infer_model(f"{kind}:{model_name}", provider_factory=lambda _: provider)
+    return provider
+
+
+def _generic_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
+    """Any Pydantic AI-native provider: Anthropic, Google, Groq, Mistral, Cohere, xAI, Bedrock, ..."""
+    from pydantic_ai.models import infer_model
+
+    model_name = _require_model(cfg)
+    provider = _build_provider(cfg, environ)
+    return infer_model(f"{cfg.backend}:{model_name}", provider_factory=lambda _: provider)
+
+
+def _openai_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
+    """An OpenAI-compatible endpoint, over Chat Completions or the Responses API (`llm.openai.api`)."""
+    from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
+
+    model_name = _require_model(cfg)
+    provider = _build_provider(cfg, environ)
+    model_class = OpenAIChatModel if cfg.openai.api == "chat" else OpenAIResponsesModel
+    return model_class(model_name, provider=provider)
 
 
 def _litellm_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
@@ -156,12 +166,14 @@ def _litellm_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
     return LiteLLMModel(model_name, api_key=_api_key(cfg, environ), api_base=cfg.api_base or None)
 
 
-_OVERRIDES: dict[str, Callable[[LLMConfig, Mapping[str, str]], "Model"]] = {"litellm": _litellm_model}
+_OVERRIDES: dict[str, Callable[[LLMConfig, Mapping[str, str]], "Model"]] = {
+    "openai": _openai_model,
+    "litellm": _litellm_model,
+}
 
 #: What a backend needs before a call is worth attempting; the default is just a model.
 _NEEDS: dict[str, Callable[[LLMConfig], bool]] = {
     "openai": lambda cfg: bool(cfg.model and cfg.api_base),
-    "azure": lambda cfg: bool(cfg.model and cfg.azure_endpoint),
 }
 
 
@@ -236,20 +248,18 @@ class PydanticAILLMClient(LLMClient):
         """Store the model and config; no Agent or loop is built until a call is made."""
         self._model = model
         self.cfg = cfg
-        self._agent: Agent[None, Report] | None = None
+        self._agent: Agent[None, Any] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._lock = threading.Lock()
 
-    def _agent_for(self) -> "Agent[None, Report]":
+    def _agent_for(self) -> "Agent[None, Any]":
         """Build the Agent once, thread-safely (jobs run on a thread pool)."""
         with self._lock:
             if self._agent is None:
                 from pydantic_ai import Agent
-                from pydantic_ai.output import PromptedOutput
 
                 self._agent = Agent(
                     self._model,
-                    output_type=PromptedOutput(Report),
                     retries=1,
                     model_settings={
                         "temperature": self.cfg.temperature,
@@ -293,11 +303,12 @@ class PydanticAILLMClient(LLMClient):
         finally:
             loop.call_soon_threadsafe(loop.stop)
 
-    def complete_structured(self, prompt: str) -> dict[str, Any]:
-        """Run one completion and return the validated reply as a dict.
+    def complete_structured(self, prompt: str, output_type: type[_M]) -> _M:
+        """Run one completion and return the reply validated as `output_type`.
 
         Args:
             prompt: The rendered, already-redacted prompt.
+            output_type: The pydantic model the reply must match.
 
         Returns:
             The reply, already schema-valid.
@@ -307,7 +318,10 @@ class PydanticAILLMClient(LLMClient):
                 when the call — repair retry and SDK retries included — outlasts
                 `llm.timeout_seconds`.
         """
+        from pydantic_ai.output import PromptedOutput
+
         agent = self._agent_for()
-        budget = asyncio.wait_for(agent.run(prompt), self.cfg.timeout_seconds)
+        run = agent.run(prompt, output_type=PromptedOutput(output_type))
+        budget = asyncio.wait_for(run, self.cfg.timeout_seconds)
         result = asyncio.run_coroutine_threadsafe(budget, self._loop_for()).result()
-        return result.output.model_dump(mode="json")
+        return result.output

@@ -91,9 +91,9 @@ def test_analyze_run_builds_one_llm_client_for_the_whole_run(monkeypatch):
     closed = []
 
     class _Client(LLMClient):
-        def complete_structured(self, prompt):
+        def complete_structured(self, prompt, output_type):
             """Answer with something the schema rejects, so the run degrades cleanly."""
-            return {}
+            return output_type.model_validate({})
 
         def close(self):
             """Record the release."""
