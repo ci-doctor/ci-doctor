@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fennet82/ci-doctor/master/docs/site/public/ci-doctor-logo-dark.svg">
-    <img src="https://raw.githubusercontent.com/fennet82/ci-doctor/master/docs/site/public/ci-doctor-logo.png" alt="ci-doctor" width="540">
-  </picture>
+  <img src="docs/site/public/ci-doctor-logo-dark.svg" alt="ci-doctor" width="540">
 </p>
 
 <p align="center">
