@@ -63,7 +63,11 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
-      - run: uv sync
+      # Every extra that can coexist (all but `litellm`, which conflicts with `openai`),
+      # so the tests that build each real provider run instead of skipping.
+      - run: >-
+          uv sync --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle
+          --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
       # Failures annotate the diff via the pytest-github-actions-annotate-failures dev dep.
       - run: uv run pytest -q --cov
       # Informational: the previous step already gates the coverage floor.
