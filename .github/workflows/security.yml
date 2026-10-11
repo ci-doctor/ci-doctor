@@ -1,7 +1,6 @@
 name: security
 
-# Separate from ci.yml for the schedule: a CVE is published after the last commit,
-# so without a weekly run it would only surface on whatever PR comes next.
+# Separate from ci.yml for the weekly schedule: a CVE lands after the last commit.
 on:
   pull_request:
     branches: [development, master]

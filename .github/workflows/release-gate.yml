@@ -1,14 +1,8 @@
 name: release gate
 
-# The development -> master PR. Everything the release will do, minus publishing.
-#
-# Why here and not in ci.yml: by the time release.yml runs, it has already bumped
-# the version, committed and pushed the tag. A Dockerfile or packaging error at
-# that point leaves a tag with no release behind it — which is exactly how the
-# first alpha failed. This is the last place those are cheap to find.
-#
-# The slow lane, run once per integration rather than on every push. E2E belongs
-# here when it exists; SAST runs on every PR in security.yml.
+# The development -> master PR: everything release.yml will do, minus publishing.
+# By the time release.yml runs it has already pushed the tag, so a packaging or Docker
+# error there leaves a tag with no release. The slow lane, once per integration.
 on:
   pull_request:
     branches: [master]
@@ -32,8 +26,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv build
-      # Catches the metadata problems PyPI rejects on upload — a bad README render,
-      # a malformed classifier — which otherwise surface only after the tag exists.
+      # Catches metadata PyPI rejects on upload (bad README render, malformed classifier).
       - run: uvx twine check dist/*
 
   image:
@@ -61,8 +54,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync
-      # The release attaches this to the GitHub Release, and editors resolve it
-      # through the $id baked into it. Prove it still parses before that matters.
+      # The release attaches this and editors resolve it via its $id: prove it still parses.
       - run: uv run ci-doctor config --schema | python3 -c 'import json,sys; json.load(sys.stdin)'
 
   sbom:

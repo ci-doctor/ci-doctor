@@ -6,11 +6,15 @@ provider or the LLM stack into core.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
+    from pydantic import BaseModel
+
     from ci_doctor.core.models import Job, MergeRequestRef, Run, Section
     from ci_doctor.llm.schema import Report
+
+_T = TypeVar("_T", bound="BaseModel")
 
 
 class CIProvider(ABC):
@@ -87,27 +91,35 @@ class LogSegmenter(ABC):
 
 
 class LLMClient(ABC):
-    """A backend that answers with JSON matching the schema embedded in the prompt.
+    """A backend that answers with a validated instance of the schema the caller names.
 
-    Every backend is prompt-and-parse: the reply schema is rendered into the
-    prompt text by `llm/report.py`, not passed as an argument, because none of
-    the endpoints we target enforce one server-side.
+    Prompt-and-parse: correctness is enforced by validation, not by the
+    endpoint, since none of the endpoints we target enforce a schema
+    server-side (`llm/backends.py::PydanticAILLMClient` realizes this via
+    Pydantic AI's `PromptedOutput`).
     """
 
     @abstractmethod
-    def complete_structured(self, prompt: str) -> dict[str, Any]:
-        """Run one completion and parse the response as JSON.
+    def complete_structured(self, prompt: str, output_type: type[_T]) -> _T:
+        """Run one completion and validate the response against `output_type`.
 
         Args:
-            prompt: The fully rendered prompt, schema included.
+            prompt: The fully rendered prompt.
+            output_type: The pydantic model the reply must match.
 
         Returns:
-            The parsed response. Callers validate it — a backend may return
-            something schema-invalid, and the repair retry lives in `llm/report.py`.
+            The validated reply. The schema-repair retry is the backend's own.
 
         Raises:
-            Exception: Any backend failure. Callers degrade to the deterministic
-                report rather than failing the run.
+            Exception: Any backend failure, including a reply still invalid after the
+                repair retry. Callers degrade to the deterministic report rather than
+                failing the run.
+        """
+
+    def close(self) -> None:  # noqa: B027 - a deliberate no-op default, not a forgotten abstract
+        """Release what the client holds (connections, threads). The client is done after this.
+
+        Safe to call more than once, and on a client that never made a call.
         """
 
 
