@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fennet82/ci-doctor/master/docs/site/public/ci-doctor-logo-dark.svg">
-    <img src="https://raw.githubusercontent.com/fennet82/ci-doctor/master/docs/site/public/ci-doctor-logo.png" alt="ci-doctor" width="540">
-  </picture>
+  <img src="docs/site/public/ci-doctor-logo-dark.svg" alt="ci-doctor" width="540">
 </p>
 
 <p align="center">
@@ -40,8 +37,9 @@ the classifier is wrong, that's a bug with a failing test — not a prompt to tu
   so it can't change your pipeline's status or hide the real failure.
 - **Useful with no LLM** — ships a deterministic report out of the box: phase, reason,
   terminal command, evidence excerpt, and templated remediation.
-- **Bring-your-own model** — optional LLM step via `openai` (any OpenAI-compatible endpoint),
-  `litellm` (Bedrock/Vertex/Azure), or the local `claude` CLI, selected by config.
+- **Bring-your-own model** — optional LLM step via `openai` (any OpenAI-compatible endpoint,
+  self-hosted or hosted), `anthropic`, `azure`, `bedrock`, `google`, `groq`, `mistral`, `cohere`,
+  `xai`, `huggingface` and more natively, or `litellm` (watsonx and ~100 others), selected by config.
 - **GitLab & GitHub** — one provider-neutral core; the GitHub adapter was added with *zero*
   changes to core.
 - **Air-gap friendly** — no telemetry, no update checks, no runtime downloads; ship as a
@@ -81,8 +79,12 @@ git clone https://github.com/fennet82/ci-doctor
 cd ci-doctor
 uv sync                       # or: pip install .
 
-# optional LLM backends:
-uv sync --extra litellm       # or: pip install '.[litellm]'   — only for Bedrock/Vertex/Azure
+# pick exactly one LLM backend extra (openai/azure and litellm are mutually exclusive):
+uv sync --extra openai        # or: pip install '.[openai]'      — Ollama/vLLM/OpenAI-compatible
+uv sync --extra anthropic     # or: pip install '.[anthropic]'   — Anthropic direct
+uv sync --extra bedrock       # or: pip install '.[bedrock]'     — Amazon Bedrock, AWS IAM auth
+uv sync --extra google        # or: pip install '.[google]'      — Gemini / Vertex AI (also: groq, mistral, cohere, xai, huggingface)
+uv sync --extra litellm       # or: pip install '.[litellm]'     — Vertex/Cohere/watsonx/~100 more
 ```
 
 Or build the self-contained image:
@@ -108,7 +110,7 @@ uv run ci-doctor analyze 18234567890
 
 `ci-doctor config` prints the effective config; `--diff` shows only what your layers
 changed, `--schema` emits the JSON Schema. Full CLI and config reference on the
-[documentation site](https://fennet82.github.io/ci-doctor).
+[documentation site](https://docs.cidoc.dev).
 
 When a pipeline has several failed jobs, the report is framed as a pipeline: a header
 with a code-vs-infra triage count, then each job under its own separator, in the order
@@ -129,7 +131,7 @@ github:
 
 llm:
   enabled: true                       # false => deterministic-only report
-  backend: openai                     # openai | litellm | claude_code
+  backend: openai                     # openai | anthropic | azure | bedrock | google | groq | mistral | ... | litellm
   model: qwen2.5-coder:32b
   api_base: http://openai-compatible-endpoint.internal:8000/v1
 
@@ -137,8 +139,8 @@ analysis:
   max_parallel_jobs: 4                # jobs analyzed at once; 1 to serialize
 ```
 
-Every knob, and the three LLM backends, are documented on the
-[configuration page](https://fennet82.github.io/ci-doctor/configuration/). The LLM step is
+Every knob, and the LLM backends, are documented on the
+[configuration page](https://docs.cidoc.dev/reference/configuration/). The LLM step is
 optional throughout — disabled, unconfigured or unreachable, ci-doctor emits the
 deterministic report instead of failing.
 
@@ -159,7 +161,7 @@ steps:
 
 Outputs `phase`, `category`, `confidence`, `is-infra-not-code`, and the two report
 paths, so a workflow can branch on the verdict. Inputs, PR comments and GitHub
-Enterprise are on the [action page](https://fennet82.github.io/ci-doctor/action/);
+Enterprise are on the [action page](https://docs.cidoc.dev/cicd/github/);
 the full workflow is in
 [examples/github-actions.example.yml](https://github.com/fennet82/ci-doctor/blob/master/examples/github-actions.example.yml).
 
@@ -207,13 +209,13 @@ standard `HTTPS_PROXY` / `NO_PROXY` / `REQUESTS_CA_BUNDLE` variables are honoure
 
 ## Documentation
 
-**[fennet82.github.io/ci-doctor](https://fennet82.github.io/ci-doctor)** — overview,
+**[docs.cidoc.dev](https://docs.cidoc.dev)** — overview,
 requirements, configuration, usage, the GitHub Action, and CI/CD examples. Source in
 [`docs/site/`](https://github.com/fennet82/ci-doctor/tree/master/docs/site) (Astro); `mise run docs` previews it locally.
 
-Start with **[Concepts](https://fennet82.github.io/ci-doctor/concepts/)** — the pipeline
+Start with **[Concepts](https://docs.cidoc.dev/concepts/)** — the pipeline
 end to end, what each module decides, and what a phase, a matcher or a redaction pass
-actually is. **[Matchers](https://fennet82.github.io/ci-doctor/matchers/)** lists every
+actually is. **[Matchers](https://docs.cidoc.dev/concepts/matchers/)** lists every
 shipped pack; that page is generated from `config/defaults.yml`, so run
 `mise run docs:data` after changing a pack (a test fails if it drifts).
 

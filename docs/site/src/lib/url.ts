@@ -1,4 +1,4 @@
-// GitHub Pages serves this site from /ci-doctor, not /. Astro rewrites nothing
+// The site's base path is set in astro.config.mjs. Astro rewrites nothing
 // inside plain `href`/`src` attributes, so every internal link and asset goes
 // through here — otherwise the site works on `astro dev` and 404s in production.
 

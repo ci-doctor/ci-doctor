@@ -24,12 +24,12 @@ flowchart TD
     REL --> PUB["PyPI · Docker Hub · GitHub Release"]
     REL -->|on success| DOC["docs.yml → GitHub Pages"]
 
-    H -.->|on merge| BM[backmerge.yml]
+    M -.->|ci · security · release · docs all green| BM[backmerge.yml]
     BM -.->|opens PR| D
 ```
 
-Dotted is the backmerge: it opens a PR rather than pushing, so the hotfix lands
-in `development` through the same review as anything else.
+Dotted is the backmerge: it opens a PR rather than pushing, so the release commit
+lands in `development` through the same review as anything else.
 
 | Hop | Workflows |
 |---|---|
@@ -37,7 +37,7 @@ in `development` through the same review as anything else.
 | `hotfix/<slug>` → `master` | `ci` · `security` · `release-gate` |
 | `development` → `master` | `ci` · `security` · `release-gate` |
 | push to `master` | `release`, then `docs` on its success |
-| hotfix merged | `backmerge` |
+| `ci` · `security` · `release` · `docs` all green on `master` | `backmerge` |
 
 A hotfix gets the release gate because a hotfix ships — the same packaging and
 image checks apply to it as to an integration.
@@ -154,16 +154,26 @@ that did not ship. `workflow_dispatch` is the manual retry.
 
 ## `backmerge.yml`
 
-A hotfix reaches `master` without passing through `development`, so `development`
-ends up missing it — and the next `development → master` integration silently
-reverts the fix. On a merged `hotfix/*` PR, this opens a `master → development` PR.
+`release.yml` commits to `master`: the version bump in `pyproject.toml` and `uv.lock`,
+plus the tag. Nothing carries that back, so `development` keeps showing the previous
+version. A hotfix, which skips `development`, widens the gap the same way. Once `ci`,
+`security`, `release` and `docs` have all passed on `master`, this opens the
+`master → development` PR that syncs it.
 
-Only for hotfixes, deliberately: a normal integration merge also leaves `master`
-ahead of `development`, so a plain "is master ahead?" check would fire on every
-single release.
+It runs on `workflow_run` for each of the four and acts only when the last one
+finishes: the others find a pipeline still running (or failed) and stop, so a release
+that did not settle never gets back-merged. It checks out nothing; it reads run
+results through the API and skips if `development` already contains `master` or a
+back-merge PR is open. `workflow_run` only fires from the file on the default branch,
+so a change to `backmerge.yml` takes effect once it is on `development`, not when it
+merges to `master`.
+
+Merge it with a merge commit, not a squash — a squash leaves `development` behind
+`master` again. The repo setting *Actions → General → Allow GitHub Actions to create
+and approve pull requests* must be on, or `gh pr create` is refused.
 
 The PR uses `--head master` rather than a snapshot branch, so it tracks the tip as
-`master` moves — including the release commit that lands moments later.
+`master` moves.
 
 > **Known limitation.** PRs opened with `GITHUB_TOKEN` do not trigger workflows, so
 > the back-merge PR arrives without check runs. The content is already on `master`,

@@ -11,9 +11,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from gen_docs_data import OUT, PHASES_OUT, build, build_phases  # noqa: E402
+from gen_docs_data import OUT, PHASES_OUT, build, build_phases
 
-from ci_doctor.config.loader import load_config  # noqa: E402
+from ci_doctor.config.loader import load_config
 
 
 def test_docs_data_is_current():

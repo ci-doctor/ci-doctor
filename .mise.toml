@@ -16,6 +16,10 @@ node = "latest"      # the runtime the npm backend below needs
 # A tool rather than a task, so `mise install` pins its version like everything else.
 "npm:@colbymchenry/codegraph" = "latest"
 
+# Conventional Commit linting; the commit-msg and pre-push hooks and the CI job share
+# .commitlintrc.yml.
+"npm:@commitlint/cli" = "latest"
+
 [tasks.setup]
 description = "One-time: install deps and switch git to the repo's hooks"
 run = [
@@ -73,9 +77,13 @@ run = [
 description = "Scan history for secrets, same as the CI job"
 run = "gitleaks git --no-banner --redact"
 
+[tasks.commitlint]
+description = "Lint this branch's commits against development, same as the CI job"
+run = "commitlint --from \"$(git merge-base HEAD origin/development)\" --to HEAD"
+
 [tasks.check]
 description = "Everything CI runs, in one command"
-depends = ["test", "lint", "leaks"]
+depends = ["test", "lint", "leaks", "commitlint"]
 
 # cleanup: delete rebuildable local junk (keeps .venv, node_modules, .codegraph)
 [tasks.cleanup]

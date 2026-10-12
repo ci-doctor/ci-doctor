@@ -107,7 +107,7 @@
             .then(async (mod) => {
               // Pagefind records URLs relative to the directory it indexed (dist/),
               // so they need the base path back or every result 404s. The trailing
-              // slash matters: without it the join produces "/ci-doctorconcepts/".
+              // slash matters: without it the join drops the separator ("concepts/" instead of "/concepts/").
               // highlightParam puts the query on every result URL, which is what
               // the highlighter below reads once the reader lands on the page.
               await mod.options({ baseUrl: base, excerptLength: 20, highlightParam: HIGHLIGHT_PARAM });

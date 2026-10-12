@@ -35,8 +35,10 @@ class MarkdownRenderer(Renderer):
             "",
             "| Phase | Category | Confidence | Infra not code | Likely flaky |",
             "|---|---|---|---|---|",
-            f"| {report.failure_phase} | {report.category} | {report.confidence} | "
-            f"{_yn(report.is_infra_not_code)} | {_yn(report.likely_flaky)} |",
+            (
+                f"| {report.failure_phase} | {report.category} | {report.confidence} | "
+                f"{_yn(report.is_infra_not_code)} | {_yn(report.likely_flaky)} |"
+            ),
             "",
             "### Root cause",
             report.root_cause,

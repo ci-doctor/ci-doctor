@@ -23,6 +23,19 @@ not in `.mise.toml`: uv installs it from `requires-python`, and pinning it twice
 one more thing to drift. Neither is ruff, for the same reason — it is a dev
 dependency, so `uv.lock` pins it and `uv run ruff` is identical locally and in CI.
 
+The LLM backends are pip extras (`openai`, `anthropic`, `bedrock`, ...), and the base
+install has none of their SDKs, so the provider tests skip under a plain `uv sync`. To run
+them, sync every extra that can coexist (CI's `providers` job does exactly this):
+
+```sh
+uv sync --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle \
+  --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
+```
+
+`uv sync --all-extras` fails by design: `litellm` pins `openai<3.0` while Pydantic AI's
+OpenAI integration needs `openai>=3.8`, so `litellm` is a separate install track
+(`--extra litellm`), never combined with `openai` or `bedrock-mantle`.
+
 `codegraph` comes with it but is not run for you — indexing this repo into
 `.codegraph/` is your call, and the index is local to your machine (the directory
 ignores its own contents).
@@ -68,8 +81,8 @@ shell — read them, they are short.
 | Hook | Does |
 |---|---|
 | `pre-commit` | `ruff check --fix` then `ruff format` on staged `*.py`, `ruff format --preview` on staged `*.md`, and re-stages only what it rewrote. Fix runs first: removing an unused import leaves the blank lines it sat between. |
-| `commit-msg` | Rejects anything that is not a Conventional Commit. Not cosmetic — the release workflow reads the type to decide whether to ship. |
-| `pre-push` | `pytest`, `ty`, and `gitleaks` if installed. Everything CI runs, before the round trip. |
+| `commit-msg` | `commitlint` (rules in `.commitlintrc.yml`, shared with CI) rejects anything that is not a Conventional Commit. Not cosmetic — the release workflow reads the type to decide whether to ship. |
+| `pre-push` | `pytest`, `ty`, `commitlint` over the branch's commits, and `gitleaks` if installed. Everything CI runs, before the round trip. |
 
 `--no-verify` skips them. CI does not, so it only moves where you find out.
 
@@ -93,11 +106,12 @@ Two hops for normal work, plus one shortcut for emergencies:
 ```
 <type>/<slug>  ──PR──▶  development  ──PR──▶  master
    ci + security         ci + security        ci + security + release-gate
-                                              then: release.yml, then docs.yml
+                                              then: release.yml, then docs.yml,
+                                              then: back-merge PR into development
 
 hotfix/<slug>  ─────────────PR──────────────▶  master
                                               ci + security + release-gate
-                                              then: back-merge PR into development
+                                              then: as above
 ```
 
 - **`<type>/<slug>`** — branch off `development`, named with the same types the
@@ -114,8 +128,12 @@ hotfix/<slug>  ─────────────PR────────
   `release.yml` is about to do, minus publishing.
 - **`hotfix/<slug>`** — branch off `master`, not `development`. `hotfix` is a valid
   branch prefix but **not** a valid commit type, so the commits inside it are still
-  `fix:`. When the PR merges, `backmerge.yml` opens a `master → development` PR;
-  merge it, or the next integration will revert the fix.
+  `fix:`.
+- **Back-merge** — `release.yml` commits the version bump to `master`, so `development`
+  is always one commit behind after a release, and a hotfix skips it entirely. Once
+  `ci`, `security`, `release` and `docs` have all passed on `master`, `backmerge.yml`
+  opens a `master → development` PR. Merge it with a merge commit, or the next
+  integration will revert the hotfix and `development` will keep the stale version.
 
 What each job does, and why it lives where it does, is [docs/ci-cd.md](docs/ci-cd.md).
 

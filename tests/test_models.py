@@ -55,9 +55,11 @@ def test_core_carries_no_vendor_name_in_its_code():
     for path in sorted(core.glob("*.py")):
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
-            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                if ast.get_docstring(node) is not None:
-                    node.body = node.body[1:] or [ast.Pass()]
+            if (
+                isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                and ast.get_docstring(node) is not None
+            ):
+                node.body = node.body[1:] or [ast.Pass()]
         hits = sorted({m.group(0) for m in vendors.finditer(ast.unparse(tree))})
         if hits:
             offenders[path.name] = hits

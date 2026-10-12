@@ -91,7 +91,7 @@ def make_ci_provider(cfg: Config) -> CIProvider:
     """
     adapter = make_adapter(cfg.ci, cfg)
     if not isinstance(adapter, CIProvider):
-        raise ValueError(f"unsupported CI system: {cfg.ci}")
+        raise ValueError(f"unsupported CI system: {cfg.ci}")  # noqa: TRY004 - an unknown name, not a type error
     return adapter
 
 

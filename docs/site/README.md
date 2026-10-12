@@ -1,12 +1,12 @@
 # ci-doctor docs site
 
 Static documentation site built with [Astro](https://astro.build), published to
-GitHub Pages at <https://fennet82.github.io/ci-doctor>.
+GitHub Pages at <https://docs.cidoc.dev>.
 
 ```sh
 cd docs/site
 npm install
-npm run dev      # local preview at http://localhost:4321/ci-doctor
+npm run dev      # local preview at http://localhost:4321/
 npm run build    # static output in dist/
 ```
 

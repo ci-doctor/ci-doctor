@@ -253,6 +253,15 @@ a:hover { text-decoration: underline; }
 }
 .brand:hover { text-decoration: none; }
 .brand img { width: 26px; height: 26px; }
+.brand .dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .brand .light { display: none; }
+  :root:not([data-theme='light']) .brand .dark { display: block; }
+}
+:root[data-theme='dark'] .brand .light { display: none; }
+:root[data-theme='dark'] .brand .dark { display: block; }
+:root[data-theme='light'] .brand .light { display: block; }
+:root[data-theme='light'] .brand .dark { display: none; }
 
 /* Reads as metadata on the wordmark, not as a second nav item — hence the
    monospace, the muted colour, and no underline on hover. */

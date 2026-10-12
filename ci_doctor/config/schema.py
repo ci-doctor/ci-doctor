@@ -12,17 +12,11 @@ field added without one ships an undocumented knob.
 import logging
 from typing import Annotated, Literal
 
-from pydantic import (
-    AfterValidator,
-    BaseModel,
-    ConfigDict,
-    Field,
-    StringConstraints,
-    ValidationInfo,
-    model_validator,
-)
-
 from ci_doctor.core.regex import compile_user
+from pydantic import ConfigDict, Field, model_validator
+
+from ci_doctor.config.types import AwsConfig, AzureConfig, GcpConfig, GitHubConfig, GitLabConfig, OpenAiConfig
+from ci_doctor.config.types import Strict as _Strict
 
 log = logging.getLogger("ci_doctor.config")
 
@@ -31,50 +25,13 @@ log = logging.getLogger("ci_doctor.config")
 SCHEMA_ID = "https://github.com/fennet82/ci-doctor/releases/latest/download/ci-doctor.schema.json"
 
 
-class _Strict(BaseModel):
-    """Base for every config section: unknown keys raise instead of being ignored."""
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class GitLabConfig(_Strict):
-    """How to reach GitLab. Used when GitLab is the ``ci`` or the ``scm``."""
-
-    base_url: str = Field(
-        "https://gitlab.com",
-        description="GitLab base URL. Override for a self-hosted or internal instance.",
-    )
-    api_version: str = Field("v4", description="GitLab REST API version.")
-    token_env: str = Field(
-        "CI_DOCTOR_GITLAB_TOKEN",
-        description="Name of the env var holding a read-only API token. The token itself is never a config value.",
-    )
-    token_file: str | None = Field(
-        None,
-        description="Path to a file holding the API token, e.g. /run/secrets/gitlab_token. Wins over token_env.",
-    )
-    ca_bundle: str | None = Field(None, description="Path to a custom CA bundle for the GitLab endpoint.")
-    verify_ssl: bool = Field(True, description="Verify the GitLab endpoint's TLS certificate.")
-    timeout_seconds: int = Field(30, description="Per-request timeout for GitLab API calls.")
-
-
-class GitHubConfig(_Strict):
-    """How to reach GitHub. Used when GitHub is the ``ci`` or the ``scm``."""
-
-    base_url: str = Field(
-        "https://api.github.com",
-        description="GitHub API base URL. Override for GitHub Enterprise, e.g. https://ghe.internal/api/v3.",
-    )
-    token_env: str = Field(
-        "CI_DOCTOR_GITHUB_TOKEN",
-        description="Name of the env var holding a read-only API token. The token itself is never a config value.",
-    )
-    token_file: str | None = Field(
-        None, description="Path to a file holding the API token. Wins over token_env."
-    )
-    ca_bundle: str | None = Field(None, description="Path to a custom CA bundle for the GitHub endpoint.")
-    verify_ssl: bool = Field(True, description="Verify the GitHub endpoint's TLS certificate.")
-    timeout_seconds: int = Field(30, description="Per-request timeout for GitHub API calls.")
+#: The settings block each cloud backend requires.
+_BACKEND_BLOCK = {
+    "azure": "azure",
+    "bedrock": "aws",
+    "bedrock-mantle": "aws",
+    "google-cloud": "gcp",
+}
 
 
 class LLMConfig(_Strict):
@@ -84,50 +41,100 @@ class LLMConfig(_Strict):
     failing the run.
     """
 
-    enabled: bool = Field(True, description="Set false for a deterministic-only report with no LLM call.")
-    backend: Literal["openai", "litellm", "claude_code"] = Field(
+    enabled: bool = Field(
+        default=True, description="Set false for a deterministic-only report with no LLM call."
+    )
+    backend: Literal[
         "openai",
+        "anthropic",
+        "azure",
+        "bedrock",
+        "bedrock-mantle",
+        "google",
+        "google-cloud",
+        "groq",
+        "mistral",
+        "cohere",
+        "xai",
+        "huggingface",
+        "litellm",
+    ] = Field(
+        default="openai",
         description=(
-            "openai: any OpenAI-compatible endpoint (needs api_base). litellm: providers the "
-            "OpenAI shape cannot reach — Bedrock, Vertex, Azure. claude_code: the local `claude` CLI."
+            "Which provider to call. openai: any OpenAI-compatible endpoint (needs api_base). "
+            "azure, bedrock, bedrock-mantle, google-cloud: cloud auth plus their own settings. "
+            "litellm: any other provider, by its model string, e.g. vertex_ai/gemini-1.5-pro."
         ),
     )
-    model: str | None = Field(None, description='Model identifier, e.g. "qwen2.5-coder:32b".')
-    api_base: str | None = Field(None, description="Base URL of the OpenAI-compatible / litellm endpoint.")
+    model: str | None = Field(default=None, description='Model identifier, e.g. "qwen2.5-coder:32b".')
+    api_base: str | None = Field(
+        default=None, description="Base URL of the OpenAI-compatible / litellm endpoint."
+    )
     api_key_env: str | None = Field(
-        None,
-        description="Name of the env var holding the LLM API key. Often unset — local servers need no key.",
+        default=None,
+        description="Name of the env var holding the LLM API key. Often unset — local servers need no key, "
+        "and a hosted backend without this set falls back to its own default env var (e.g. ANTHROPIC_API_KEY).",
     )
     ca_bundle: str | None = Field(
-        None, description="CA bundle for the LLM endpoint, independent of the CI provider's."
+        default=None, description="CA bundle for the LLM endpoint, independent of the CI provider's."
+    )
+    openai: OpenAiConfig = Field(
+        default_factory=OpenAiConfig, description="Settings for backend: openai. Optional."
+    )
+    azure: AzureConfig | None = Field(
+        default=None, description="Settings for backend: azure. Required there."
+    )
+    aws: AwsConfig | None = Field(
+        default=None, description="Settings for backend: bedrock or bedrock-mantle. Required there."
+    )
+    gcp: GcpConfig | None = Field(
+        default=None, description="Settings for backend: google-cloud. Required there."
     )
     max_input_tokens: int = Field(
-        12000,
+        default=12000,
         description="Evidence budget. Larger bundles are truncated, and every truncation is visible in the report.",
     )
     temperature: float = Field(
-        0.1, description="Sampling temperature. Low keeps the postmortem reproducible."
+        default=0.1, description="Sampling temperature. Low keeps the postmortem reproducible."
     )
-    timeout_seconds: int = Field(120, description="Timeout for the single LLM call.")
+    timeout_seconds: int = Field(
+        default=120,
+        description="Wall-clock budget for one LLM call, schema-repair retry and SDK retries included. "
+        "Also the per-request timeout.",
+    )
     max_retries: int = Field(
-        1,
+        default=1,
         ge=0,
-        description=(
-            "HTTP-level retries per request, handed to the SDK. Kept low on purpose: the "
-            "repair retry in llm/report.py already retries, and the two multiply."
-        ),
+        description="HTTP-transport retries per request, set on the provider's SDK client. Applies to "
+        "providers whose SDK has the setting (openai, azure, anthropic, groq, ...); bedrock and "
+        "litellm keep their own. Kept low: Pydantic AI's own Agent already retries once on a "
+        "schema-invalid reply, and the two multiply.",
     )
+
+    @model_validator(mode="after")
+    def _backend_has_its_settings(self) -> "LLMConfig":
+        """A backend that takes a settings block must be given one."""
+        block = _BACKEND_BLOCK.get(self.backend)
+        if block and getattr(self, block) is None:
+            raise ValueError(f"llm.backend '{self.backend}' requires an `llm.{block}:` block")
+        return self
+
+    @property
+    def provider_settings(self) -> _Strict | None:
+        """The settings block of the chosen backend, or None if it takes none."""
+        block = _BACKEND_BLOCK.get(self.backend)
+        return getattr(self, block) if block else None
 
 
 class AnalysisConfig(_Strict):
     """Which jobs get analyzed, and which skip the LLM."""
 
     include_allowed_failures: bool = Field(
-        False, description="Analyze jobs marked allow_failure. They are noise by default."
+        default=False, description="Analyze jobs marked allow_failure. They are noise by default."
     )
-    max_jobs_analyzed: int = Field(10, description="Cap on failed jobs analyzed per run.")
+    max_jobs_analyzed: int = Field(default=10, description="Cap on failed jobs analyzed per run.")
     max_parallel_jobs: int = Field(
-        4,
+        default=4,
         ge=1,
         description=(
             "Jobs analyzed concurrently. The LLM call dominates a run and the calls are "
@@ -260,7 +267,9 @@ class MatcherConfig(_Strict):
 class ExtractionConfig(_Strict):
     """How the causal lines are pulled out of a job log."""
 
-    tail_lines: int = Field(120, description="Lines kept from the end of the blamed section as a fallback.")
+    tail_lines: int = Field(
+        default=120, description="Lines kept from the end of the blamed section as a fallback."
+    )
     matchers: list[MatcherConfig] = Field(
         default_factory=list,
         description=(
@@ -274,7 +283,7 @@ class DenoiseConfig(_Strict):
     """Log cleanup applied before evidence extraction."""
 
     collapse_carriage_returns: bool = Field(
-        True, description=r"Collapse \r progress bars to their final rendered state."
+        default=True, description=r"Collapse \r progress bars to their final rendered state."
     )
     dedupe_repeats: bool = Field(True, description='Fold repeated lines into "<line>  (×47)".')
     noise_patterns: list[Re2] = Field(
@@ -285,11 +294,11 @@ class DenoiseConfig(_Strict):
 class OutputConfig(_Strict):
     """Where the report goes."""
 
-    terminal: bool = Field(True, description="Render the report to the terminal.")
-    markdown_path: str = Field("report.md", description="Path the Markdown report is written to.")
-    json_path: str = Field("report.json", description="Path the JSON report is written to.")
+    terminal: bool = Field(default=True, description="Render the report to the terminal.")
+    markdown_path: str = Field(default="report.md", description="Path the Markdown report is written to.")
+    json_path: str = Field(default="report.json", description="Path the JSON report is written to.")
     mr_note: bool = Field(
-        False,
+        default=False,
         description="Post or update a note on the MR/PR. Needs a live pipeline, not an offline log replay.",
     )
 
@@ -298,7 +307,7 @@ class RedactionConfig(_Strict):
     """Secret scrubbing. Applied before anything is rendered, written or sent."""
 
     enabled: bool = Field(
-        True, description="Scrub tokens, credentials in URLs and env secrets from all output."
+        default=True, description="Scrub tokens, credentials in URLs and env secrets from all output."
     )
     extra_patterns: list[Re2] = Field(
         default_factory=list, description="Additional regexes (RE2) to scrub, on top of the built-in set."
@@ -314,14 +323,14 @@ class Config(_Strict):
     )
 
     ci: str = Field(
-        "github",
+        default="github",
         description=(
             "Which CI system to read the failed run from: github or gitlab. Only used for a live "
             "run — replaying a log file detects the format from the log itself."
         ),
     )
     scm: str | None = Field(
-        None,
+        default=None,
         description=(
             "Which git host to post the MR/PR note to. Defaults to `ci`, which is right whenever the "
             "CI system is also the git host. Set it for mixed setups — `ci: jenkins` with `scm: gitlab`. "
@@ -329,7 +338,7 @@ class Config(_Strict):
         ),
     )
     provider: str | None = Field(
-        None,
+        default=None,
         description="Deprecated alias for `ci`, kept for one release. Set `ci` instead.",
         deprecated=True,
     )

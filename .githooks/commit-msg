@@ -1,32 +1,9 @@
 #!/usr/bin/env bash
-# Conventional Commits. Not cosmetic: the release workflow greps these to decide
-# whether to ship the next alpha, so a malformed type silently ships nothing.
+# Conventional Commits, rules in .commitlintrc.yml. Not cosmetic: the release workflow
+# reads the type to decide whether to ship the next alpha. commitlint already lets
+# merge, revert, fixup! and squash! commits through.
 set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 1
 
-subject=$(head -n1 "$1")
-
-# Let the tooling's own commits and in-progress rebases through untouched.
-[[ "$subject" =~ ^(Merge|Revert|fixup!|squash!) ]] && exit 0
-[[ "$subject" =~ ^chore\(release\): ]] && exit 0
-
-types='feat|fix|docs|test|chore|refactor|perf|ci|build|style|revert'
-if [[ ! "$subject" =~ ^($types)(\([a-z0-9./_-]+\))?!?:\ .+ ]]; then
-  cat >&2 <<EOF
-commit-msg: not a Conventional Commit.
-
-  got:      $subject
-  expected: <type>(<optional scope>)<optional !>: <imperative summary>
-  types:    ${types//|/, }
-
-  feat:, fix:, or "BREAKING CHANGE:" in the body -> ships the next alpha
-  everything else -> no release, rides along in the next one
-
-See CONTRIBUTING.md §3.
-EOF
-  exit 1
-fi
-
-if [[ ${#subject} -gt 72 ]]; then
-  echo "commit-msg: subject is ${#subject} chars; keep it under 72." >&2
-  exit 1
-fi
+command -v commitlint >/dev/null 2>&1 || { echo "commit-msg: commitlint not installed; run \`mise install\`" >&2; exit 1; }
+exec commitlint --edit "$1"
