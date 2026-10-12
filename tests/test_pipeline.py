@@ -2,7 +2,6 @@
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Job, Run
-
 from ci_doctor.core.ports import LLMClient
 from ci_doctor.pipeline import _ordered, analyze_run, run_from_file
 from tests import support

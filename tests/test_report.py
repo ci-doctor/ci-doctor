@@ -44,6 +44,7 @@ class FakeClient:
 
     def complete_structured(self, prompt, output_type):
         """Return the next queued response validated as `output_type`, or raise it if it is an exception."""
+        self.prompts.append(prompt)
         r = self.responses[min(self.calls, len(self.responses) - 1)]
         self.calls += 1
         if isinstance(r, Exception):
@@ -222,7 +223,7 @@ _INHOUSE_PACK = {
 def test_an_in_house_packs_description_reaches_the_prompt():
     """The model knows jest, not your deploy CLI: the pack's description is all it gets."""
     job, attr, bundle, _cfg = _pipeline(_INHOUSE_LOG, overrides={"extraction": {"matchers": [_INHOUSE_PACK]}})
-    prompt = _render_prompt(job, attr, bundle, {})
+    prompt = _render_prompt(job, attr, bundle)
     assert f"- acme_deployctl [tool]: {_INHOUSE_PACK['description']}" in prompt
 
 
@@ -231,7 +232,7 @@ def test_the_prompt_names_each_pack_behind_the_excerpt_with_its_role(provider):
     """A wrapper is labelled as one, so the model can look past npm's epilogue to tsc."""
     log = support.read_log(provider, "npm_build_failure")
     job, attr, bundle, _cfg = _pipeline(log, provider=provider)
-    prompt = _render_prompt(job, attr, bundle, {})
+    prompt = _render_prompt(job, attr, bundle)
     assert "- tsc [tool]: " in prompt
     assert "- npm [wrapper]: " in prompt
     assert "- pytest [" not in prompt, "a pack that matched nothing is not context"
@@ -278,4 +279,4 @@ def test_a_secret_in_a_description_is_redacted_in_the_prompt():
 def test_the_system_prompt_explains_every_role(role):
     """A role the model was never told about is a label it will guess at."""
     job, attr, bundle, _cfg = _pipeline(_SIMPLE_LOG)
-    assert f"`{role}`" in _render_prompt(job, attr, bundle, {}).split("\n---\n")[0]
+    assert f"`{role}`" in _render_prompt(job, attr, bundle).split("\n---\n")[0]

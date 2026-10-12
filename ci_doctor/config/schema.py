@@ -12,11 +12,18 @@ field added without one ships an undocumented knob.
 import logging
 from typing import Annotated, Literal
 
-from ci_doctor.core.regex import compile_user
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    model_validator,
+)
 
 from ci_doctor.config.types import AwsConfig, AzureConfig, GcpConfig, GitHubConfig, GitLabConfig, OpenAiConfig
 from ci_doctor.config.types import Strict as _Strict
+from ci_doctor.core.regex import compile_user
 
 log = logging.getLogger("ci_doctor.config")
 
