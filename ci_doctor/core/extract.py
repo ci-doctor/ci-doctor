@@ -130,17 +130,18 @@ def _drop_to_fit(lines: list[str], windows: list[_Window], max_tokens: int) -> l
         window can exceed the budget on its own (an unbounded `start`/`end` block
         over a large suite), and truncating *inside* it is `budget.fit`'s job.
     """
-    # Worst first: lowest rank, then earliest — a job stops at its first failing command.
+    # Best first: highest rank, then latest — a job stops at its first failing command.
     # ponytail: within one compiler's output the first error is the root and is shed first;
     # fixing it needs command boundaries the log lines do not carry.
-    ranked = sorted(
-        ((estimate_tokens("\n".join(lines[w.start : w.end])) + _MARKER_TOKENS, w) for w in windows),
-        key=lambda cw: (cw[1].rank, cw[1].start),
-    )
-    total = _MARKER_TOKENS + sum(cost for cost, _ in ranked)  # each window plus one gap marker
-    while len(ranked) > 1 and total > max_tokens:
-        total -= ranked.pop(0)[0]
-    return sorted((w for _, w in ranked), key=lambda w: w.start)
+    best_first = sorted(windows, key=lambda w: (w.rank, w.start), reverse=True)
+    kept: list[_Window] = []
+    total = _MARKER_TOKENS  # n windows leave at most n + 1 gaps, so one marker up front
+    for w in best_first:
+        total += estimate_tokens("\n".join(lines[w.start : w.end])) + _MARKER_TOKENS
+        if kept and total > max_tokens:
+            break
+        kept.append(w)
+    return sorted(kept, key=lambda w: w.start)
 
 
 def extract(
