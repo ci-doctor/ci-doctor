@@ -39,7 +39,7 @@ error: could not compile \`ledger\``;
         line that explains the failure.
     </p>
 
-    <h2>Matcher, window, priority</h2>
+    <h2>Matcher, window, role</h2>
     <p>
         A matcher is a regex that recognises one tool's failure output. Where it
         fires, it anchors a <strong>window</strong> — the run of lines actually worth
@@ -48,21 +48,18 @@ error: could not compile \`ledger\``;
     </p>
     <Code code={windowExample} lang="text" theme="github-dark" />
     <p>
-        <strong>Priority</strong> decides who survives when the evidence exceeds the
-        budget. Rank a pack by how <em>diagnostic</em> it is, not how loud: <code
-            >npm ERR!</code
-        > always trails the compiler errors that caused it, so it must lose to <code
-            >tsc</code
-        >. The full catalogue — all 35 shipped packs, what each one catches, and
-        how to add your own — is on <a href={url("/concepts/matchers/")}
-            >Matchers</a
-        >.
+        <strong>Role</strong> decides who survives when the evidence exceeds the
+        budget: a <code>tool</code>'s window outranks a <code>wrapper</code>'s, which
+        outranks the <code>fallback</code>. <code>npm ERR!</code> always trails the
+        compiler errors that caused it, so it must lose to <code>tsc</code>. The full
+        catalogue — every shipped pack, what each one catches, and how to add your
+        own — is on <a href={url("/concepts/matchers/")}>Matchers</a>.
     </p>
 
     <h2>Budget</h2>
     <p>
         The evidence has to fit the model's input limit. Two passes, in order:
-        shed whole low-priority windows, then trim whatever survived. Trimming
+        shed whole windows, lowest-ranked first, then trim whatever survived. Trimming
         keeps the tail, because the failure lives at the end of a log — and it
         announces what it dropped.
     </p>

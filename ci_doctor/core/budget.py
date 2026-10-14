@@ -33,7 +33,7 @@ def fit(lines: list[str], max_tokens: int) -> tuple[list[str], bool]:
         A ``(lines, truncated)`` pair. When truncated, the first line is a visible
         "… [N lines elided …] …" marker.
 
-    Low-priority windows are already shed upstream by `extract._drop_to_fit`, so
+    The lowest-ranked windows are already shed upstream by `extract._drop_to_fit`, so
     this only ever cuts *inside* the evidence that survived that pass.
 
     ponytail: tail-keep within the surviving window. Upgrade to phase-aware

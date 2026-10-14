@@ -117,7 +117,11 @@ def analyze(
         verbose: Enable debug logging.
     """
     _configure_logging(verbose)
-    cfg = load_config(repo_config=config_path)
+    try:
+        cfg = load_config(repo_config=config_path)
+    except ValueError as exc:  # pydantic's ValidationError included: the user's config, not a crash
+        typer.echo(f"invalid config: {exc}", err=True)
+        return
     log.debug("ci=%s scm=%s target=%s job_id=%s", cfg.ci, cfg.scm_vendor, target, job_id)
 
     run = provider = None

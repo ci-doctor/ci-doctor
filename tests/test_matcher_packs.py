@@ -43,19 +43,24 @@ CASES = [
         "your php version (8.1.27) does not satisfy that requirement",
         "dependency",
     ),
-    ("gradle_build_failure", ["gradle"], "Execution failed for task ':app:compileJava'.", "build"),
+    (
+        "gradle_build_failure",
+        ["gradle", "build_failure_banner"],
+        "Execution failed for task ':app:compileJava'.",
+        "build",
+    ),
     ("bazel_build_failure", ["bazel"], "'GL_TEXTURE_2D_ARRAY' was not declared in this scope", "build"),
     ("playwright_failure", ["playwright"], 'Expected string: "$27.00"', "test"),
     ("cypress_failure", ["cypress"], "but the text was '$30.00'", "test"),
     ("python_traceback", ["python_traceback"], "ZeroDivisionError: float division by zero", "runtime"),
     ("go_panic", ["go_panic"], "index out of range [512] with length 512", "runtime"),
-    ("cpp_link_error", ["cc_cpp"], "undefined reference to `Pipeline::flush()'", "build"),
+    ("cpp_link_error", ["cc_cpp", "make"], "undefined reference to `Pipeline::flush()'", "build"),
     ("eslint_errors", ["eslint"], "'discount' is assigned a value but never used", "build"),
     ("mypy_type_error", ["python_lint"], 'Unsupported operand types for / ("Decimal" and "None")', "build"),
     ("terraform_apply_error", ["terraform"], "BucketAlreadyOwnedByYou", "config"),
     ("pnpm_lockfile_outdated", ["pnpm"], "ERR_PNPM_OUTDATED_LOCKFILE", "dependency"),
     ("yarn_missing_package", ["yarn"], 'Couldn\'t find package "@acme/design-tokens@^3.1.0"', "dependency"),
-    ("bun_test_failure", ["bun"], "error: expect(received).toBe(expected)", "test"),
+    ("bun_test_failure", ["bun", "js_script_exit"], "error: expect(received).toBe(expected)", "test"),
     ("node_uncaught_error", ["node_runtime"], "Error: missing DATABASE_URL in production", "runtime"),
     ("pytest_failure_verbose", ["pytest"], "assert 3000 == 2700", "test"),
     ("jest_test_failure", ["jest"], "Cart › applies a percentage discount to the subtotal", "test"),
@@ -143,7 +148,7 @@ def test_every_diagnostic_in_a_multi_error_build_reaches_the_report():
 # Every failed job ends with the runner saying so, in the runner's own words. A
 # pack that fires on *that* line has coverage on paper for every fixture in the
 # suite while proving nothing about the tool it claims to match — which is how
-# `bazel` came to open a priority-85 window on 40 of 41 logs, on the strength of
+# `bazel` came to open a high-ranked window on 40 of 41 logs, on the strength of
 # `^ERROR: .*(failed|FAILED)` matching "ERROR: Job failed: exit code 1".
 RUNNER_TRAILERS = [
     # GitLab
@@ -191,3 +196,22 @@ def test_generic_error_catches_a_tool_with_no_pack(provider):
     lines = support.log_lines(provider, "warning_only_fetch")
     out = extract(lines, [MATCHERS["generic_error"]], tail_lines=0)
     assert any("custom tool reported a fatal problem" in line for line in out)
+
+
+@pytest.mark.parametrize("matcher_id", sorted(MATCHERS))
+def test_every_pack_documents_and_proves_itself(matcher_id):
+    """Semgrep's rule contract: a description, tags, and true/false positives."""
+    m = MATCHERS[matcher_id]
+    assert m.description, f"{matcher_id} has no description"
+    assert m.classification, f"{matcher_id} has no classification"
+    assert m.examples.match and m.examples.no_match, f"{matcher_id} needs a match and a no_match example"
+
+
+@pytest.mark.parametrize("matcher_id", sorted(MATCHERS))
+def test_every_example_is_accepted_or_rejected_by_the_anchor(matcher_id):
+    """`match` lines open a window, `no_match` lines do not — `exclude` included."""
+    m = MATCHERS[matcher_id]
+    missed = [line for line in m.examples.match if not _windows_for([line], [m])]
+    leaked = [line for line in m.examples.no_match if _windows_for([line], [m])]
+    assert not missed, f"{matcher_id} does not accept its own match examples: {missed}"
+    assert not leaked, f"{matcher_id} accepts its no_match examples: {leaked}"

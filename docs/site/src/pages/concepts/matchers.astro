@@ -9,7 +9,7 @@ import catalogue from "../../data/matchers.json";
 // fails if this file drifts from what ships. Never edit the JSON by hand.
 const total = catalogue.reduce((n, g) => n + g.packs.length, 0);
 
-// The notes come from `NOTES` in scripts/gen_docs_data.py and use `backticks`
+// The notes are each pack's own `description` in defaults.yml and use `backticks`
 // for inline code — the only markup they carry. Escape first: several notes
 // contain angle brackets (`error <Capital>`).
 const inlineCode = (s: string) =>
@@ -24,16 +24,21 @@ const addPack = `# .ci-doctor.yml — a new id is *added* to the shipped packs
 extraction:
   matchers:
     - id: my_service_errors
+      role: tool
+      classification: [any]
+      description: My service's own error lines.
       pattern: '^\\[myservice\\] (ERROR|PANIC)'
       before: 3
       after: 12
-      priority: 85`;
+      examples:
+        match: ['[myservice] ERROR db unreachable']
+        no_match: ['[myservice] WARN slow query']`;
 
 const retune = `# A shipped id *overrides* that pack, field by field, and logs a warning.
 extraction:
   matchers:
     - id: pytest
-      priority: 95        # start:/end: are inherited, not blanked`;
+      role: wrapper       # start:/end: are inherited, not blanked`;
 
 const testIt = `# Prove it fires before you trust it — a matcher that never matches
 # fails silently, because the tail window still returns something.
@@ -83,11 +88,14 @@ ci-doctor analyze path/to/failing-job.log`;
         </tbody>
     </table>
     <p>
-        Both carry a <code>priority</code>, which decides who survives when the
-        evidence exceeds the token budget: whole low-priority windows are shed
-        before the survivors are trimmed. Rank a pack by how <em>diagnostic</em> it
-        is, not how loud — <code>npm ERR!</code> (75) always trails the compiler errors
-        that caused it, so it loses to <code>tsc</code> (80).
+        Both carry a <code>role</code>, which decides who survives when the
+        evidence exceeds the token budget: <code>fallback</code> windows are shed
+        first, then <code>wrapper</code>, then <code>tool</code> — and within a role
+        the earliest, because a job stops at its first failing command. A wrapper
+        reports that something it ran failed: <code>npm ERR!</code> always trails the
+        compiler errors that caused it, so it loses to <code>tsc</code> wherever it
+        sits. Every regex is RE2 — see
+        <a href={url("/reference/configuration/")}>Configuration</a> for the syntax.
     </p>
 
     <div class="note">
@@ -104,7 +112,7 @@ ci-doctor analyze path/to/failing-job.log`;
     <h2>What happens to a match</h2>
     <p>
         Matching is only the first step. Every hit becomes a window, windows
-        that touch are merged, and priority decides which ones survive the
+        that touch are merged, and role and position decide which ones survive the
         budget — all of it in
         <code>core/extract.py</code>, before a model is ever involved.
     </p>
@@ -112,7 +120,7 @@ ci-doctor analyze path/to/failing-job.log`;
     <Extraction />
 
     <p>
-        Two details follow from this. Merged windows take the <em>highest</em> priority
+        Two details follow from this. Merged windows take the <em>highest</em> role
         they absorbed, so a good pack never loses rank by sitting next to a weak one.
         And shedding stops at one window: a single unbounded <code>start</code
         >/<code>end</code> block can exceed the budget alone, and cutting <em
@@ -147,7 +155,8 @@ ci-doctor analyze path/to/failing-job.log`;
                                     {p.kind === "block"
                                         ? "start → end"
                                         : `−${p.before} / +${p.after} lines`}
-                                    {" · "}priority {p.priority}
+                                    {" · "}{p.role}
+                                    {p.tags.length > 0 && ` · ${p.tags.join(", ")}`}
                                 </span>
                             </div>
                             <p
@@ -183,11 +192,18 @@ ci-doctor analyze path/to/failing-job.log`;
         to "lists replace". A new id is added alongside the shipped packs:
     </p>
     <Code code={addPack} lang="yaml" theme="github-dark" />
+    <p>
+        The <code>description</code> is not only for this page: the LLM sees it beside
+        the lines your pack selected. The model knows public tools, not your in-house
+        ones — so say what the tool is and what its failure means. The
+        <code>examples</code> are checked by the test suite for shipped packs only;
+        in your own config they document intent but are not run yet.
+    </p>
 
     <p>Reusing a shipped id retunes that pack instead, field by field:</p>
     <Code code={retune} lang="yaml" theme="github-dark" />
     <p>
-        Only the fields you write are overridden — setting <code>priority</code> on
+        Only the fields you write are overridden — setting <code>role</code> on
         <code>pytest</code> keeps its <code>start</code>/<code>end</code>,
         because blanking them would leave a matcher that can never fire.
         ci-doctor logs a warning naming any shipped pack you override, so an

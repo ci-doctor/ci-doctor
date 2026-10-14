@@ -33,3 +33,10 @@ def test_disabled_is_passthrough():
     """Disabling redaction returns the text untouched."""
     cfg = RedactionConfig(enabled=False)
     assert redact_text("glpat-ABCDEFGHIJKLMNOPQRSTUVWX", cfg) == "glpat-ABCDEFGHIJKLMNOPQRSTUVWX"
+
+
+def test_a_lone_surrogate_does_not_crash_user_redaction():
+    """RE2 matches UTF-8 bytes; a half surrogate from a model's JSON reply has none."""
+    out = redact_text("x tok_abc \udcff", RedactionConfig(extra_patterns=[r"tok_\w+"]), environ={})
+    assert "tok_abc" not in out
+    assert "[REDACTED:custom0]" in out
