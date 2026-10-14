@@ -46,7 +46,7 @@ Sonar compares PRs against.
 | `test` | `pytest --cov` on Python 3.11–3.14 | `fail-fast: false` — *which* versions break is the useful answer. Coverage lands on the run summary page; the 3.11 leg also uploads `coverage.xml` for Sonar. |
 | `lint` | `ruff check` (incl. `S`), `ruff format --check`, markdown formatting, `ty` | `ty` runs over `ci_doctor` only: a type error in the shipped package is what reaches a user. |
 | `docs` | `npm run build` of the site | Build only. Publishing is `docs.yml`, so a PR cannot touch what is live. |
-| `leaks` | `gitleaks` over the PR's whole history | `fetch-depth: 0` — a secret added and then removed is still a leak. |
+| `leaks` | `gitleaks` over the PR's whole history | `fetch-depth: 0` — a secret added and then removed is still a leak. The CLI, pinned by checksum, not gitleaks-action: the action needs a licence secret for an organisation, which fork and Dependabot PRs never get. |
 | `sonar` | SonarQube Cloud analysis, with the coverage from `test` | Its steps skip without `SONAR_TOKEN` and the job still passes: fork and Dependabot PRs get no secrets. Its quality gate is informational for now. |
 | `all-green` | Fails unless every job above succeeded | `if: always()`, so a failed or cancelled job turns it red instead of leaving it pending. |
 
@@ -188,7 +188,6 @@ on a check that never reports.
 | `RELEASE_APP_CLIENT_ID` | org | `release.yml` | The release stops at the token step: built, nothing published. |
 | `RELEASE_APP_PRIVATE_KEY` | org | `release.yml` | As above. |
 | `SONAR_TOKEN` | repo (the free plan has no org tokens) | `ci.yml` `sonar` | The job's steps skip and it passes. |
-| `GITLEAKS_LICENSE` | org | `ci.yml` `leaks` | gitleaks-action refuses to scan an organisation's repo. |
 | `DOCKERHUB_USERNAME` | repo | `release.yml` | The push steps skip; the release still completes and the tarball is still attached. |
 | `DOCKERHUB_TOKEN` | repo | `release.yml` | As above. Use a Docker Hub access token, not the account password. |
 

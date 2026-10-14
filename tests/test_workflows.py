@@ -1,5 +1,6 @@
 """Invariants of the workflow files that a reviewer would not spot in a diff."""
 
+import re
 from pathlib import Path
 
 import yaml
@@ -28,3 +29,12 @@ def test_release_pushes_the_tag_only_after_everything_built():
         "Generate the SBOM",
     ]
     assert all(steps.index(name) < push for name in built), steps
+
+
+def test_required_ci_jobs_pass_without_secrets():
+    """Fork and Dependabot PRs get no secrets; a step reading one must be skippable, or all-green blocks them."""
+    jobs = _load("ci.yml")["jobs"]
+    for name in jobs["all-green"]["needs"]:
+        for step in jobs[name]["steps"]:
+            reads_secret = re.search(r"secrets\.(?!GITHUB_TOKEN\b)", str(step))
+            assert not reads_secret or "if" in step, f"{name}: {step.get('name', step.get('uses'))}"
