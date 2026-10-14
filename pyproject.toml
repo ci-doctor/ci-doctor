@@ -114,6 +114,8 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["ci_doctor"]
 branch = true
+# coverage.xml's <source> relative to the repo, so Sonar resolves it on another runner.
+relative_files = true
 
 [tool.coverage.report]
 # A floor, not a target: raise it when a real gap closes, never lower it to go green.
@@ -123,3 +125,12 @@ show_missing = true
 # No [tool.semantic_release]: python-semantic-release is SemVer-only and cannot express
 # a PEP 440 alpha — it reads `0.0.1a1` as unparseable and writes `0.0.1-a.2`. The
 # pipeline bumps with `uv version` instead (GUIDELINES.md §8).
+
+# SonarQube Cloud, read by pysonar in ci.yml. Automatic Analysis is off in the project:
+# it cannot import coverage. Name and version come from [project].
+[tool.sonar]
+organization = "ci-doctor"
+projectKey = "ci-doctor_ci-doctor"
+sources = "ci_doctor"
+tests = "tests"
+python.coverage.reportPaths = "coverage.xml"

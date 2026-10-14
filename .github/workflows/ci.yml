@@ -1,12 +1,13 @@
 name: ci
 
-# Jobs are independent: one red check names the kind of problem. Runs on PRs into and
-# pushes to development and master, so a merge that skipped a PR is still checked.
+# Jobs are independent: one red check names the kind of problem; `all-green` is the one
+# the ruleset requires. Pushes to master re-check the merge result ("up to date" is off)
+# and are Sonar's baseline.
 on:
   pull_request:
-    branches: [development, master]
+    branches: [master]
   push:
-    branches: [development, master]
+    branches: [master]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,38 +17,6 @@ permissions:
   contents: read
 
 jobs:
-  # The git hooks check these locally but `--no-verify` skips them, and release reads the types.
-  conventions:
-    permissions:
-      contents: read
-      pull-requests: read   # commitlint lists the PR's commits through the API
-    # Feature branches and hotfixes; the development -> master PR has no type prefix.
-    if: >-
-      github.event_name == 'pull_request' &&
-      (github.base_ref == 'development' || startsWith(github.head_ref, 'hotfix/'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0   # the PR's own commits, not just its tip
-          persist-credentials: false
-      - name: Branch name is <type>/<slug>
-        env:
-          BRANCH: ${{ github.head_ref }}   # via env, never interpolated into the script
-        run: |
-          types='feat|fix|docs|test|chore|refactor|perf|ci|build|style|revert|hotfix'
-          # Dependabot names its own branches (dependabot/github_actions/…).
-          [[ "$BRANCH" == dependabot/* ]] && { echo "branch '$BRANCH' ok (dependabot)"; exit 0; }
-          if [[ ! "$BRANCH" =~ ^($types)/[a-z0-9][a-z0-9._/-]*$ ]]; then
-            echo "::error::branch '$BRANCH' is not <type>/<slug>. Types: ${types//|/, }"
-            exit 1
-          fi
-          echo "branch '$BRANCH' ok"
-      - uses: wagoid/commitlint-github-action@v6
-        with:
-          # The config skips the body: generated bodies have long lines.
-          configFile: .commitlintrc.yml
-
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -70,7 +39,17 @@ jobs:
           --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
       # Failures annotate the diff via the pytest-github-actions-annotate-failures dev dep.
       - run: uv run pytest -q --cov
-      # Informational: the previous step already gates the coverage floor.
+      # One leg is enough for Sonar; the floor above is what gates coverage.
+      - name: Coverage report for Sonar
+        if: matrix.python-version == '3.11'
+        run: uv run coverage xml
+      - uses: actions/upload-artifact@v7
+        if: matrix.python-version == '3.11'
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 1
+      # Informational: the pytest step already gates the coverage floor.
       - name: Coverage summary
         if: always()
         run: |
@@ -129,3 +108,43 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           GITLEAKS_CONFIG: .gitleaks.toml
+
+  # Fork and Dependabot PRs get no secrets: every step skips and the job still succeeds,
+  # so a PR is never blocked on a token it cannot have.
+  sonar:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        if: env.SONAR_TOKEN != ''
+        with:
+          fetch-depth: 0   # Sonar uses blame to decide what is new code
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        if: env.SONAR_TOKEN != ''
+        with:
+          name: coverage-xml
+      # No cache: this job holds a token, and a restored cache is writable by any branch.
+      - uses: astral-sh/setup-uv@v10.2.0
+        if: env.SONAR_TOKEN != ''
+        with:
+          enable-cache: false
+      # Configured by [tool.sonar] in pyproject.toml; the token comes from SONAR_TOKEN.
+      - name: SonarQube Cloud scan
+        if: env.SONAR_TOKEN != ''
+        run: uvx pysonar==1.9.0.5762
+
+  # `always()`: a failed or cancelled job must turn this red, not leave it pending.
+  all-green:
+    if: always()
+    needs: [test, lint, docs, leaks, sonar]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' >/dev/null
