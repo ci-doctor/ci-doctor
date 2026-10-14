@@ -38,3 +38,10 @@ def test_required_ci_jobs_pass_without_secrets():
         for step in jobs[name]["steps"]:
             reads_secret = re.search(r"secrets\.(?!GITHUB_TOKEN\b)", str(step))
             assert not reads_secret or "if" in step, f"{name}: {step.get('name', step.get('uses'))}"
+
+
+def test_release_puts_optional_docker_after_pypi():
+    """Docker Hub is optional: a bad login must fail before the tag, an outage must not block PyPI."""
+    steps = [s.get("name") or s.get("uses", "") for s in _load("release.yml")["jobs"]["release"]["steps"]]
+    assert steps.index("docker/login-action@v4") < steps.index("Build the Docker image"), steps
+    assert steps.index("Publish distributions to PyPI") < steps.index("Push the Docker image"), steps

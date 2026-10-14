@@ -108,11 +108,17 @@ the last tag. Docs and chores ride along in the next alpha rather than cutting o
 of their own.
 
 In order, so that a failure before the push leaves nothing public: bump to the next alpha
-in the working tree → build sdist and wheel → build the image (loaded, not pushed) and save
-it as a gzipped tar → generate the config schema → generate the SBOM → **commit the bump
-and push it with an annotated tag** (`--atomic`) → push the image to Docker Hub → attest
-provenance → create the GitHub Release with all assets → publish to PyPI via Trusted
-Publishing.
+in the working tree → build sdist and wheel → log in to Docker Hub → build the image
+(loaded, not pushed) and save it as a gzipped tar → generate the config schema → generate
+the SBOM → **commit the bump and push it with an annotated tag** (`--atomic`) → attest the
+distributions → create the GitHub Release with all assets → publish to PyPI via Trusted
+Publishing → push the image to Docker Hub and attest it. Docker Hub is last because it is
+optional: an outage there must not hold up PyPI.
+
+**A failure after the tag push** leaves the tag and bump commit public. "Re-run failed
+jobs" does not recover it — the re-run checks out the original commit and bumps again —
+so finish the remaining steps by hand from the tag (`gh release create`, `uv publish` from
+a checkout of the tag, `docker push`), or let the next feat/fix ship the next alpha.
 
 **The release App.** The push lands on a protected `master` and creates a protected `v*`
 tag, so it authenticates as the `ci-doctor-release` GitHub App, the one actor both
