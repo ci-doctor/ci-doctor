@@ -78,8 +78,8 @@ description = "Scan history for secrets, same as the CI job"
 run = "gitleaks git --no-banner --redact"
 
 [tasks.commitlint]
-description = "Lint this branch's commits against development, same as the CI job"
-run = "commitlint --from \"$(git merge-base HEAD origin/development)\" --to HEAD"
+description = "Lint this branch's commits against master, like the pre-push hook"
+run = "commitlint --from \"$(git merge-base HEAD origin/master)\" --to HEAD"
 
 [tasks.check]
 description = "Everything CI runs, in one command"
