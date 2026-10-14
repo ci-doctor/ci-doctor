@@ -84,7 +84,8 @@ shell — read them, they are short.
 | `commit-msg` | `commitlint` (rules in `.commitlintrc.yml`, shared with CI) rejects anything that is not a Conventional Commit. Not cosmetic — the release workflow reads the type to decide whether to ship. |
 | `pre-push` | `pytest`, `ty`, `commitlint` over the branch's commits, and `gitleaks` if installed. Everything CI runs, before the round trip. |
 
-`--no-verify` skips them. CI does not, so it only moves where you find out.
+`--no-verify` skips them. CI still runs the suite and checks the PR title, so it only
+moves where you find out.
 
 ### 2.2 Reading the results on GitHub
 
@@ -96,53 +97,38 @@ There is no coverage tab like GitLab's, so the run page carries it instead:
 | Failing tests | Annotated **inline on the PR diff**, by the `pytest-github-actions-annotate-failures` dev dependency. Silent outside Actions. |
 | Type and lint errors | The `lint` job's log. |
 
-All native — no third-party action, no account. Coverage *history* is the one thing
-it cannot do; that needs a hosted service like Codecov.
+History and trends live in **SonarQube Cloud**: the `sonar` check on every PR links to
+the analysis — coverage of new code, duplications, code smells. It is informational; the
+coverage floor in `pyproject.toml` is what gates.
 
 ## 3. Branches
 
-Two hops for normal work, plus one shortcut for emergencies:
+One long-lived branch, and every change reaches it through a pull request:
 
 ```
-<type>/<slug>  ──PR──▶  development  ──PR──▶  master
-   ci + security         ci + security        ci + security + release-gate
-                                              then: release.yml, then docs.yml,
-                                              then: back-merge PR into development
-
-hotfix/<slug>  ─────────────PR──────────────▶  master
-                                              ci + security + release-gate
-                                              then: as above
+<type>/<slug>  ──PR, squash──▶  master  ──▶  release.yml, then docs.yml
+   ci · conventions · security · release-gate
 ```
 
-- **`<type>/<slug>`** — branch off `development`, named with the same types the
-  commits use: `feat/compare-command`, `fix/release-tag-push`, `docs/site-nav`. CI
-  checks the name, so `feature/…` or `my-branch` fails before the tests do.
-- **`development`** — where work integrates. Every PR into it runs the full suite:
-  tests on four Pythons, lint, the docs build, a secret scan, security scanning, and
-  the branch and commit conventions the git hooks check locally but `--no-verify`
-  can skip.
-- **`master`** — reached from `development`, or from a `hotfix/` branch when
-  something is broken in production and cannot wait for the next integration. Either
-  PR runs everything above *plus* `release-gate.yml`: the sdist and wheel,
-  `twine check`, the Docker image, the config schema and the SBOM — everything
-  `release.yml` is about to do, minus publishing.
-- **`hotfix/<slug>`** — branch off `master`, not `development`. `hotfix` is a valid
-  branch prefix but **not** a valid commit type, so the commits inside it are still
-  `fix:`.
-- **Back-merge** — `release.yml` commits the version bump to `master`, so `development`
-  is always one commit behind after a release, and a hotfix skips it entirely. Once
-  `ci`, `security`, `release` and `docs` have all passed on `master`, `backmerge.yml`
-  opens a `master → development` PR. Merge it with a merge commit, or the next
-  integration will revert the hotfix and `development` will keep the stale version.
+- **`<type>/<slug>`** — branch off `master`, named with the same types the commits use:
+  `feat/compare-command`, `fix/release-tag-push`, `docs/site-nav`. CI checks the name, so
+  `feature/…` or `my-branch` fails before the tests do.
+- **`master`** — protected by rulesets: no direct push, no force-push, linear history.
+  A PR needs one approval from a code owner — any member of `@ci-doctor/maintainers` but
+  its author — an approval of its latest push, resolved review threads, and green
+  `all-green`, `conventions` and release-gate checks. Squash is the only merge method.
+- **Urgent fixes** are ordinary PRs; there is no separate lane. In an emergency a repo
+  admin can merge a red PR, but nobody can push to `master` directly.
+- **The release bot** — `release.yml` pushes the version bump and the tag as the
+  `ci-doctor-release` GitHub App, the only actor the rulesets let through.
 
 What each job does, and why it lives where it does, is [docs/ci-cd.md](docs/ci-cd.md).
 
-**Merge `development` into `master` with a merge commit, not a squash.** The
-release reads the commit types since the last tag to decide whether to ship, so a
-squash replaces every `feat:`/`fix:` in the batch with one subject — and a batch
-squashed under `chore:` publishes nothing. Feature branches are the opposite case:
-squashing into `development` is fine, because the squash subject *is* the
-conventional commit.
+**The PR title is the commit.** A squash merge turns the PR into one commit on `master`
+whose subject is the PR title, so the title must be a Conventional Commit — `conventions`
+checks it, and re-checks when you edit it — and `release.yml` reads its type to decide
+whether to ship. Put a `BREAKING CHANGE:` footer in a commit message inside the PR (or use
+`feat!:` in the title): the squash body keeps the commit messages.
 
 ## 4. Commits
 
@@ -193,4 +179,4 @@ the invariant being honoured, not broken.
 
 - New behaviour has a test. New matcher has a fixture.
 - Never commit `report.md` / `report.json` (local run artifacts).
-- Branch off `development`, never `master` — see §3.
+- Branch off `master` and open a PR — see §3.
