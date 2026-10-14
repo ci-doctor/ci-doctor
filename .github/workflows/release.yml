@@ -12,7 +12,7 @@ concurrency:
 
 permissions:
   contents: write       # create the GitHub Release and upload its assets
-  id-token: write       # PyPI Trusted Publishing (OIDC) — no stored token needed
+  id-token: write       # PyPI Trusted Publishing (OIDC)
   attestations: write   # build provenance for the distributions and the image
 
 # Workflow level so `if:` can test it. An absent secret skips the Docker push, not the release.
@@ -81,8 +81,7 @@ jobs:
             docker.io/fennet/ci-doctor:${{ steps.bump.outputs.version }}
             docker.io/fennet/ci-doctor:latest
 
-      # The air-gap path. The bare name is added so `docker load` gives the `ci-doctor:X`
-      # the docs tell people to retag.
+      # The air-gap tarball; the bare `ci-doctor:X` tag is what the docs say to retag.
       - name: Save the Docker image as a gzipped tar
         if: steps.gate.outputs.release == 'true'
         env:
@@ -96,7 +95,7 @@ jobs:
         if: steps.gate.outputs.release == 'true'
         run: uv run ci-doctor config --schema > ci-doctor.schema.json
 
-      # Runtime deps only: an SBOM should describe what a user installs, not our tooling.
+      # Runtime deps only: what a user installs.
       - name: Generate the SBOM
         if: steps.gate.outputs.release == 'true'
         run: |
@@ -144,7 +143,7 @@ jobs:
             --generate-notes \
             dist/* "ci-doctor-$VERSION-image.tar.gz" ci-doctor.schema.json ci-doctor.sbom.json
 
-      # Trusted Publishing over OIDC; the PyPI publisher is bound to this repo and release.yml.
+      # The PyPI publisher is bound to this repo and this file name.
       - name: Publish distributions to PyPI
         if: steps.gate.outputs.release == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1

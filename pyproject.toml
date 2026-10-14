@@ -126,10 +126,8 @@ show_missing = true
 # a PEP 440 alpha — it reads `0.0.1a1` as unparseable and writes `0.0.1-a.2`. The
 # pipeline bumps with `uv version` instead (GUIDELINES.md §8).
 
-# SonarQube Cloud, read by pysonar in ci.yml. Automatic Analysis is off in the project:
-# it cannot import coverage. Name and version come from [project].
-# The whole repo is a source, so secret detection and the GitHub Actions / Dockerfile
-# rules see more than the package; coverage is measured for ci_doctor only.
+# Read by pysonar in ci.yml (Automatic Analysis is off: it cannot import coverage).
+# Whole repo as source, so secret and workflow/Dockerfile rules see it; coverage is ci_doctor's.
 [tool.sonar]
 organization = "ci-doctor"
 projectKey = "ci-doctor_ci-doctor"

@@ -1,8 +1,7 @@
 name: ci
 
-# Jobs are independent: one red check names the kind of problem; `all-green` is the one
-# the ruleset requires. Pushes to master re-check the merge result ("up to date" is off)
-# and are Sonar's baseline.
+# `all-green` is the one check the ruleset requires. Master pushes re-check the merged
+# result ("up to date" is off) and give Sonar its baseline.
 on:
   pull_request:
     branches: [master]
@@ -20,7 +19,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false   # which versions break is the useful answer, not just that one did
+      fail-fast: false   # report every version that breaks
       matrix:
         # Kept in step with the pyproject classifiers by tests/test_python_versions.py.
         python-version: ["3.11", "3.12", "3.13", "3.14"]
@@ -32,24 +31,22 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
-      # Every extra that can coexist (all but `litellm`, which conflicts with `openai`),
-      # so the tests that build each real provider run instead of skipping.
+      # Every extra that can coexist (litellm conflicts with openai), so provider tests run.
       - run: >-
           uv sync --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle
           --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
-      # Failures annotate the diff via the pytest-github-actions-annotate-failures dev dep.
       - run: uv run pytest -q --cov
-      # One leg is enough for Sonar; the floor above is what gates coverage.
+      # One leg is enough for Sonar.
       - name: Coverage report for Sonar
         if: matrix.python-version == '3.11'
-        run: uv run coverage xml
+        run: .venv/bin/coverage xml   # the synced venv: nothing resolves or builds here
       - uses: actions/upload-artifact@v7
         if: matrix.python-version == '3.11'
         with:
           name: coverage-xml
           path: coverage.xml
           retention-days: 1
-      # Informational: the pytest step already gates the coverage floor.
+      # Informational; pytest gates the floor.
       - name: Coverage summary
         if: always()
         run: |
@@ -92,7 +89,7 @@ jobs:
           cache: npm
           cache-dependency-path: docs/site/package-lock.json
       - run: npm ci
-      # Build only — publishing is docs.yml, so a PR cannot touch what is live.
+      # Build only; docs.yml publishes.
       - run: npm run build
 
   leaks:
@@ -109,8 +106,7 @@ jobs:
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           GITLEAKS_CONFIG: .gitleaks.toml
 
-  # Fork and Dependabot PRs get no secrets: every step skips and the job still succeeds,
-  # so a PR is never blocked on a token it cannot have.
+  # Fork and Dependabot PRs get no secrets: every step skips and the job still passes.
   sonar:
     needs: test
     runs-on: ubuntu-latest
@@ -134,7 +130,7 @@ jobs:
       # Configured by [tool.sonar] in pyproject.toml; the token comes from SONAR_TOKEN.
       - name: SonarQube Cloud scan
         if: env.SONAR_TOKEN != ''
-        run: uvx pysonar==1.9.0.5762
+        run: uvx --no-build pysonar==1.9.0.5762   # wheels only: no setup scripts beside the token
 
   # `always()`: a failed or cancelled job must turn this red, not leave it pending.
   all-green:

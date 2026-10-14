@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# The gate. Everything here is what CI will run anyway — better to find out now
-# than after the round trip.
+# What CI runs anyway; better to find out before the round trip.
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)" || exit 1
 fail=0

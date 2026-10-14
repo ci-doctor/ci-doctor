@@ -1,7 +1,4 @@
-# Who must approve. GitHub reads this file only at the repo root, in .github/, or in
-# docs/, and only under exactly this name. The master ruleset requires a code-owner
-# review, so a maintainer other than the PR's author must approve every change.
-#
-# Last matching pattern wins, so put the broad rule first and narrow below it.
+# The master ruleset requires a code-owner review: a maintainer other than the author.
+# Last matching pattern wins, so keep the broad rule first.
 
 * @ci-doctor/maintainers

@@ -1,10 +1,7 @@
 version: 2
 
-# One PR per ecosystem, not per package: a group collapses every update into a single
-# `dependabot/<ecosystem>/…` branch, and Dependabot rebases that PR in place while it is
-# open rather than opening another. The limit of 1 backs that up. Spelled out per
-# ecosystem because Dependabot does not reliably support YAML anchors.
-# prefix `build` + scope gives `build(deps):` — a Conventional Commit that cuts no release.
+# One grouped PR per ecosystem, rebased in place (limit 1). Spelled out per ecosystem:
+# Dependabot handles YAML anchors poorly. `build(deps):` never cuts a release.
 
 updates:
   - package-ecosystem: github-actions

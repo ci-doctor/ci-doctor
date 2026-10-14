@@ -1,8 +1,7 @@
 name: conventions
 
-# Squash-merging makes the PR title the commit on master, and release.yml reads its type,
-# so the title is what must be a Conventional Commit. Its own workflow: a retitle fires only
-# `edited`, which must not re-run the whole ci.yml suite.
+# The PR title becomes the squash commit whose type release.yml reads. Its own workflow:
+# a retitle fires only `edited`, which must not re-run ci.yml.
 on:
   pull_request:
     branches: [master]
@@ -27,7 +26,6 @@ jobs:
           BRANCH: ${{ github.head_ref }}   # via env, never interpolated into the script
         run: |
           types='feat|fix|docs|test|chore|refactor|perf|ci|build|style|revert'
-          # Dependabot names its own branches (dependabot/github_actions/…).
           [[ "$BRANCH" == dependabot/* ]] && { echo "branch '$BRANCH' ok (dependabot)"; exit 0; }
           if [[ ! "$BRANCH" =~ ^($types)/[a-z0-9][a-z0-9._/-]*$ ]]; then
             echo "::error::branch '$BRANCH' is not <type>/<slug>. Types: ${types//|/, }"
@@ -39,4 +37,4 @@ jobs:
         if: ${{ !startsWith(github.head_ref, 'dependabot/') }}
         env:
           TITLE: ${{ github.event.pull_request.title }}
-        run: printf '%s' "$TITLE" | npx --yes @commitlint/cli@21 --config .commitlintrc.yml
+        run: printf '%s' "$TITLE" | npx --yes --ignore-scripts @commitlint/cli@21 --config .commitlintrc.yml
