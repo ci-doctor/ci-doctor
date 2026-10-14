@@ -18,7 +18,7 @@ jobs:
       - id: doctor
         # Pin a release tag (e.g. @v0.0.1a3) once one exists; there is no floating
         # major tag, because the pipeline publishes exact versions only.
-        uses: fennet82/ci-doctor@master
+        uses: ci-doctor/ci-doctor@master
         # run-id defaults to the run that triggered this one, so on a workflow_run
         # event there is nothing else to wire up.
         with:

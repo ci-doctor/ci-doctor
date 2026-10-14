@@ -33,9 +33,9 @@ readme = "README.md"
 
 [project.urls]
 Homepage = "https://docs.cidoc.dev/"
-Repository = "https://github.com/fennet82/ci-doctor"
-Issues = "https://github.com/fennet82/ci-doctor/issues"
-Changelog = "https://github.com/fennet82/ci-doctor/blob/master/CHANGELOG.md"
+Repository = "https://github.com/ci-doctor/ci-doctor"
+Issues = "https://github.com/ci-doctor/ci-doctor/issues"
+Changelog = "https://github.com/ci-doctor/ci-doctor/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 # Optional LLM backends (base install stays lean/air-gap-clean; pick exactly one).

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://github.com/fennet82/ci-doctor/releases/latest/download/ci-doctor.schema.json
+# yaml-language-server: $schema=https://github.com/ci-doctor/ci-doctor/releases/latest/download/ci-doctor.schema.json
 
 # Shipped baseline config.
 #

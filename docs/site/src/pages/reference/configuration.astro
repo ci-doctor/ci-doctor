@@ -20,7 +20,7 @@ ci-doctor config --validate            # merge every layer and report what fails
 ci-doctor config -f base.yml -f ci.yml # repeatable, the rightmost file wins
 # Output pages through $PAGER on a terminal; --plain prints raw (as does piping).`;
 
-const schemaComment = `# yaml-language-server: $schema=https://github.com/fennet82/ci-doctor/releases/latest/download/ci-doctor.schema.json
+const schemaComment = `# yaml-language-server: $schema=https://github.com/ci-doctor/ci-doctor/releases/latest/download/ci-doctor.schema.json
 llm:
   model: qwen2.5-coder:32b`;
 
