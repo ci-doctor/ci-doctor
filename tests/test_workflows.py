@@ -45,3 +45,10 @@ def test_release_puts_optional_docker_after_pypi():
     steps = [s.get("name") or s.get("uses", "") for s in _load("release.yml")["jobs"]["release"]["steps"]]
     assert steps.index("docker/login-action@v4") < steps.index("Build the Docker image"), steps
     assert steps.index("Publish distributions to PyPI") < steps.index("Push the Docker image"), steps
+
+
+def test_conventions_does_not_lint_dependabot_titles():
+    """Dependabot titles can exceed 72 chars, and its fixed `build` prefix never ships a release."""
+    steps = _load("conventions.yml")["jobs"]["conventions"]["steps"]
+    lint = next(s for s in steps if s.get("name") == "PR title is a Conventional Commit")
+    assert "dependabot/" in lint.get("if", ""), lint

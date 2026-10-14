@@ -55,7 +55,8 @@ Sonar compares PRs against.
 A squash merge makes the PR title the commit on `master`, and `release.yml` reads its type
 to decide whether to ship, so the title is what must be a Conventional Commit. commitlint
 checks it against the same `.commitlintrc.yml` the git hooks use, and the job checks the
-branch is `<type>/<slug>` (Dependabot's own branches excepted).
+branch is `<type>/<slug>`. Dependabot's PRs skip both: it names its own branches and writes
+its own titles (often over 72 characters), and its `build(deps)` prefix never ships.
 
 It is its own workflow because renaming a PR fires only the `edited` event. In `ci.yml`
 that event would re-run the whole suite on every description edit — and re-running from

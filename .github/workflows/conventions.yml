@@ -34,7 +34,9 @@ jobs:
             exit 1
           fi
           echo "branch '$BRANCH' ok"
+      # Dependabot writes its own titles (often over 72 chars); its `build` prefix never ships.
       - name: PR title is a Conventional Commit
+        if: ${{ !startsWith(github.head_ref, 'dependabot/') }}
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: printf '%s' "$TITLE" | npx --yes @commitlint/cli@21 --config .commitlintrc.yml
