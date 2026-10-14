@@ -1,8 +1,7 @@
 name: release gate
 
-# The development -> master PR: everything release.yml will do, minus publishing.
-# By the time release.yml runs it has already pushed the tag, so a packaging or Docker
-# error there leaves a tag with no release. The slow lane, once per integration.
+# Every PR: the packaging release.yml will do, minus publishing and Docker. release.yml
+# builds everything before it pushes the tag; this finds the break on the PR that caused it.
 on:
   pull_request:
     branches: [master]
@@ -28,20 +27,6 @@ jobs:
       - run: uv build
       # Catches metadata PyPI rejects on upload (bad README render, malformed classifier).
       - run: uvx twine check dist/*
-
-  image:
-    name: docker image builds
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: false
-          tags: ci-doctor:gate
 
   schema:
     name: config schema generates

@@ -9,7 +9,6 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
-    target-branch: development
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
@@ -21,7 +20,6 @@ updates:
         patterns: ["*"]
   - package-ecosystem: uv
     directory: /
-    target-branch: development
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
@@ -33,7 +31,6 @@ updates:
         patterns: ["*"]
   - package-ecosystem: docker
     directory: /
-    target-branch: development
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
@@ -45,7 +42,6 @@ updates:
         patterns: ["*"]
   - package-ecosystem: npm
     directory: /docs/site
-    target-branch: development
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
