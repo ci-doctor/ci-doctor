@@ -16,8 +16,7 @@ node = "latest"      # the runtime the npm backend below needs
 # A tool rather than a task, so `mise install` pins its version like everything else.
 "npm:@colbymchenry/codegraph" = "latest"
 
-# Conventional Commit linting; the commit-msg and pre-push hooks and the CI job share
-# .commitlintrc.yml.
+# Conventional Commit linting for the commit-msg and pre-push hooks (.commitlintrc.yml).
 "npm:@commitlint/cli" = "latest"
 
 [tasks.setup]

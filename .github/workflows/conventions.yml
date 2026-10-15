@@ -17,18 +17,17 @@ permissions:
 jobs:
   conventions:
     runs-on: ubuntu-latest
+    env:
+      # Keep in step with type-enum in .commitlintrc.yml, which the git hooks use.
+      TYPES: feat|fix|docs|test|chore|refactor|perf|ci|build|style|revert
     steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
       - name: Branch name is <type>/<slug>
         env:
           BRANCH: ${{ github.head_ref }}   # via env, never interpolated into the script
         run: |
-          types='feat|fix|docs|test|chore|refactor|perf|ci|build|style|revert'
           [[ "$BRANCH" == dependabot/* ]] && { echo "branch '$BRANCH' ok (dependabot)"; exit 0; }
-          if [[ ! "$BRANCH" =~ ^($types)/[a-z0-9][a-z0-9._/-]*$ ]]; then
-            echo "::error::branch '$BRANCH' is not <type>/<slug>. Types: ${types//|/, }"
+          if [[ ! "$BRANCH" =~ ^($TYPES)/[a-z0-9][a-z0-9._/-]*$ ]]; then
+            echo "::error::branch '$BRANCH' is not <type>/<slug>. Types: ${TYPES//|/, }"
             exit 1
           fi
           echo "branch '$BRANCH' ok"
@@ -37,4 +36,9 @@ jobs:
         if: ${{ !startsWith(github.head_ref, 'dependabot/') }}
         env:
           TITLE: ${{ github.event.pull_request.title }}
-        run: printf '%s' "$TITLE" | npx --yes --ignore-scripts @commitlint/cli@21 --config .commitlintrc.yml
+        run: |
+          if [[ ! "$TITLE" =~ ^($TYPES)(\([a-z0-9._/-]+\))?!?:\ .+$ ]] || (( ${#TITLE} > 72 )); then
+            echo "::error::title '$TITLE' is not <type>(<scope>): <subject>, at most 72 chars. Types: ${TYPES//|/, }"
+            exit 1
+          fi
+          echo "title ok"
