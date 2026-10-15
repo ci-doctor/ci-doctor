@@ -4,9 +4,8 @@ name: docs
 # not on push: the site reads its version from pyproject.toml, which release bumps mid-run.
 # release.yml completes on every master push, so docs-only pushes still land here.
 on:
-  # zizmor: ignore[dangerous-triggers] — release runs only on pushes to master (no forks),
-  # and the checkout pins master.
-  workflow_run:
+  # Safe: release runs only on pushes to master (no forks), and the checkout pins master.
+  workflow_run:  # zizmor: ignore[dangerous-triggers]
     workflows: [release]
     types: [completed]
     branches: [master]
