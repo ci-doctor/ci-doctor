@@ -125,14 +125,3 @@ show_missing = true
 # No [tool.semantic_release]: python-semantic-release is SemVer-only and cannot express
 # a PEP 440 alpha — it reads `0.0.1a1` as unparseable and writes `0.0.1-a.2`. The
 # pipeline bumps with `uv version` instead (GUIDELINES.md §8).
-
-# Read by pysonar in ci.yml (Automatic Analysis is off: it cannot import coverage).
-# Whole repo as source, so secret and workflow/Dockerfile rules see it; coverage is ci_doctor's.
-[tool.sonar]
-organization = "ci-doctor"
-projectKey = "ci-doctor_ci-doctor"
-sources = "."
-exclusions = "tests/**"
-tests = "tests"
-coverage.exclusions = "docs/**,scripts/**,.githooks/**"
-python.coverage.reportPaths = "coverage.xml"

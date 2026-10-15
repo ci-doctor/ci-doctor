@@ -34,8 +34,8 @@ GitHub App, which `release.yml` uses to push the version bump and the tag.
 
 Jobs are independent so one red check names the kind of problem. `all-green` depends on
 all of them and is the only `ci` check the ruleset requires, so adding a job or a Python
-version never needs a ruleset edit — `tests/test_workflows.py` fails if a job is missing
-from its `needs`.
+version never needs a ruleset edit. A new job must be added to its `needs`, or nothing
+requires it.
 
 It also runs on every push to `master`. "Branch must be up to date" is off, so what lands
 can differ from what the PR tested; the push run checks the result and is the baseline
@@ -47,8 +47,8 @@ Sonar compares PRs against.
 | `lint` | `ruff check` (incl. `S`), `ruff format --check`, markdown formatting, `ty` | `ty` runs over `ci_doctor` only: a type error in the shipped package is what reaches a user. |
 | `docs` | `npm run build` of the site | Build only. Publishing is `docs.yml`, so a PR cannot touch what is live. |
 | `leaks` | `gitleaks` over the PR's whole history | `fetch-depth: 0` — a secret added and then removed is still a leak. |
-| `sonar` | SonarQube Cloud analysis, with the coverage from `test` | Its steps skip without `SONAR_TOKEN` and the job still passes: fork and Dependabot PRs get no secrets. Its quality gate is informational for now. |
-| `all-green` | Fails unless every job above succeeded | `if: always()`, so a failed or cancelled job turns it red instead of leaving it pending. |
+| `sonar` | SonarQube Cloud analysis via `sonarqube-scan-action`, with the coverage from `test`; configured by `sonar-project.properties` | Skipped on fork PRs, which get no secrets; `all-green` counts a skip as a pass. Dependabot PRs read `SONAR_TOKEN` from the Dependabot secrets. Its quality gate is informational for now. |
+| `all-green` | Fails unless every job above succeeded or was skipped | `if: always()`, so a failed or cancelled job turns it red instead of leaving it pending. |
 
 ## `conventions.yml`
 
@@ -194,7 +194,7 @@ on a check that never reports.
 |---|---|---|---|
 | `RELEASE_APP_CLIENT_ID` | org | `release.yml` | The release stops at the token step: built, nothing published. |
 | `RELEASE_APP_PRIVATE_KEY` | org | `release.yml` | As above. |
-| `SONAR_TOKEN` | repo (the free plan has no org tokens) | `ci.yml` `sonar` | The job's steps skip and it passes. |
+| `SONAR_TOKEN` | repo, and a repo Dependabot secret (the free plan has no org tokens) | `ci.yml` `sonar` | The scan fails. Fork PRs never reach it: the job skips. |
 | `GITLEAKS_LICENSE` | org, and an org Dependabot secret (Dependabot PRs read only those) | `ci.yml` `leaks` | gitleaks-action refuses to scan an organisation's repo. PRs from forks never get it, so their `leaks` fails and an admin merges them. |
 | `DOCKERHUB_USERNAME` | repo | `release.yml` | The push steps skip; the release still completes and the tarball is still attached. |
 | `DOCKERHUB_TOKEN` | repo | `release.yml` | As above. Use a Docker Hub access token, not the account password. |
