@@ -1,5 +1,6 @@
 # Self-contained on purpose: mise installs the CLI in isolation, so `extends:
-# '@commitlint/config-conventional'` would not resolve. CI reads this same file.
+# '@commitlint/config-conventional'` would not resolve. CI checks PR titles with a regex in conventions.yml;
+# keep type-enum in step with its TYPES.
 # The release workflow reads the type to decide whether to ship the next alpha.
 # The bare parser does not know `type!:` (breaking change), so the header is spelled out.
 parserPreset:

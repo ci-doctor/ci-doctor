@@ -14,7 +14,7 @@ const {
   description = 'Postmortem CI failure analyzer — deterministic phase attribution plus an optional LLM explanation.',
 } = Astro.props;
 
-const REPO = 'https://github.com/fennet82/ci-doctor';
+const REPO = 'https://github.com/ci-doctor/ci-doctor';
 const VERSION = version();
 
 const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : undefined;

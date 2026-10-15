@@ -75,7 +75,7 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 > On PyPI the distribution is **`ci-doctorr`** (the `ci-doctor` name was taken); the import package is `ci_doctor` and the command stays `ci-doctor`.
 
 ```sh
-git clone https://github.com/fennet82/ci-doctor
+git clone https://github.com/ci-doctor/ci-doctor
 cd ci-doctor
 uv sync                       # or: pip install .
 
@@ -152,7 +152,7 @@ deterministic report instead of failing.
 permissions: { actions: read, contents: read, pull-requests: write }
 steps:
   - id: doctor
-    uses: fennet82/ci-doctor@master   # or pin a release tag
+    uses: ci-doctor/ci-doctor@master   # or pin a release tag
     with:
       post-pr-note: 'true'
   - if: steps.doctor.outputs.is-infra-not-code == 'true'
@@ -163,7 +163,7 @@ Outputs `phase`, `category`, `confidence`, `is-infra-not-code`, and the two repo
 paths, so a workflow can branch on the verdict. Inputs, PR comments and GitHub
 Enterprise are on the [action page](https://docs.cidoc.dev/cicd/github/);
 the full workflow is in
-[examples/github-actions.example.yml](https://github.com/fennet82/ci-doctor/blob/master/examples/github-actions.example.yml).
+[examples/github-actions.example.yml](https://github.com/ci-doctor/ci-doctor/blob/master/examples/github-actions.example.yml).
 
 > **Listing on GitHub Marketplace is a one-time manual step** and cannot be
 > scripted: draft or edit a release in the GitHub UI, tick *Publish this Action
@@ -190,7 +190,7 @@ ci-doctor:
     paths: [report.md, report.json]
 ```
 
-Both providers have a complete, commented workflow in [`examples/`](https://github.com/fennet82/ci-doctor/tree/master/examples/).
+Both providers have a complete, commented workflow in [`examples/`](https://github.com/ci-doctor/ci-doctor/tree/master/examples/).
 
 ## Air-gapped / offline
 
@@ -211,7 +211,7 @@ standard `HTTPS_PROXY` / `NO_PROXY` / `REQUESTS_CA_BUNDLE` variables are honoure
 
 **[docs.cidoc.dev](https://docs.cidoc.dev)** — overview,
 requirements, configuration, usage, the GitHub Action, and CI/CD examples. Source in
-[`docs/site/`](https://github.com/fennet82/ci-doctor/tree/master/docs/site) (Astro); `mise run docs` previews it locally.
+[`docs/site/`](https://github.com/ci-doctor/ci-doctor/tree/master/docs/site) (Astro); `mise run docs` previews it locally.
 
 Start with **[Concepts](https://docs.cidoc.dev/concepts/)** — the pipeline
 end to end, what each module decides, and what a phase, a matcher or a redaction pass
@@ -220,9 +220,9 @@ shipped pack; that page is generated from `config/defaults.yml`, so run
 `mise run docs:data` after changing a pack (a test fails if it drifts).
 
 For contributors: how the code is built — where things go, the invariants, how to write
-tests — is [GUIDELINES.md](https://github.com/fennet82/ci-doctor/blob/master/GUIDELINES.md); how to get a change in — setup, commits,
-pre-push checks — is [CONTRIBUTING.md](https://github.com/fennet82/ci-doctor/blob/master/CONTRIBUTING.md). The original design spec, kept
-for provenance, is [docs/PLAN.md](https://github.com/fennet82/ci-doctor/blob/master/docs/PLAN.md).
+tests — is [GUIDELINES.md](https://github.com/ci-doctor/ci-doctor/blob/master/GUIDELINES.md); how to get a change in — setup, commits,
+pre-push checks — is [CONTRIBUTING.md](https://github.com/ci-doctor/ci-doctor/blob/master/CONTRIBUTING.md). The original design spec, kept
+for provenance, is [docs/PLAN.md](https://github.com/ci-doctor/ci-doctor/blob/master/docs/PLAN.md).
 
 ## Development
 
@@ -235,4 +235,4 @@ The suite blocks real sockets and never calls an LLM, so it runs in seconds.
 
 ## License
 
-[MIT](https://github.com/fennet82/ci-doctor/blob/master/LICENSE) © Elad Cohen
+[MIT](https://github.com/ci-doctor/ci-doctor/blob/master/LICENSE) © Elad Cohen

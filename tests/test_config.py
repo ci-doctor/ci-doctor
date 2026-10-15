@@ -1,12 +1,14 @@
 """Config layering: defaults, file/env/flag precedence, and matcher pack merging."""
 
 import logging
+import tomllib
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from ci_doctor.config.loader import _deep_merge, default_config, load_config
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schema import SCHEMA_ID, Config
 
 
 def test_defaults_load_and_validate():
@@ -298,3 +300,13 @@ def test_a_matcher_id_is_a_plain_token(tmp_path, bad_id):
     body = f"extraction:\n  matchers:\n    - id: \"{bad_id}\"\n      pattern: 'a'\n"
     with pytest.raises(ValidationError):
         load_config(repo_config=_write(tmp_path, body), environ={})
+
+
+def test_schema_url_lives_in_the_canonical_repo():
+    """Editors fetch the schema by this URL; it must name the repo releases are published from."""
+    root = Path(__file__).resolve().parent.parent
+    repo = tomllib.loads((root / "pyproject.toml").read_text())["project"]["urls"]["Repository"]
+    header = (root / "ci_doctor/config/defaults.yml").read_text().splitlines()[0]
+    assert repo == "https://github.com/ci-doctor/ci-doctor"
+    assert SCHEMA_ID == f"{repo}/releases/latest/download/ci-doctor.schema.json"
+    assert header == f"# yaml-language-server: $schema={SCHEMA_ID}"

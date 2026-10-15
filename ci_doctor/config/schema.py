@@ -29,7 +29,7 @@ log = logging.getLogger("ci_doctor.config")
 
 #: Canonical URL of the published schema. A `.ci-doctor.yml` points its
 #: `# yaml-language-server: $schema=` comment here to get editor completion.
-SCHEMA_ID = "https://github.com/fennet82/ci-doctor/releases/latest/download/ci-doctor.schema.json"
+SCHEMA_ID = "https://github.com/ci-doctor/ci-doctor/releases/latest/download/ci-doctor.schema.json"
 
 
 #: The settings block each cloud backend requires.

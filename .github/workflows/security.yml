@@ -1,11 +1,12 @@
 name: security
 
-# Separate from ci.yml for the weekly schedule: a CVE lands after the last commit.
+# Separate from ci.yml for the weekly cron: a CVE lands after the last commit. PRs gate;
+# the master push is the baseline CodeQL compares PRs against.
 on:
   pull_request:
-    branches: [development, master]
+    branches: [master]
   push:
-    branches: [development, master]
+    branches: [master]
   schedule:
     - cron: '0 6 * * 1'
 

@@ -10,6 +10,7 @@ build/
 # coverage
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 # ci-doctor's own artifacts
 report.md

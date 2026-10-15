@@ -4,7 +4,7 @@ import Base from "../layouts/Base.astro";
 import { asset, url } from "../lib/url";
 
 const quickstart = `# GitHub Actions — no install, analyze the run that just failed
-- uses: fennet82/ci-doctor@master`;
+- uses: ci-doctor/ci-doctor@master`;
 
 const install = `# uv (recommended)
 uv tool install ci-doctorr
@@ -47,7 +47,7 @@ ci-doctor analyze "$CI_PIPELINE_ID"`;
     <div class="btn-row">
         <a class="btn primary" href={url("/start/")}>Get started</a>
         <a class="btn" href={url("/cicd/")}>CI Setup</a>
-        <a class="btn" href="https://github.com/fennet82/ci-doctor">Source</a>
+        <a class="btn" href="https://github.com/ci-doctor/ci-doctor">Source</a>
     </div>
 
     <h2>Thirty seconds to a verdict</h2>

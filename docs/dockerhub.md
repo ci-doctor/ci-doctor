@@ -5,7 +5,7 @@ it failed: a deterministic classifier decides **where** it failed, an optional L
 explains **why**. Read-only, air-gap friendly — no LLM, no network, no problem.
 
 - 📖 Documentation & configuration: https://docs.cidoc.dev/
-- 🐙 Source: https://github.com/fennet82/ci-doctor
+- 🐙 Source: https://github.com/ci-doctor/ci-doctor
 
 ## Tags
 

@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write       # push the version-bump commit + tag, create/upload the Release
-  id-token: write       # PyPI Trusted Publishing (OIDC) — no stored token needed
+  contents: write       # create the GitHub Release and upload its assets
+  id-token: write       # PyPI Trusted Publishing (OIDC)
   attestations: write   # build provenance for the distributions and the image
 
 # Workflow level so `if:` can test it. An absent secret skips the Docker push, not the release.
@@ -23,9 +23,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7   # zizmor: ignore[artipacked] — this job pushes the tag
+      - uses: actions/checkout@v7
         with:
-          fetch-depth: 0          # full history: the gate reads every commit since the last tag
+          fetch-depth: 0               # the gate reads every commit since the last tag
+          persist-credentials: false   # the push authenticates as the release App
 
       # Docs, chores and refactors ride along in the next alpha instead of cutting one.
       - name: Is there anything to release?
@@ -46,27 +47,13 @@ jobs:
         with:
           enable-cache: false
 
-      # `uv version` keeps pyproject.toml and uv.lock in step; --no-sync skips an unused venv.
+      # Working tree only: nothing is committed until everything below has built.
       - name: Bump to the next alpha
         id: bump
         if: steps.gate.outputs.release == 'true'
         run: |
           uv version --bump alpha --no-sync
           echo "version=$(uv version --short)" >> "$GITHUB_OUTPUT"
-
-      - name: Commit and tag
-        if: steps.gate.outputs.release == 'true'
-        env:
-          VERSION: ${{ steps.bump.outputs.version }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # [skip ci] is what stops this push from re-triggering the pipeline forever.
-          git commit -am "chore(release): $VERSION [skip ci]"
-          # Annotated tag, pushed by name: --follow-tags skips lightweight tags yet reports
-          # success. --atomic makes a half-push impossible.
-          git tag -a "v$VERSION" -m "v$VERSION"
-          git push --atomic origin "HEAD:$GITHUB_REF_NAME" "refs/tags/v$VERSION"
 
       - name: Build the distributions
         if: steps.gate.outputs.release == 'true'
@@ -75,29 +62,26 @@ jobs:
       - uses: docker/setup-buildx-action@v4
         if: steps.gate.outputs.release == 'true'
 
+      # Before the build: bad credentials fail while nothing is public yet.
       - uses: docker/login-action@v4
         if: steps.gate.outputs.release == 'true' && env.DOCKERHUB_USERNAME != ''
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # One build: loaded for the air-gap tarball, pushed to Docker Hub unless the secret is absent.
-      # Fully-qualified tags only: `push: true` pushes every tag, and a bare `ci-doctor:X`
-      # resolves to docker.io/library/ci-doctor (no write access).
+      # Loaded, not pushed: a Dockerfile error must fail here, before the tag exists.
+      # Fully-qualified tags: a bare `ci-doctor:X` resolves to docker.io/library/ci-doctor.
       - name: Build the Docker image
-        id: push
         if: steps.gate.outputs.release == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
           load: true
-          push: ${{ env.DOCKERHUB_USERNAME != '' }}
           tags: |
             docker.io/fennet/ci-doctor:${{ steps.bump.outputs.version }}
             docker.io/fennet/ci-doctor:latest
 
-      # The tarball is the air-gap path. The bare name is added locally so `docker load`
-      # gives the `ci-doctor:X` the docs tell people to retag.
+      # The air-gap tarball; the bare `ci-doctor:X` tag is what the docs say to retag.
       - name: Save the Docker image as a gzipped tar
         if: steps.gate.outputs.release == 'true'
         env:
@@ -106,33 +90,48 @@ jobs:
           docker tag "docker.io/fennet/ci-doctor:$VERSION" "ci-doctor:$VERSION"
           docker save "ci-doctor:$VERSION" | gzip -9 > "ci-doctor-$VERSION-image.tar.gz"
 
-      # JSON Schema for .ci-doctor.yml, generated from the pydantic model. Editors resolve it
-      # via its $id, which points at /releases/latest/download/ci-doctor.schema.json.
+      # Editors resolve it via its $id, /releases/latest/download/ci-doctor.schema.json.
       - name: Generate the config JSON Schema
         if: steps.gate.outputs.release == 'true'
         run: uv run ci-doctor config --schema > ci-doctor.schema.json
 
-      # Runtime deps only: an SBOM should describe what a user installs, not our tooling.
+      # Runtime deps only: what a user installs.
       - name: Generate the SBOM
         if: steps.gate.outputs.release == 'true'
         run: |
           uv export --frozen --no-dev --no-emit-project --format requirements-txt -o requirements.txt
           uvx --from cyclonedx-bom cyclonedx-py requirements requirements.txt -o ci-doctor.sbom.json
 
+      # master and v* tags are behind rulesets; this App is the one actor allowed through.
+      - uses: actions/create-github-app-token@v3
+        id: app
+        if: steps.gate.outputs.release == 'true'
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write   # the push and the tag; nothing else the App could grant
+
+      - name: Commit and tag
+        if: steps.gate.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # [skip ci] is what stops this push from re-triggering the pipeline forever.
+          git commit -am "chore(release): $VERSION [skip ci]"
+          # Annotated tag pushed by name, --atomic: never a bump without its tag or vice versa.
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push --atomic "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:$GITHUB_REF_NAME" "refs/tags/v$VERSION"
+
       - uses: actions/attest-build-provenance@v4
         if: steps.gate.outputs.release == 'true'
         with:
           subject-path: dist/*
 
-      - uses: actions/attest-build-provenance@v4
-        if: steps.push.outcome == 'success' && env.DOCKERHUB_USERNAME != ''
-        with:
-          subject-name: docker.io/fennet/ci-doctor
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-
       # Not `--prerelease`: /releases/latest skips prereleases and the schema $id depends on it.
-      # While every release is an alpha, flagging them would break that URL.
       - name: Create the GitHub Release
         if: steps.gate.outputs.release == 'true'
         env:
@@ -144,8 +143,27 @@ jobs:
             --generate-notes \
             dist/* "ci-doctor-$VERSION-image.tar.gz" ci-doctor.schema.json ci-doctor.sbom.json
 
-      # Trusted Publishing: authenticates via OIDC (id-token: write above). No token/secret.
-      # Requires a matching publisher on PyPI (repo fennet82/ci-doctor, workflow release.yml).
+      # The PyPI publisher is bound to this repo and this file name.
       - name: Publish distributions to PyPI
         if: steps.gate.outputs.release == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      # Last, because Docker Hub is optional and its outage must not block PyPI. Same builder,
+      # same context: every layer comes from the build above.
+      - name: Push the Docker image
+        id: push
+        if: steps.gate.outputs.release == 'true' && env.DOCKERHUB_USERNAME != ''
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            docker.io/fennet/ci-doctor:${{ steps.bump.outputs.version }}
+            docker.io/fennet/ci-doctor:latest
+
+      - uses: actions/attest-build-provenance@v4
+        if: steps.push.outcome == 'success'
+        with:
+          subject-name: docker.io/fennet/ci-doctor
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

@@ -17,23 +17,23 @@ jobs:
       actions: read          # read the failed run, its jobs and their logs
       contents: read
     steps:
-      - uses: fennet82/ci-doctor@master`;
+      - uses: ci-doctor/ci-doctor@master`;
 
 const withNote = `    permissions:
       actions: read
       contents: read
       pull-requests: write   # only needed for the PR comment
     steps:
-      - uses: fennet82/ci-doctor@master
+      - uses: ci-doctor/ci-doctor@master
         with:
           post-pr-note: true`;
 
-const withLlm = `      - uses: fennet82/ci-doctor@master
+const withLlm = `      - uses: ci-doctor/ci-doctor@master
         env:
           CI_DOCTOR_LLM__MODEL: qwen2.5-coder:32b
           CI_DOCTOR_LLM__API_BASE: http://vllm.internal:8000/v1`;
 
-const outputs = `      - uses: fennet82/ci-doctor@master
+const outputs = `      - uses: ci-doctor/ci-doctor@master
         id: doctor
 
       # Route infrastructure failures somewhere other than the author's inbox.
@@ -46,7 +46,7 @@ const outputs = `      - uses: fennet82/ci-doctor@master
           name: ci-doctor-report
           path: \${{ steps.doctor.outputs.markdown-path }}`;
 
-const ghe = `      - uses: fennet82/ci-doctor@master
+const ghe = `      - uses: ci-doctor/ci-doctor@master
         with:
           api-url: https://ghe.internal/api/v3
           token: \${{ secrets.GHE_TOKEN }}`;

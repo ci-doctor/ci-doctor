@@ -4,67 +4,73 @@ What runs where, and why it runs there. The branch rules themselves are
 [CONTRIBUTING §3](../CONTRIBUTING.md#3-branches); this is the CI side of them.
 
 One rule shapes the whole thing: **a check lives at the cheapest point that can
-catch it.** Fast feedback on feature branches, expensive checks once per
-integration, publishing only on `master`.
+catch it.** Fast feedback on every pull request, publishing only from `master`.
 
 ---
 
 ## The flow
 
-The diagram is the topology — who merges into whom, where `hotfix/` skips the
-queue, and how a hotfix finds its way back. The table under it is the checks.
-
 ```mermaid
 flowchart TD
-    F["feat/… · fix/… · docs/…"] -->|PR| D[development]
-    D -->|PR| M[master]
-    H["hotfix/…"] -->|PR| M
-
+    F["feat/… · fix/… · docs/…"] -->|PR, squash-merged| M[master]
     M -->|push| REL[release.yml]
     REL --> PUB["PyPI · Docker Hub · GitHub Release"]
     REL -->|on success| DOC["docs.yml → GitHub Pages"]
-
-    M -.->|ci · security · release · docs all green| BM[backmerge.yml]
-    BM -.->|opens PR| D
 ```
 
-Dotted is the backmerge: it opens a PR rather than pushing, so the release commit
-lands in `development` through the same review as anything else.
+`master` is the only long-lived branch, and [rulesets](#rulesets) protect it. Work
+reaches it only as a squash-merged PR; the one other writer is the `ci-doctor-release`
+GitHub App, which `release.yml` uses to push the version bump and the tag.
 
-| Hop | Workflows |
+| Event | Workflows |
 |---|---|
-| `<type>/<slug>` → `development` | `ci` · `security` |
-| `hotfix/<slug>` → `master` | `ci` · `security` · `release-gate` |
-| `development` → `master` | `ci` · `security` · `release-gate` |
-| push to `master` | `release`, then `docs` on its success |
-| `ci` · `security` · `release` · `docs` all green on `master` | `backmerge` |
-
-A hotfix gets the release gate because a hotfix ships — the same packaging and
-image checks apply to it as to an integration.
+| PR into `master` | `ci` · `conventions` · `security` · `release-gate` |
+| push to `master` | `ci` · `security` · `release`, then `docs` on its success |
+| weekly cron | `security` |
 
 ---
 
 ## `ci.yml`
 
-Jobs are independent so one red check names the kind of problem.
+Jobs are independent so one red check names the kind of problem. `all-green` depends on
+all of them and is the only `ci` check the ruleset requires, so adding a job or a Python
+version never needs a ruleset edit. A new job must be added to its `needs`, or nothing
+requires it.
+
+It also runs on every push to `master`. "Branch must be up to date" is off, so what lands
+can differ from what the PR tested; the push run checks the result and is the baseline
+Sonar compares PRs against.
 
 | Job | Does | Notes |
 |---|---|---|
-| `conventions` | Branch name is `<type>/<slug>`; every commit subject is a Conventional Commit | Only for PRs into `development`, or from a `hotfix/` branch. The `development → master` PR is an integration and carries no type prefix. |
-| `test` | `pytest --cov` on Python 3.11–3.14 | `fail-fast: false` — *which* versions break is the useful answer. Coverage lands on the run summary page. |
+| `test` | `pytest --cov` on Python 3.11–3.14 | `fail-fast: false` — *which* versions break is the useful answer. Coverage lands on the run summary page; the 3.11 leg also uploads `coverage.xml` for Sonar. |
 | `lint` | `ruff check` (incl. `S`), `ruff format --check`, markdown formatting, `ty` | `ty` runs over `ci_doctor` only: a type error in the shipped package is what reaches a user. |
 | `docs` | `npm run build` of the site | Build only. Publishing is `docs.yml`, so a PR cannot touch what is live. |
 | `leaks` | `gitleaks` over the PR's whole history | `fetch-depth: 0` — a secret added and then removed is still a leak. |
+| `sonar` | SonarQube Cloud analysis via `sonarqube-scan-action`, with the coverage from `test`; configured by `sonar-project.properties` | Skipped on fork PRs, which get no secrets; `all-green` counts a skip as a pass. Dependabot PRs read `SONAR_TOKEN` from the Dependabot secrets. Its quality gate is informational for now. |
+| `all-green` | Fails unless every job above succeeded or was skipped | `if: always()`, so a failed or cancelled job turns it red instead of leaving it pending. |
 
-**`hotfix` is a branch prefix, not a commit type.** The two lists in `conventions`
-are deliberately different: `hotfix/urgent-thing` is a valid branch, `hotfix: …`
-is not a valid commit subject.
+## `conventions.yml`
+
+A squash merge makes the PR title the commit on `master`, and `release.yml` reads its type
+to decide whether to ship, so the title is what must be a Conventional Commit. A bash regex
+checks it (the same types and 72-character limit as `.commitlintrc.yml`, without Node), and
+the job checks the branch is `<type>/<slug>`. Dependabot's PRs skip both: it names its own branches and writes
+its own titles (often over 72 characters), and its `build(deps)` prefix never ships.
+
+It is its own workflow because renaming a PR fires only the `edited` event. In `ci.yml`
+that event would re-run the whole suite on every description edit — and re-running from
+the Checks tab reuses the old title.
 
 ## `security.yml`
 
 Separate from `ci.yml` for one reason: **the weekly cron**. A CVE is published
 after your last commit, so without a schedule it would surface only on whatever
 PR happens next — which for a small team can be weeks.
+
+It runs on PRs (where it matters) and on pushes to `master` (the baseline CodeQL compares
+a PR against), not on branch pushes: a branch with a PR is covered by the PR run. It is
+not a required check — a CVE published today should not block an unrelated PR.
 
 | Job | Does |
 |---|---|
@@ -78,25 +84,22 @@ PR happens next — which for a small team can be weeks.
 **zizmor policy.** [`.github/zizmor.yml`](../.github/zizmor.yml) sets `ref-pin`
 rather than the default `hash-pin`. Hash-pinning is stricter, but only pays off
 with a bot to bump the hashes; without one it just freezes actions wherever they
-were the day they were added. Two findings are suppressed inline, each with its
-reason at the suppression site.
+were the day they were added.
 
 ## `release-gate.yml`
 
-The slow lane: everything the release is about to do, minus publishing. Runs on
-PRs into `master` only.
+Every PR: the packaging `release.yml` will do, minus publishing and Docker.
 
 | Job | Does |
 |---|---|
 | `distributions` | `uv build` + `twine check` — catches the metadata problems PyPI rejects on upload. |
-| `image` | `docker build` |
 | `schema` | `ci-doctor config --schema` still generates valid JSON |
 | `sbom` | The CycloneDX SBOM generates and parses |
 
-It exists because by the time `release.yml` runs, it has already bumped the
-version, committed, and pushed the tag. A Dockerfile or packaging error at that
-point leaves a tag with no release behind it — which is exactly how the first
-alpha failed. This is the last place those are cheap to find.
+The image is built only by `release.yml`. That is safe because `release.yml` builds
+everything before it pushes the tag, so a broken Dockerfile fails the release with nothing
+published — the first alpha failed the other way round, tag first. These three stay on PRs
+because they are cheap and name the PR that broke packaging.
 
 ## `release.yml`
 
@@ -105,11 +108,24 @@ publish: the `gate` step looks for a `feat`/`fix`/`BREAKING CHANGE` commit since
 the last tag. Docs and chores ride along in the next alpha rather than cutting one
 of their own.
 
-In order: bump to the next alpha → commit + annotated tag (pushed `--atomic`) →
-build sdist and wheel → build the image and save it as a gzipped tar → push the
-image to Docker Hub → generate the config schema → generate the SBOM → attest
-provenance → create the GitHub Release with all assets → publish to PyPI via
-Trusted Publishing.
+In order, so that a failure before the push leaves nothing public: bump to the next alpha
+in the working tree → build sdist and wheel → log in to Docker Hub → build the image
+(loaded, not pushed) and save it as a gzipped tar → generate the config schema → generate
+the SBOM → **commit the bump and push it with an annotated tag** (`--atomic`) → attest the
+distributions → create the GitHub Release with all assets → publish to PyPI via Trusted
+Publishing → push the image to Docker Hub and attest it. Docker Hub is last because it is
+optional: an outage there must not hold up PyPI.
+
+**A failure after the tag push** leaves the tag and bump commit public. "Re-run failed
+jobs" does not recover it — the re-run checks out the original commit and bumps again —
+so finish the remaining steps by hand from the tag (`gh release create`, `uv publish` from
+a checkout of the tag, `docker push`), or let the next feat/fix ship the next alpha.
+
+**The release App.** The push lands on a protected `master` and creates a protected `v*`
+tag, so it authenticates as the `ci-doctor-release` GitHub App, the one actor both
+rulesets let through. `actions/create-github-app-token` mints a token scoped to this repo
+that expires within the hour. The bump commit ends in `[skip ci]`, which stops it from
+re-triggering the pipeline.
 
 **Docker Hub.** Images go to [`fennet/ci-doctor`](https://hub.docker.com/r/fennet/ci-doctor)
 as `:<version>` and `:latest`. Note the name differs from the PyPI distribution,
@@ -136,9 +152,7 @@ That indirection fixes a real bug. The site reads its version from
 `pyproject.toml` ([`src/lib/version.ts`](site/src/lib/version.ts)), and
 `release.yml` bumps that file *during* its own run, committing it with `[skip ci]`.
 Building on the push meant rendering the commit before the bump, so the published
-site permanently trailed the latest release by one. Worse, the trigger was
-path-filtered to `docs/site/**`, so a release touching no docs did not rebuild at
-all and the site could sit several versions stale.
+site permanently trailed the latest release by one.
 
 Two details make it work:
 
@@ -146,49 +160,44 @@ Two details make it work:
   release?" check is a *step*, not a workflow-level skip. So a docs-only push still
   runs it to completion and still triggers this workflow.
 - **The checkout pins `ref: master`.** For `workflow_run`, `actions/checkout`
-  defaults to the SHA of the *triggering* run — the pre-bump commit. A version of
-  this without that line reproduces the exact bug it was written to fix.
+  defaults to the SHA of the *triggering* run — the pre-bump commit.
 
 Deploys are skipped when the release failed, so the site never advertises a version
 that did not ship. `workflow_dispatch` is the manual retry.
 
-## `backmerge.yml`
-
-`release.yml` commits to `master`: the version bump in `pyproject.toml` and `uv.lock`,
-plus the tag. Nothing carries that back, so `development` keeps showing the previous
-version. A hotfix, which skips `development`, widens the gap the same way. Once `ci`,
-`security`, `release` and `docs` have all passed on `master`, this opens the
-`master → development` PR that syncs it.
-
-It runs on `workflow_run` for each of the four and acts only when the last one
-finishes: the others find a pipeline still running (or failed) and stop, so a release
-that did not settle never gets back-merged. It checks out nothing; it reads run
-results through the API and skips if `development` already contains `master` or a
-back-merge PR is open. `workflow_run` only fires from the file on the default branch,
-so a change to `backmerge.yml` takes effect once it is on `development`, not when it
-merges to `master`.
-
-Merge it with a merge commit, not a squash — a squash leaves `development` behind
-`master` again. The repo setting *Actions → General → Allow GitHub Actions to create
-and approve pull requests* must be on, or `gh pr create` is refused.
-
-The PR uses `--head master` rather than a snapshot branch, so it tracks the tip as
-`master` moves.
-
-> **Known limitation.** PRs opened with `GITHUB_TOKEN` do not trigger workflows, so
-> the back-merge PR arrives without check runs. The content is already on `master`,
-> which was fully gated on the way in, so this is a display gap rather than a hole.
-> Closing it properly needs a PAT or a GitHub App, which is not worth the credential
-> at this size.
-
 ---
+
+## Rulesets
+
+Set in the repository settings, not in a file.
+
+**`master`** (the default branch):
+
+- no deletion, no force-push, linear history;
+- changes only by PR: one approval from a code owner (`@ci-doctor/maintainers`, see
+  `CODEOWNERS`), an approval of the latest push, stale approvals dismissed, review threads
+  resolved, squash-merge only;
+- required checks: `all-green`, `conventions`, `sdist + wheel build and check`,
+  `config schema generates`, `SBOM generates`; branches need not be up to date;
+- bypass: the `ci-doctor-release` App (always — the release push) and repository admins
+  (on pull requests only — merging a red PR in an emergency, never a direct push).
+
+**`release tags`** (`refs/tags/v*`): only the release App can create, move or delete a
+release tag. A tag is what PyPI, Docker Hub and every `uses: …@v…` pin points at.
+
+Renaming a required job means editing the ruleset in the same change, or every PR waits
+on a check that never reports.
 
 ## Secrets
 
-| Secret | Used by | Absent behaviour |
-|---|---|---|
-| `DOCKERHUB_USERNAME` | `release.yml` | The push steps skip; the release still completes and the tarball is still attached. |
-| `DOCKERHUB_TOKEN` | `release.yml` | As above. Use a Docker Hub access token, not the account password. |
+| Secret | Scope | Used by | Absent behaviour |
+|---|---|---|---|
+| `RELEASE_APP_CLIENT_ID` | org | `release.yml` | The release stops at the token step: built, nothing published. |
+| `RELEASE_APP_PRIVATE_KEY` | org | `release.yml` | As above. |
+| `SONAR_TOKEN` | repo, and a repo Dependabot secret (the free plan has no org tokens) | `ci.yml` `sonar` | The scan fails. Fork PRs never reach it: the job skips. |
+| `GITLEAKS_LICENSE` | org, and an org Dependabot secret (Dependabot PRs read only those) | `ci.yml` `leaks` | gitleaks-action refuses to scan an organisation's repo. PRs from forks never get it, so their `leaks` fails and an admin merges them. |
+| `DOCKERHUB_USERNAME` | repo | `release.yml` | The push steps skip; the release still completes and the tarball is still attached. |
+| `DOCKERHUB_TOKEN` | repo | `release.yml` | As above. Use a Docker Hub access token, not the account password. |
 
 `GITHUB_TOKEN` is provided automatically. PyPI needs no secret — Trusted Publishing
 authenticates over OIDC against a publisher configured for this repo and workflow.
@@ -199,9 +208,11 @@ authenticates over OIDC against a publisher configured for this repo and workflo
 
 Put it where it is cheapest to catch, not where it is easiest to write:
 
-- **Fast, and catches a mistake a contributor makes often** → `ci.yml`.
+- **Fast, and catches a mistake a contributor makes often** → `ci.yml`, and add the job to
+  `all-green`'s `needs`.
 - **Security posture, and worth re-running against unchanged code** → `security.yml`,
   so the cron picks it up.
-- **Slow, and only matters at release time** → `release-gate.yml`.
-- **Produces an artifact users consume** → `release.yml`, and add it to the Release
-  assets so it is versioned with everything else.
+- **Packaging, and only matters at release time** → `release-gate.yml`, and add its name to
+  the ruleset's required checks.
+- **Produces an artifact users consume** → `release.yml`, built before the tag push, and
+  added to the Release assets so it is versioned with everything else.

@@ -1,12 +1,12 @@
 name: ci
 
-# Jobs are independent: one red check names the kind of problem. Runs on PRs into and
-# pushes to development and master, so a merge that skipped a PR is still checked.
+# `all-green` is the one check the ruleset requires. Master pushes re-check the merged
+# result ("up to date" is off) and give Sonar its baseline.
 on:
   pull_request:
-    branches: [development, master]
+    branches: [master]
   push:
-    branches: [development, master]
+    branches: [master]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,42 +16,10 @@ permissions:
   contents: read
 
 jobs:
-  # The git hooks check these locally but `--no-verify` skips them, and release reads the types.
-  conventions:
-    permissions:
-      contents: read
-      pull-requests: read   # commitlint lists the PR's commits through the API
-    # Feature branches and hotfixes; the development -> master PR has no type prefix.
-    if: >-
-      github.event_name == 'pull_request' &&
-      (github.base_ref == 'development' || startsWith(github.head_ref, 'hotfix/'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0   # the PR's own commits, not just its tip
-          persist-credentials: false
-      - name: Branch name is <type>/<slug>
-        env:
-          BRANCH: ${{ github.head_ref }}   # via env, never interpolated into the script
-        run: |
-          types='feat|fix|docs|test|chore|refactor|perf|ci|build|style|revert|hotfix'
-          # Dependabot names its own branches (dependabot/github_actions/…).
-          [[ "$BRANCH" == dependabot/* ]] && { echo "branch '$BRANCH' ok (dependabot)"; exit 0; }
-          if [[ ! "$BRANCH" =~ ^($types)/[a-z0-9][a-z0-9._/-]*$ ]]; then
-            echo "::error::branch '$BRANCH' is not <type>/<slug>. Types: ${types//|/, }"
-            exit 1
-          fi
-          echo "branch '$BRANCH' ok"
-      - uses: wagoid/commitlint-github-action@v6
-        with:
-          # The config skips the body: generated bodies have long lines.
-          configFile: .commitlintrc.yml
-
   test:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false   # which versions break is the useful answer, not just that one did
+      fail-fast: false   # report every version that breaks
       matrix:
         # Kept in step with the pyproject classifiers by tests/test_python_versions.py.
         python-version: ["3.11", "3.12", "3.13", "3.14"]
@@ -63,14 +31,22 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
-      # Every extra that can coexist (all but `litellm`, which conflicts with `openai`),
-      # so the tests that build each real provider run instead of skipping.
+      # Every extra that can coexist (litellm conflicts with openai), so provider tests run.
       - run: >-
           uv sync --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle
           --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
-      # Failures annotate the diff via the pytest-github-actions-annotate-failures dev dep.
       - run: uv run pytest -q --cov
-      # Informational: the previous step already gates the coverage floor.
+      # One leg is enough for Sonar.
+      - name: Coverage report for Sonar
+        if: matrix.python-version == '3.11'
+        run: .venv/bin/coverage xml   # the synced venv: nothing resolves or builds here
+      - uses: actions/upload-artifact@v7
+        if: matrix.python-version == '3.11'
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 1
+      # Informational; pytest gates the floor.
       - name: Coverage summary
         if: always()
         run: |
@@ -113,7 +89,7 @@ jobs:
           cache: npm
           cache-dependency-path: docs/site/package-lock.json
       - run: npm ci
-      # Build only — publishing is docs.yml, so a PR cannot touch what is live.
+      # Build only; docs.yml publishes.
       - run: npm run build
 
   leaks:
@@ -129,3 +105,35 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           GITLEAKS_CONFIG: .gitleaks.toml
+
+  # Fork PRs get no secrets, so they skip the job (a job-level `if` cannot read `secrets`).
+  sonar:
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # Sonar uses blame to decide what is new code
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-xml
+      # Configured by sonar-project.properties.
+      - uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # `always()`: a failed or cancelled job must turn this red, not leave it pending.
+  # Skipped passes: only a fork's `sonar` skips on its own; any other skip follows a failure.
+  all-green:
+    if: always()
+    needs: [test, lint, docs, leaks, sonar]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' >/dev/null

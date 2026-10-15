@@ -1,0 +1,44 @@
+name: conventions
+
+# The PR title becomes the squash commit whose type release.yml reads. Its own workflow:
+# a retitle fires only `edited`, which must not re-run ci.yml.
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: conventions-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  conventions:
+    runs-on: ubuntu-latest
+    env:
+      # Keep in step with type-enum in .commitlintrc.yml, which the git hooks use.
+      TYPES: feat|fix|docs|test|chore|refactor|perf|ci|build|style|revert
+    steps:
+      - name: Branch name is <type>/<slug>
+        env:
+          BRANCH: ${{ github.head_ref }}   # via env, never interpolated into the script
+        run: |
+          [[ "$BRANCH" == dependabot/* ]] && { echo "branch '$BRANCH' ok (dependabot)"; exit 0; }
+          if [[ ! "$BRANCH" =~ ^($TYPES)/[a-z0-9][a-z0-9._/-]*$ ]]; then
+            echo "::error::branch '$BRANCH' is not <type>/<slug>. Types: ${TYPES//|/, }"
+            exit 1
+          fi
+          echo "branch '$BRANCH' ok"
+      # Dependabot writes its own titles (often over 72 chars); its `build` prefix never ships.
+      - name: PR title is a Conventional Commit
+        if: ${{ !startsWith(github.head_ref, 'dependabot/') }}
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [[ ! "$TITLE" =~ ^($TYPES)(\([a-z0-9._/-]+\))?!?:\ .+$ ]] || (( ${#TITLE} > 72 )); then
+            echo "::error::title '$TITLE' is not <type>(<scope>): <subject>, at most 72 chars. Types: ${TYPES//|/, }"
+            exit 1
+          fi
+          echo "title ok"

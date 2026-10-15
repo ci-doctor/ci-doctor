@@ -33,9 +33,9 @@ readme = "README.md"
 
 [project.urls]
 Homepage = "https://docs.cidoc.dev/"
-Repository = "https://github.com/fennet82/ci-doctor"
-Issues = "https://github.com/fennet82/ci-doctor/issues"
-Changelog = "https://github.com/fennet82/ci-doctor/blob/master/CHANGELOG.md"
+Repository = "https://github.com/ci-doctor/ci-doctor"
+Issues = "https://github.com/ci-doctor/ci-doctor/issues"
+Changelog = "https://github.com/ci-doctor/ci-doctor/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 # Optional LLM backends (base install stays lean/air-gap-clean; pick exactly one).
@@ -114,6 +114,8 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["ci_doctor"]
 branch = true
+# coverage.xml's <source> relative to the repo, so Sonar resolves it on another runner.
+relative_files = true
 
 [tool.coverage.report]
 # A floor, not a target: raise it when a real gap closes, never lower it to go green.
