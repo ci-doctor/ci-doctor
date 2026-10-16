@@ -47,6 +47,19 @@ _PHASE_REASON = {
     Phase.UNKNOWN: FailureReason.UNKNOWN,
 }
 
+#: Rule 2 — the provider's reason is authoritative for everything but script_failure:
+#: reason -> (phase, confidence, rule_id, follow_open). `follow_open` blames whatever
+#: section was still running when it stopped, falling back to `phase`.
+_PROVIDER_REASON: dict[FailureReason, tuple[Phase, Confidence, str, bool]] = {
+    FailureReason.NO_RUNNER: (Phase.PROVISION, "high", "reason_no_runner", False),
+    FailureReason.RUNNER_SYSTEM: (Phase.PREPARE, "high", "reason_runner_system", False),
+    FailureReason.MISSING_DEPENDENCY: (Phase.FETCH, "high", "reason_missing_dependency", False),
+    FailureReason.UNMET_PREREQUISITES: (Phase.PREPARE, "medium", "reason_unmet_prerequisites", False),
+    FailureReason.CANCELLED: (Phase.UNKNOWN, "high", "reason_cancelled", True),
+    FailureReason.TIMEOUT: (Phase.PROVISION, "high", "reason_timeout_open_section", True),
+    FailureReason.API_FAILURE: (Phase.UNKNOWN, "medium", "reason_api_failure", False),
+}
+
 
 @dataclass
 class Attribution:
@@ -95,30 +108,12 @@ def attribute(job: Job, sections: list[Section]) -> Attribution:
 
     reason = job.failure_reason
 
-    # Rule 2 — provider failure_reason is authoritative for everything but script_failure.
-    if reason == FailureReason.NO_RUNNER:
-        return Attribution(Phase.PROVISION, reason, "high", _terminal(trailer), "reason_no_runner")
-    if reason == FailureReason.RUNNER_SYSTEM:
-        return Attribution(Phase.PREPARE, reason, "high", _terminal(trailer), "reason_runner_system")
-    if reason == FailureReason.MISSING_DEPENDENCY:
-        return Attribution(Phase.FETCH, reason, "high", _terminal(trailer), "reason_missing_dependency")
-    if reason == FailureReason.UNMET_PREREQUISITES:
-        return Attribution(Phase.PREPARE, reason, "medium", _terminal(trailer), "reason_unmet_prerequisites")
-    if reason == FailureReason.CANCELLED:
-        return Attribution(
-            _open_phase(sections) or Phase.UNKNOWN, reason, "high", _terminal(trailer), "reason_cancelled"
-        )
-    if reason == FailureReason.TIMEOUT:
-        # Phase of whatever section was open when time ran out.
-        return Attribution(
-            _open_phase(sections) or Phase.PROVISION,
-            reason,
-            "high",
-            _terminal(trailer),
-            "reason_timeout_open_section",
-        )
-    if reason == FailureReason.API_FAILURE:
-        return Attribution(Phase.UNKNOWN, reason, "medium", _terminal(trailer), "reason_api_failure")
+    # Rule 2 — provider failure_reason is authoritative (see _PROVIDER_REASON).
+    if (rule := _PROVIDER_REASON.get(reason)) is not None:
+        phase, confidence, rule_id, follow_open = rule
+        if follow_open:
+            phase = _open_phase(sections) or phase
+        return Attribution(phase, reason, confidence, _terminal(trailer), rule_id)
 
     # Rule 3 — script_failure is SCRIPT, full stop. This is the rule that kills the
     # "blamed the cache" bug: the noisy fetch/prepare warnings are never consulted.
