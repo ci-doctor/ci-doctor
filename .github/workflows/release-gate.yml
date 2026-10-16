@@ -38,9 +38,9 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --locked
       # The release attaches this and editors resolve it via its $id: prove it still parses.
-      - run: uv run ci-doctor config --schema | python3 -c 'import json,sys; json.load(sys.stdin)'
+      - run: uv run --locked ci-doctor config --schema | python3 -c 'import json,sys; json.load(sys.stdin)'
 
   sbom:
     name: SBOM generates

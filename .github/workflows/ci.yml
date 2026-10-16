@@ -33,9 +33,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
       # Every extra that can coexist (litellm conflicts with openai), so provider tests run.
       - run: >-
-          uv sync --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle
+          uv sync --locked --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle
           --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
-      - run: uv run pytest -q --cov
+      - run: uv run --locked pytest -q --cov
       # One leg is enough for Sonar.
       - name: Coverage report for Sonar
         if: matrix.python-version == '3.11'
@@ -51,7 +51,7 @@ jobs:
         if: always()
         run: |
           echo "### Coverage — Python ${{ matrix.python-version }}" >> "$GITHUB_STEP_SUMMARY"
-          uv run coverage report --format=markdown --fail-under=0 >> "$GITHUB_STEP_SUMMARY" || true
+          uv run --locked coverage report --format=markdown --fail-under=0 >> "$GITHUB_STEP_SUMMARY" || true
 
   lint:
     runs-on: ubuntu-latest
@@ -62,17 +62,17 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --locked
       - name: ruff check
-        run: uv run ruff check ci_doctor tests
+        run: uv run --locked ruff check ci_doctor tests
       - name: ruff format
-        run: uv run ruff format --check ci_doctor tests
+        run: uv run --locked ruff format --check ci_doctor tests
       # --preview only for *.md: it formats Python blocks inside docs, not prose.
       - name: ruff format (markdown code blocks)
-        run: uv run ruff format --preview --check $(git ls-files '*.md' ':!:.claude/**')
+        run: uv run --locked ruff format --preview --check $(git ls-files '*.md' ':!:.claude/**')
       # ci_doctor only: a type error in the shipped package is what reaches a user.
       - name: ty
-        run: uv run ty check ci_doctor
+        run: uv run --locked ty check ci_doctor
 
   docs:
     runs-on: ubuntu-latest
@@ -88,7 +88,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: docs/site/package-lock.json
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       # Build only; docs.yml publishes.
       - run: npm run build
 

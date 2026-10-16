@@ -93,7 +93,7 @@ jobs:
       # Editors resolve it via its $id, /releases/latest/download/ci-doctor.schema.json.
       - name: Generate the config JSON Schema
         if: steps.gate.outputs.release == 'true'
-        run: uv run ci-doctor config --schema > ci-doctor.schema.json
+        run: uv run --locked ci-doctor config --schema > ci-doctor.schema.json
 
       # Runtime deps only: what a user installs.
       - name: Generate the SBOM
