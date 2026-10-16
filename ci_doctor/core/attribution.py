@@ -24,11 +24,12 @@ from ci_doctor.core.models import (
     Section,
     walk_sections,
 )
+from ci_doctor.core.regex import pattern_set
 
 #: "Did anything in this *section* fail?" — which *lines* are the evidence is the
 #: catalogue's job (`extraction.matchers`). Stays runner-level, no vendor tokens:
-#: GUIDELINES §5.2 has the table, and a test pins it.
-_ERROR_RE = re.compile(r"\b(?:ERROR|FATAL)\b|exit code \d+")
+#: GUIDELINES §5.2 has the table, and a test pins it. One RE2 set, one pass per line.
+_ERROR_RE = pattern_set([r"^##\[error\]", r"\b(?:ERROR|FATAL)\b", r"exit code \d+"])
 
 #: How a runner marks its *own* line as a warning — not a tool printing the word.
 #: Case-sensitive, and warnings only, both deliberately: GUIDELINES §7 has the two
@@ -246,8 +247,7 @@ def _is_error_line(text: str) -> bool:
     """
     if _is_warning_line(text):
         return False  # non-fatal by definition
-    line = text.lstrip()
-    return line.startswith("##[error]") or bool(_ERROR_RE.search(line))
+    return bool(_ERROR_RE(text.lstrip()))
 
 
 def _last_error_section(sections: list[Section]) -> Section | None:
