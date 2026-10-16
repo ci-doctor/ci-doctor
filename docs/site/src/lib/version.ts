@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /** `version = "0.0.1a2"` in the [project] table, first match wins. */
-const VERSION = /^\s*version\s*=\s*["']([^"']+)["']/m;
+const VERSION = /^[ \t]*version[ \t]*=[ \t]*["']([^"']+)["']/m;
 
 /**
  * The current package version, e.g. "0.0.1a2".

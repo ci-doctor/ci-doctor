@@ -28,7 +28,7 @@ from ci_doctor.core.models import (
 #: "Did anything in this *section* fail?" — which *lines* are the evidence is the
 #: catalogue's job (`extraction.matchers`). Stays runner-level, no vendor tokens:
 #: GUIDELINES §5.2 has the table, and a test pins it.
-_ERROR_RE = re.compile(r"^##\[error\]|\b(ERROR|FATAL)\b|exit code \d+")
+_ERROR_RE = re.compile(r"(?:^##\[error\])|\b(ERROR|FATAL)\b|exit code \d+")
 
 #: How a runner marks its *own* line as a warning — not a tool printing the word.
 #: Case-sensitive, and warnings only, both deliberately: GUIDELINES §7 has the two
