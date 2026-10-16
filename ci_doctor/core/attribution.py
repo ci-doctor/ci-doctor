@@ -28,7 +28,7 @@ from ci_doctor.core.models import (
 #: "Did anything in this *section* fail?" — which *lines* are the evidence is the
 #: catalogue's job (`extraction.matchers`). Stays runner-level, no vendor tokens:
 #: GUIDELINES §5.2 has the table, and a test pins it.
-_ERROR_RE = re.compile(r"(?:^##\[error\])|\b(ERROR|FATAL)\b|exit code \d+")
+_ERROR_RE = re.compile(r"\b(?:ERROR|FATAL)\b|exit code \d+")
 
 #: How a runner marks its *own* line as a warning — not a tool printing the word.
 #: Case-sensitive, and warnings only, both deliberately: GUIDELINES §7 has the two
@@ -246,7 +246,8 @@ def _is_error_line(text: str) -> bool:
     """
     if _is_warning_line(text):
         return False  # non-fatal by definition
-    return bool(_ERROR_RE.search(text.lstrip()))
+    line = text.lstrip()
+    return line.startswith("##[error]") or bool(_ERROR_RE.search(line))
 
 
 def _last_error_section(sections: list[Section]) -> Section | None:
