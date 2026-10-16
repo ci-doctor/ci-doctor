@@ -175,10 +175,6 @@ html {
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
 }
 
 body {
@@ -450,7 +446,9 @@ pre.astro-code code { font-family: var(--mono); }
   border-radius: var(--radius);
   padding: 1.2rem 1.3rem;
   box-shadow: var(--shadow-sm);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  @media (prefers-reduced-motion: no-preference) {
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  }
 }
 .card:hover {
   border-color: var(--border-strong);
@@ -491,7 +489,9 @@ pre.astro-code code { font-family: var(--mono); }
   background: var(--card);
   color: var(--fg);
   box-shadow: var(--shadow-sm);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  @media (prefers-reduced-motion: no-preference) {
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  }
 }
 .btn:hover {
   text-decoration: none;

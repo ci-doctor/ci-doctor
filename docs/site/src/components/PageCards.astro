@@ -37,7 +37,9 @@ const { pages } = Astro.props;
     box-shadow: var(--shadow-sm);
     text-decoration: none;
     color: inherit;
-    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+    @media (prefers-reduced-motion: no-preference) {
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+    }
   }
   .page-card:hover {
     border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
