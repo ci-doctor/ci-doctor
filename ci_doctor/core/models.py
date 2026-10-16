@@ -157,6 +157,47 @@ def walk_sections(sections: Iterable[Section]) -> Iterator[Section]:
         yield from walk_sections(sec.children)
 
 
+class SectionTree:
+    """The top-level sections a segmenter is building.
+
+    Owns what every segmenter would otherwise repeat: the synthetic preamble and
+    trailer, created only once output lands outside a section, and line numbers that
+    run across the whole log so evidence always points back at the original trace.
+    """
+
+    def __init__(self) -> None:
+        """Start an empty tree."""
+        self.top: list[Section] = []
+        self._outside: dict[str, Section] = {}
+        self._count = 0
+
+    def outside(self, after_first_section: bool) -> Section:
+        """The synthetic section for output that no real section owns.
+
+        Args:
+            after_first_section: Whether any section has opened yet.
+
+        Returns:
+            The trailer once a section has opened, the preamble before; created and
+            appended to `top` on first use.
+        """
+        name = TRAILER if after_first_section else PREAMBLE
+        if name not in self._outside:
+            self._outside[name] = Section(name=name, closed=True)
+            self.top.append(self._outside[name])
+        return self._outside[name]
+
+    def add_line(self, target: Section, text: str) -> None:
+        """Append one line to `target`, numbered after every line before it.
+
+        Args:
+            target: The section receiving the line. Mutated.
+            text: The line, already stripped of provider markup.
+        """
+        self._count += 1
+        target.lines.append(LogLine(number=self._count, text=text))
+
+
 @dataclass
 class Job:
     """One unit of work in a run — the thing that actually fails.

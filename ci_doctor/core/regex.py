@@ -9,8 +9,8 @@ on a short log line. So a list of patterns is matched in *one* pass per line
 (`pattern_set`, an `re2.Set`), which measured ~15x faster than `re` looping over
 the same patterns.
 
-Internal hardcoded patterns (segmenters, redaction defaults) stay on `re`: they are
-reviewed code, not input, and some use features RE2 deliberately lacks.
+Internal hardcoded patterns stay on `re`: they are reviewed code, not input, and
+some use features RE2 deliberately lacks.
 """
 
 import functools

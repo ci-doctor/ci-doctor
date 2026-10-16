@@ -21,7 +21,7 @@ classifier to blame, and it is the direct analogue of GitLab's `section_end`.
 
 import re
 
-from ci_doctor.core.models import PREAMBLE, TRAILER, LogLine, Section
+from ci_doctor.core.models import Section, SectionTree
 from ci_doctor.core.ports import LogSegmenter
 
 _TS = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z?\s+")
@@ -99,73 +99,91 @@ class GitHubSegmenter(LogSegmenter):
             section header, plus synthetic `__preamble__`/`__trailer__`. A step
             is `closed` only if the runner reported it finished.
         """
-        top: list[Section] = []
-        nested: list[Section] = []  # sub-groups open inside the current step
-        current: Section | None = None  # the step that owns the output being read
-        counter = 0
-        seen_group = False
-        preamble: Section | None = None
-        trailer: Section | None = None
-
+        parse = _Parse()
         lines = raw_log.split("\n")
         if lines and lines[-1] == "":
             lines.pop()
 
         for physical in lines:
             line = _TS.sub("", physical)
-
-            group = _GROUP.match(line)
-            if group:
-                seen_group = True
-                header = group.group(1).strip()
-                sec = Section(name=_canonical(header), header=header, closed=False)
-                if sec.name in _STEP_TOKENS:
-                    if current is not None:
-                        current.closed = True  # the next step starting is what ends this one
-                    # A later step running proves execution survived any sub-group the
-                    # action left open, so close those too — unclosed is a blame signal.
-                    for abandoned in nested:
-                        abandoned.closed = True
-                    nested.clear()
-                    current = sec
-                    top.append(sec)
-                elif current is not None:
-                    (nested[-1] if nested else current).children.append(sec)
-                    nested.append(sec)
-                else:
-                    top.append(sec)
-                    nested.append(sec)
-                continue
-
-            if _ENDGROUP.match(line):
-                # For a step this only ends the header block; the step keeps
-                # collecting. For a sub-group it is a real close.
-                if nested:
-                    nested.pop().closed = True
-                continue
-
-            if _STEP_DONE.match(line) and current is not None and not nested:
-                current.closed = True
-                current = None
-                # fall through: the annotation itself is the runner's verdict, and
-                # belongs in the trailer where the classifier reads it.
-
-            if nested:
-                target = nested[-1]
-            elif current is not None:
-                target = current
-            elif not seen_group:
-                if preamble is None:
-                    preamble = Section(name=PREAMBLE, closed=True)
-                    top.append(preamble)
-                target = preamble
+            if group := _GROUP.match(line):
+                parse.open_group(group.group(1).strip())
+            elif _ENDGROUP.match(line):
+                parse.end_group()
             else:
-                if trailer is None:
-                    trailer = Section(name=TRAILER, closed=True)
-                    top.append(trailer)
-                target = trailer
+                parse.add(line)
+        return parse.tree.top
 
-            counter += 1
-            target.lines.append(LogLine(number=counter, text=line))
 
-        return top
+class _Parse:
+    """One pass over a log: the step being read and the sub-groups open inside it."""
+
+    def __init__(self) -> None:
+        """Start before any group has opened."""
+        self.tree = SectionTree()
+        self.nested: list[Section] = []  # sub-groups open inside the current step
+        self.current: Section | None = None  # the step that owns the output being read
+        self.seen_group = False
+
+    def open_group(self, header: str) -> None:
+        """Handle `##[group]`: a step starts, or a sub-group opens inside the current one.
+
+        Args:
+            header: The group's name, timestamp already stripped.
+        """
+        self.seen_group = True
+        sec = Section(name=_canonical(header), header=header, closed=False)
+        if sec.name in _STEP_TOKENS:
+            self._start_step(sec)
+        elif self.current is not None:
+            (self.nested[-1] if self.nested else self.current).children.append(sec)
+            self.nested.append(sec)
+        else:
+            self.tree.top.append(sec)
+            self.nested.append(sec)
+
+    def _start_step(self, sec: Section) -> None:
+        """Make `sec` the current step, ending the previous one.
+
+        Args:
+            sec: The new step's section.
+        """
+        if self.current is not None:
+            self.current.closed = True  # the next step starting is what ends this one
+        # A later step running proves execution survived any sub-group the
+        # action left open, so close those too — unclosed is a blame signal.
+        for abandoned in self.nested:
+            abandoned.closed = True
+        self.nested.clear()
+        self.current = sec
+        self.tree.top.append(sec)
+
+    def end_group(self) -> None:
+        """Handle `##[endgroup]`.
+
+        For a step this only ends the header block; the step keeps collecting. For a
+        sub-group it is a real close.
+        """
+        if self.nested:
+            self.nested.pop().closed = True
+
+    def add(self, line: str) -> None:
+        """Route one output line to the section that owns it.
+
+        Args:
+            line: The line, timestamp already stripped.
+        """
+        if _STEP_DONE.match(line) and self.current is not None and not self.nested:
+            self.current.closed = True
+            self.current = None
+            # fall through: the annotation itself is the runner's verdict, and
+            # belongs in the trailer where the classifier reads it.
+        self.tree.add_line(self._target(), line)
+
+    def _target(self) -> Section:
+        """The innermost open sub-group, else the current step, else the preamble/trailer."""
+        if self.nested:
+            return self.nested[-1]
+        if self.current is not None:
+            return self.current
+        return self.tree.outside(self.seen_group)

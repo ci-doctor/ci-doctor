@@ -21,12 +21,12 @@ const HEADING = /<(h[234])([^>]*)>([\s\S]*?)<\/\1>/g;
 /** GitHub-style: strip markup, lowercase, non-alphanumerics to hyphens. */
 const slugify = (html) =>
   html
-    .replace(/<[^>]+>/g, '')
+    .replace(/<[^<>]*>/g, '')
     .replace(/&[a-z]+;|&#\d+;/gi, ' ')
     .trim()
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/^-|-$/g, ''); // runs are already one hyphen
 
 async function* htmlFiles(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -48,7 +48,8 @@ for await (const file of htmlFiles(DIST)) {
     const base = slugify(inner);
     if (!base) return whole;
     let id = base;
-    for (let n = 2; used.has(`id="${id}"`); n++) id = `${base}-${n}`; // unique within the page
+    let n = 1;
+    while (used.has(`id="${id}"`)) id = `${base}-${++n}`; // unique within the page
     used.add(`id="${id}"`);
     touched++;
     return `<${tag} id="${id}"${attrs}>${inner}</${tag}>`;

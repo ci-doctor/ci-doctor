@@ -23,7 +23,7 @@ no-op on them.
 
 import re
 
-from ci_doctor.core.models import PREAMBLE, TRAILER, LogLine, Section
+from ci_doctor.core.models import Section, SectionTree
 from ci_doctor.core.ports import LogSegmenter
 
 #: One item of the token stream: ``(kind, payload, ts)``. `kind` is "content",
@@ -113,54 +113,36 @@ def _assemble(tokens: list[_Token]) -> list[Section]:
         so evidence can always point back at the original trace. A section left
         open at EOF keeps `closed=False` — that is the signal the job died inside it.
     """
-    top: list[Section] = []
+    tree = SectionTree()
     stack: list[Section] = []
-    counter = 0
     seen_start = False
-    preamble: Section | None = None
-    trailer: Section | None = None
-
-    def emit(target: Section, text: str) -> None:
-        """Append a content run's lines to a section, numbering them.
-
-        Args:
-            target: The section receiving the lines. Mutated.
-            text: A content run, possibly multi-line.
-        """
-        nonlocal counter
-        parts = text.split("\n")
-        if parts and parts[-1] == "":
-            parts.pop()  # drop the empty tail after a trailing newline
-        for raw_line in parts:
-            counter += 1
-            line = raw_line.rstrip("\r")
-            target.lines.append(LogLine(number=counter, text=line))
-            if target.header is None and line.strip():
-                target.header = line.strip()
-
-    for tok in tokens:
-        if tok[0] == "content":
-            if stack:
-                emit(stack[-1], tok[1])
-            elif not seen_start:
-                if preamble is None:
-                    preamble = Section(name=PREAMBLE, closed=True)
-                    top.append(preamble)
-                emit(preamble, tok[1])
-            else:
-                if trailer is None:
-                    trailer = Section(name=TRAILER, closed=True)
-                    top.append(trailer)
-                emit(trailer, tok[1])
-        elif tok[0] == "start":
+    for kind, payload, ts in tokens:
+        if kind == "content":
+            _emit(tree, stack[-1] if stack else tree.outside(seen_start), payload)
+        elif kind == "start":
             seen_start = True
-            sec = Section(name=tok[1], start_ts=tok[2], closed=False)
-            (stack[-1].children if stack else top).append(sec)
+            sec = Section(name=payload, start_ts=ts, closed=False)
+            (stack[-1].children if stack else tree.top).append(sec)
             stack.append(sec)
-        elif tok[0] == "end":
-            sec = _pop_matching(stack, tok[1])
-            if sec is not None:
-                sec.closed = True
-                sec.end_ts = tok[2]
+        elif kind == "end" and (sec := _pop_matching(stack, payload)) is not None:
+            sec.closed = True
+            sec.end_ts = ts
+    return tree.top
 
-    return top
+
+def _emit(tree: SectionTree, target: Section, text: str) -> None:
+    """Append a content run's lines to a section, numbering them.
+
+    Args:
+        tree: The tree being built; owns the line numbering.
+        target: The section receiving the lines. Mutated.
+        text: A content run, possibly multi-line.
+    """
+    parts = text.split("\n")
+    if parts and parts[-1] == "":
+        parts.pop()  # drop the empty tail after a trailing newline
+    for raw_line in parts:
+        line = raw_line.rstrip("\r")
+        tree.add_line(target, line)
+        if target.header is None and line.strip():
+            target.header = line.strip()
