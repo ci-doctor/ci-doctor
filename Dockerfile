@@ -14,12 +14,13 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /src
 
-# Deps only; pyproject.toml and uv.lock are bind-mounted for this step, not copied.
+# Deps only, wheels only; pyproject.toml and uv.lock are bind-mounted for this step, not copied.
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-install-project --no-editable
+    uv sync --locked --no-install-project --no-editable --no-build
 
+# Our own package is the one thing built from source, so this step can't take --no-build.
 COPY pyproject.toml uv.lock README.md LICENSE /src/
 COPY ci_doctor /src/ci_doctor
 RUN --mount=type=cache,target=/root/.cache/uv \
