@@ -4,6 +4,7 @@
 *
 !ci_doctor
 !pyproject.toml
+!uv.lock
 !README.md
 !LICENSE
 **/__pycache__
