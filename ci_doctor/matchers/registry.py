@@ -31,6 +31,7 @@ from pydantic import ValidationError
 
 from ci_doctor.config.schema import MatcherConfig, MatchersConfig
 from ci_doctor.errors import SetupError
+from ci_doctor.matchers import transports
 from ci_doctor.matchers.models import Bundle, Index, Ref
 from ci_doctor.matchers.validate import (
     bundle_from,
@@ -241,7 +242,8 @@ def registry_dir(alias: str, value: str) -> str:
         value: As written under `matchers.registries`.
 
     Returns:
-        An `http(s)://` URL ending in `/`, or a local directory path.
+        An `http(s)://` or `s3://` URL ending in `/`, a `git+` location as written, or a
+        local directory path.
 
     Raises:
         SetupError: On a location naming the index file, or an unsupported scheme.
@@ -251,10 +253,24 @@ def registry_dir(alias: str, value: str) -> str:
     scheme = urlsplit(value).scheme
     if scheme in ("http", "https"):
         return value if value.endswith("/") else value + "/"
+    if transports.is_git(value) or transports.SCP_STYLE.match(value):
+        try:
+            transports.check_git(value)
+        except SetupError as err:
+            raise _fail(alias, value, err) from None
+        return value
+    if scheme == "s3":
+        if not urlsplit(value).netloc:
+            raise _fail(alias, value, "s3:// needs a bucket: s3://bucket/prefix/")
+        return value if value.endswith("/") else value + "/"
     if scheme == "file":
         return unquote(urlsplit(value).path)
     if len(scheme) > 1:  # one letter is a Windows drive, not a scheme
-        raise _fail(alias, value, f"unsupported scheme {scheme!r}: use a path, file://, http:// or https://")
+        raise _fail(
+            alias,
+            value,
+            f"unsupported scheme {scheme!r}: use a path, file://, http(s)://, git+https://, git+ssh:// or s3://",
+        )
     return value
 
 
@@ -276,6 +292,17 @@ def fetch_file(alias: str, location: str, rel: str, *, cap: int, client: httpx.C
     """
     if location.startswith(("http://", "https://")):
         return _http_get(alias, location, rel, cap, client)
+    if location.startswith("s3://"):
+        try:
+            return _decode(alias, location, rel, transports.s3_get(location, rel, cap))
+        except SetupError as err:
+            raise _fail(alias, location, err) from None
+    if transports.is_git(location):
+        try:
+            root = transports.git_checkout(location)
+        except SetupError as err:
+            raise _fail(alias, location, err) from None
+        return _read_local(alias, str(root), rel, cap, shown=location)
     return _read_local(alias, location, rel, cap)
 
 
@@ -300,7 +327,7 @@ def _decode(alias: str, location: str, rel: str, body: bytes) -> str:
         raise _fail(alias, location, f"{rel} is not UTF-8 text") from None
 
 
-def _read_local(alias: str, location: str, rel: str, cap: int) -> str:
+def _read_local(alias: str, location: str, rel: str, cap: int, shown: str = "") -> str:
     """Read a file from a registry on disk, contained by its real path.
 
     Args:
@@ -308,6 +335,7 @@ def _read_local(alias: str, location: str, rel: str, cap: int) -> str:
         location: Its directory.
         rel: The file, relative to it.
         cap: The most bytes accepted.
+        shown: The location to name in errors when `location` is a temporary checkout.
 
     Returns:
         The file's text.
@@ -318,15 +346,15 @@ def _read_local(alias: str, location: str, rel: str, cap: int) -> str:
     try:
         path = contained(Path(location), rel)
     except SetupError as err:
-        raise _fail(alias, location, err) from None
+        raise _fail(alias, shown or location, err) from None
     try:
         size = path.stat().st_size
         body = path.read_bytes() if size <= cap else b""
     except OSError as err:
-        raise _fail(alias, location, f"{rel}: {err.strerror or err}") from None
+        raise _fail(alias, shown or location, f"{rel}: {err.strerror or err}") from None
     if size > cap:
-        raise _fail(alias, location, f"{rel} is {size} bytes, over the {cap}-byte cap")
-    return _decode(alias, location, rel, body)
+        raise _fail(alias, shown or location, f"{rel} is {size} bytes, over the {cap}-byte cap")
+    return _decode(alias, shown or location, rel, body)
 
 
 def _http_get(alias: str, location: str, rel: str, cap: int, client: httpx.Client) -> str:
