@@ -33,6 +33,8 @@ def repo(tmp_path, monkeypatch):
     The `file` protocol is allowed for the test only; the real allowlist refuses it.
     """
     monkeypatch.setattr(transports, "_PROTOCOLS", ("https", "ssh", "file"))
+    for var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):  # set when run from a git hook
+        monkeypatch.delenv(var, raising=False)
     work, bare = tmp_path / "work", tmp_path / "bare.git"
     shutil.copytree(FIXTURE, work)
     shutil.copytree(FIXTURE, work / "reg")

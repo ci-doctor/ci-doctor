@@ -82,7 +82,9 @@ def _git(args: list[str], cwd: Path, deadline: float) -> None:
     flags = ["-c", "protocol.allow=never", "-c", "submodule.recurse=false"]
     for proto in _PROTOCOLS:
         flags += ["-c", f"protocol.{proto}.allow=always"]
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
+    # An inherited GIT_DIR (set inside git hooks) would aim init/fetch at the wrong repository.
+    env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")}
+    env |= {"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
     try:
         done = subprocess.run(  # noqa: S603 - args are ours; the URL sits after `--`
             ["git", *flags, *args],  # noqa: S607
