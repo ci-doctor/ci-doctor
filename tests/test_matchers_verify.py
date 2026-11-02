@@ -145,3 +145,36 @@ def test_the_cli_exits_one_when_verify_fails(registry, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 1
+
+
+def test_a_fixture_reads_in_log_order_not_section_order(tmp_path):
+    """Lines a segmenter files under the synthetic trailer must not jump ahead of later steps."""
+    log = tmp_path / "x.log"
+    ts = "2026-07-24T20:04:00.0000000Z "
+    log.write_text(
+        "".join(
+            ts + line + "\n"
+            for line in [
+                "##[group]Operating System",
+                "Ubuntu",
+                "##[endgroup]",
+                "between groups",
+                "##[group]Run pytest",
+                "pytest",
+                "##[endgroup]",
+                "test output",
+                "##[error]Process completed with exit code 1.",
+                "Post job cleanup.",
+            ]
+        )
+    )
+    # The trailer opens at "between groups" and later collects the step's end, so tree
+    # order would put those two lines before "pytest".
+    assert read_fixture(log) == [
+        "Ubuntu",
+        "between groups",
+        "pytest",
+        "test output",
+        "##[error]Process completed with exit code 1.",
+        "Post job cleanup.",
+    ]
