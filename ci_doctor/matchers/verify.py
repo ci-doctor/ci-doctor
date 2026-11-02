@@ -35,12 +35,15 @@ def read_fixture(path: Path) -> list[str]:
         path: The `.log` file.
 
     Returns:
-        Every section's lines in log order, framing stripped and denoised.
+        Every content line in log order, framing stripped and denoised.
     """
     cfg = default_config()
     raw = path.read_text(errors="replace")
     sections = segmenter_for_log(raw, cfg.ci).segment(raw)
-    return denoise([line.text for sec in walk_sections(sections) for line in sec.lines], cfg.denoise)
+    # Log order, not tree order: a segmenter files some lines under a synthetic
+    # trailer that walks before later steps, which would skew before/after and `end`.
+    lines = sorted((line for sec in walk_sections(sections) for line in sec.lines), key=lambda ln: ln.number)
+    return denoise([line.text for line in lines], cfg.denoise)
 
 
 def matcher_output(lines: list[str], matcher: MatcherConfig) -> str:
