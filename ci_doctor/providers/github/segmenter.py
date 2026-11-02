@@ -24,7 +24,8 @@ import re
 from ci_doctor.core.models import Section, SectionTree
 from ci_doctor.core.ports import LogSegmenter
 
-_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z?\s+")
+#: Exactly one space: the runner adds one, and any more is the tool's own indentation.
+_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z? ")
 _GROUP = re.compile(r"^##\[group\](.*)$")
 _ENDGROUP = re.compile(r"^##\[endgroup\]\s*$")
 
