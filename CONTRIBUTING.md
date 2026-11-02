@@ -113,6 +113,9 @@ One long-lived branch, and every change reaches it through a pull request:
 - **`<type>/<slug>`** — branch off `master`, named with the same types the commits use:
   `feat/compare-command`, `fix/release-tag-push`, `docs/site-nav`. CI checks the name, so
   `feature/…` or `my-branch` fails before the tests do.
+- **Integration branches** — an epic that lands in phases gets one `feat/<EPIC>` branch
+  (`feat/E11`); each phase is a `feat/<EPIC>-<slug>` PR into it, and the epic reaches
+  `master` as one PR. CI runs on PRs into `feat/**` the same as into `master`.
 - **`master`** — protected by rulesets: no direct push, no force-push, linear history.
   A PR needs one approval from a code owner — any member of `@ci-doctor/maintainers` but
   its author — an approval of its latest push, resolved review threads, and green

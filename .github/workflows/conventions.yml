@@ -26,7 +26,7 @@ jobs:
           BRANCH: ${{ github.head_ref }}   # via env, never interpolated into the script
         run: |
           [[ "$BRANCH" == dependabot/* ]] && { echo "branch '$BRANCH' ok (dependabot)"; exit 0; }
-          if [[ ! "$BRANCH" =~ ^($TYPES)/[a-z0-9][a-z0-9._/-]*$ ]]; then
+          if [[ ! "$BRANCH" =~ ^($TYPES)/[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
             echo "::error::branch '$BRANCH' is not <type>/<slug>. Types: ${TYPES//|/, }"
             exit 1
           fi
