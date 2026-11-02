@@ -49,6 +49,24 @@ def compile_user(pattern: str) -> Regex:
         raise ValueError(f"{pattern!r} is not valid RE2: {reason}") from None
 
 
+def programsize(pattern: str) -> int:
+    """RE2's own cost measure for a pattern: the size of its compiled program.
+
+    RE2 cannot hang, but a huge program still costs memory and time on every log
+    line, so a registry caps it. Reuses `compile_user`'s cache.
+
+    Args:
+        pattern: The regex, in RE2 syntax.
+
+    Returns:
+        The number of instructions in the compiled program.
+
+    Raises:
+        ValueError: If RE2 rejects the pattern.
+    """
+    return compile_user(pattern).programsize
+
+
 def pattern_set(patterns: Sequence[str]) -> Callable[[str], list[int]]:
     """Compile many patterns into one matcher that reports which of them hit a line.
 

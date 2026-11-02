@@ -10,6 +10,7 @@ field added without one ships an undocumented knob.
 """
 
 import logging
+import re
 from typing import Annotated, Literal
 
 from pydantic import (
@@ -23,7 +24,7 @@ from pydantic import (
 
 from ci_doctor.config.types import AwsConfig, AzureConfig, GcpConfig, GitHubConfig, GitLabConfig, OpenAiConfig
 from ci_doctor.config.types import Strict as _Strict
-from ci_doctor.core.regex import compile_user
+from ci_doctor.core.regex import compile_user, programsize
 
 log = logging.getLogger("ci_doctor.config")
 
@@ -177,34 +178,107 @@ def _re2(pattern: str, info: ValidationInfo) -> str:
     return pattern
 
 
-def _one_line(text: str) -> str:
-    """Collapse whitespace: a description is prompt text, and a newline could forge a section.
+#: Caps on what a matcher may cost, set from the 38 shipped ones with headroom: the
+#: largest RE2 program was 109, the longest pattern 104 characters.
+MAX_PATTERN_CHARS = 500
+MAX_PROGRAM_SIZE = 1000
+DESCRIPTION_CHARS = (20, 250)
+
+#: Phrases that try to instruct the model, or forge a chat role. A tripwire for lazy
+#: prompt injection, not a defence: the prompt still frames descriptions as data.
+_TRIPWIRE = re.compile(
+    r"\b(ignore|disregard|forget)\b.*\b(instruction|prompt|previous|above)"
+    r"|\b(system|assistant|user)\s*:"
+    r"|<\||https?://",
+    re.IGNORECASE,
+)
+
+
+def _matcher_re2(pattern: str, info: ValidationInfo) -> str:
+    """Bound what one matcher regex may cost on every log line.
+
+    Args:
+        pattern: The regex, already known to compile.
+        info: Validation context carrying the matcher's `id`.
+
+    Returns:
+        The pattern, unchanged.
+
+    Raises:
+        ValueError: If the pattern is too long or compiles to too large a program.
+    """
+    owner = info.data.get("id")
+    if len(pattern) > MAX_PATTERN_CHARS:
+        raise ValueError(f"matcher {owner!r}: pattern is {len(pattern)} characters, over {MAX_PATTERN_CHARS}")
+    if (size := programsize(pattern)) > MAX_PROGRAM_SIZE:
+        raise ValueError(
+            f"matcher {owner!r}: {pattern!r} compiles to {size} RE2 instructions, over {MAX_PROGRAM_SIZE}"
+        )
+    return pattern
+
+
+def _anchor(pattern: str, info: ValidationInfo) -> str:
+    """Reject an anchor that matches an empty line: `.*`, `^`, `x*` fire on every line.
+
+    Args:
+        pattern: The anchor regex.
+        info: Validation context carrying the matcher's `id`.
+
+    Returns:
+        The pattern, unchanged.
+
+    Raises:
+        ValueError: If the pattern matches the empty string.
+    """
+    if compile_user(pattern).search("") is not None:
+        raise ValueError(
+            f"matcher {info.data.get('id')!r}: {pattern!r} matches an empty line, so it fires everywhere"
+        )
+    return pattern
+
+
+def _description(text: str, info: ValidationInfo) -> str:
+    """Collapse to one line, then hold it to what is safe to put in a prompt.
+
+    A newline could forge a prompt section; a non-ASCII character could hide text
+    from a reviewer (zero-width, bidi) without hiding it from the model.
 
     Args:
         text: The description as written.
+        info: Validation context carrying the matcher's `id`.
 
     Returns:
         The text on one line.
+
+    Raises:
+        ValueError: On a length outside the range, a non-printable-ASCII character,
+            or a tripwire phrase.
     """
-    return " ".join(text.split())
+    owner = info.data.get("id")
+    text = " ".join(text.split())
+    low, high = DESCRIPTION_CHARS
+    if not low <= len(text) <= high:
+        raise ValueError(f"{owner!r}: description is {len(text)} characters, outside {low}-{high}")
+    if bad := sorted({c for c in text if not " " <= c <= "~"}):
+        raise ValueError(f"{owner!r}: description must be printable ASCII, found {bad!r}")
+    if hit := _TRIPWIRE.search(text):
+        raise ValueError(f"{owner!r}: description contains {hit.group(0)!r}, which reads as prompt injection")
+    return text
 
 
 #: A regex field: non-empty (`''` compiles, and fires on everything or nothing) and
 #: validated as RE2 when the config loads.
 Re2 = Annotated[str, StringConstraints(min_length=1), AfterValidator(_re2)]
+#: A matcher regex: RE2, and bounded in length and program size.
+MatcherRe2 = Annotated[Re2, AfterValidator(_matcher_re2)]
+#: A matcher's anchor (`pattern`, `start`, `end`): additionally never matches an empty line.
+Anchor = Annotated[MatcherRe2, AfterValidator(_anchor)]
 #: A classification tag: lowercase, digits and dashes.
 Tag = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
+#: A description: one line of printable ASCII, safe to put in a prompt.
+Description = Annotated[str, AfterValidator(_description)]
 #: What a matcher's output is; ranks its windows (`extract.ROLE_RANK`).
 Role = Literal["tool", "wrapper", "fallback"]
-
-
-class MatcherExamples(_Strict):
-    """Lines a matcher's anchor must and must not accept — Semgrep's `ruleid:` / `ok:`."""
-
-    match: list[str] = Field(default_factory=list, description="Lines the anchor must accept.")
-    no_match: list[str] = Field(
-        default_factory=list, description="Lines the anchor must reject, `exclude` applied."
-    )
 
 
 class MatcherConfig(_Strict):
@@ -228,27 +302,27 @@ class MatcherConfig(_Strict):
     )
     classification: list[Tag] = Field(
         default_factory=list,
-        description="Tags describing the pack, ecosystem first (`[python, test]`). Metadata only.",
+        max_length=5,
+        description="Up to 5 tags describing the pack, ecosystem first (`[python, test]`). Metadata only.",
     )
-    description: Annotated[str, StringConstraints(max_length=400), AfterValidator(_one_line)] | None = Field(
+    description: Description | None = Field(
         None,
         description=(
             "Shown to the LLM beside the windows this pack selected: what the tool is and what "
-            "its failure means. The model knows public tools, not your in-house ones."
+            "its failure means. The model knows public tools, not your in-house ones. One line of "
+            "20-250 printable ASCII characters."
         ),
     )
-    start: Re2 | None = Field(None, description="Regex (RE2) opening a windowed matcher.")
-    end: Re2 | None = Field(None, description="Regex (RE2) closing a windowed matcher.")
-    pattern: Re2 | None = Field(None, description="Regex (RE2) anchoring a single-line matcher.")
-    exclude: list[Re2] = Field(
+    start: Anchor | None = Field(None, description="Regex (RE2) opening a windowed matcher.")
+    end: Anchor | None = Field(None, description="Regex (RE2) closing a windowed matcher.")
+    pattern: Anchor | None = Field(None, description="Regex (RE2) anchoring a single-line matcher.")
+    exclude: list[MatcherRe2] = Field(
         default_factory=list,
-        description="Regexes (RE2) that disqualify an anchor line (`pattern`/`start`); RE2 has no lookaround.",
+        max_length=20,
+        description="Up to 20 regexes (RE2) that disqualify an anchor line (`pattern`/`start`); RE2 has no lookaround.",
     )
-    before: int = Field(0, description="Lines of context kept above a `pattern` hit.")
-    after: int = Field(0, description="Lines of context kept below a `pattern` hit.")
-    examples: MatcherExamples = Field(
-        default_factory=MatcherExamples, description="Lines proving what the anchor accepts and rejects."
-    )
+    before: int = Field(0, ge=0, le=100, description="Lines of context kept above a `pattern` hit, 0-100.")
+    after: int = Field(0, ge=0, le=100, description="Lines of context kept below a `pattern` hit, 0-100.")
 
     @model_validator(mode="after")
     def _one_form(self) -> "MatcherConfig":

@@ -199,19 +199,8 @@ def test_generic_error_catches_a_tool_with_no_pack(provider):
 
 
 @pytest.mark.parametrize("matcher_id", sorted(MATCHERS))
-def test_every_pack_documents_and_proves_itself(matcher_id):
-    """Semgrep's rule contract: a description, tags, and true/false positives."""
+def test_every_pack_documents_itself(matcher_id):
+    """A description and tags: what a registry requires of every matcher."""
     m = MATCHERS[matcher_id]
     assert m.description, f"{matcher_id} has no description"
     assert m.classification, f"{matcher_id} has no classification"
-    assert m.examples.match and m.examples.no_match, f"{matcher_id} needs a match and a no_match example"
-
-
-@pytest.mark.parametrize("matcher_id", sorted(MATCHERS))
-def test_every_example_is_accepted_or_rejected_by_the_anchor(matcher_id):
-    """`match` lines open a window, `no_match` lines do not — `exclude` included."""
-    m = MATCHERS[matcher_id]
-    missed = [line for line in m.examples.match if not _windows_for([line], [m])]
-    leaked = [line for line in m.examples.no_match if _windows_for([line], [m])]
-    assert not missed, f"{matcher_id} does not accept its own match examples: {missed}"
-    assert not leaked, f"{matcher_id} accepts its no_match examples: {leaked}"

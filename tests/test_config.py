@@ -264,8 +264,8 @@ def test_an_empty_regex_is_a_config_error(tmp_path, body):
 
 def test_a_description_is_capped_because_it_goes_into_the_prompt(tmp_path):
     """Pack text is prompt text: an essay costs tokens on every run that pack fires."""
-    body = f"extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      description: '{'x' * 401}'\n"
-    with pytest.raises(ValidationError, match="at most 400 characters"):
+    body = f"extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      description: '{'x' * 251}'\n"
+    with pytest.raises(ValidationError, match="251 characters, outside 20-250"):
         load_config(repo_config=_write(tmp_path, body), environ={})
 
 

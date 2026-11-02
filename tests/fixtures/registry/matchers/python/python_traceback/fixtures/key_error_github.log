@@ -1,0 +1,12 @@
+2026-07-24T20:05:00.0000000Z ##[group]Run python scripts/migrate.py
+2026-07-24T20:05:00.1000000Z python scripts/migrate.py
+2026-07-24T20:05:00.2000000Z shell: /usr/bin/bash -e {0}
+2026-07-24T20:05:00.3000000Z ##[endgroup]
+2026-07-24T20:05:01.0000000Z migrating 3 tables
+2026-07-24T20:05:01.1000000Z Traceback (most recent call last):
+2026-07-24T20:05:01.2000000Z   File "/home/runner/work/app/scripts/migrate.py", line 21, in <module>
+2026-07-24T20:05:01.3000000Z     run(load_settings())
+2026-07-24T20:05:01.4000000Z   File "/home/runner/work/app/scripts/migrate.py", line 15, in run
+2026-07-24T20:05:01.5000000Z     url = settings["DATABASE_URL"]
+2026-07-24T20:05:01.6000000Z KeyError: 'DATABASE_URL'
+2026-07-24T20:05:01.7000000Z ##[error]Process completed with exit code 1.

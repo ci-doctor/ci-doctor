@@ -1,0 +1,9 @@
+$ pytest -q
+..                                                                       [100%]
+=============================== warnings summary ===============================
+tests/test_cart.py::test_total
+  /app/cart.py:3: DeprecationWarning: float totals are deprecated
+    return sum(items) / 1.0
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2 passed, 1 warning in 0.02s
