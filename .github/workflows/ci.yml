@@ -34,7 +34,7 @@ jobs:
       # Every extra that can coexist (litellm conflicts with openai), so provider tests run.
       - run: >-
           uv sync --locked --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle
-          --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
+          --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface --extra s3
       - run: uv run --locked pytest -q --cov
       # One leg is enough for Sonar.
       - name: Coverage report for Sonar
@@ -62,7 +62,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --extra s3  # ty resolves boto3 for the s3 transport
       - name: ruff check
         run: uv run --locked ruff check ci_doctor tests
       - name: ruff format
