@@ -14,7 +14,8 @@ from ci_doctor.config.schema import Description, Tag
 from ci_doctor.config.types import Strict
 
 #: A registry name: what users type in `alias/name`, and the matcher's directory name.
-BARE_ID = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
+#: One character is enough: a bundle is named after its ecosystem tag, and `c` is one.
+BARE_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 #: Bounds the work one index can cause.
 MAX_INDEX_ENTRIES = 2000
 

@@ -180,6 +180,13 @@ def test_a_bundle_rejects_duplicates_and_a_bad_id(registry):
         load_bundle(path)
 
 
+def test_a_one_letter_ecosystem_names_its_bundle(registry):
+    """Ecosystems are open, `c` included, and each gets a bundle named after it."""
+    path = registry / "bundles/c.yaml"
+    path.write_text("id: c\ndescription: C and C++ compile and link errors.\ninclude: [pytest]\n")
+    assert load_bundle(path, author=True).id == "c"
+
+
 def test_every_shipped_matcher_passes_the_registry_rules(tmp_path):
     """The 38 matchers ci-doctor ships today must migrate to a registry unchanged."""
     text = resources.files("ci_doctor.config").joinpath("defaults.yml").read_text()
