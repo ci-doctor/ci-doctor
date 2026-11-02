@@ -330,7 +330,7 @@ def _read_local(alias: str, location: str, rel: str, cap: int) -> str:
 
 
 def _http_get(alias: str, location: str, rel: str, cap: int, client: httpx.Client) -> str:
-    """GET a registry file: bounded redirects that never downgrade or change host, capped size.
+    """GET a registry file: bounded redirects that never downgrade (another host warns), capped size.
 
     Args:
         alias: The registry's alias.
@@ -358,7 +358,7 @@ def _http_get(alias: str, location: str, rel: str, cap: int, client: httpx.Clien
                     if urlsplit(url).scheme == "https" and urlsplit(nxt).scheme != "https":
                         raise _fail(alias, location, f"{rel}: redirect from https to {nxt} refused")
                     if urlsplit(nxt).hostname != host:
-                        raise _fail(alias, location, f"{rel}: redirect to another host ({nxt}) refused")
+                        log.warning("registry %r: %s redirects to another host (%s)", alias, rel, redact(nxt))
                     url = nxt
                     continue
                 if resp.status_code != 200:
