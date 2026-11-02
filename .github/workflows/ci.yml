@@ -34,7 +34,7 @@ jobs:
       # Every extra that can coexist (litellm conflicts with openai), so provider tests run.
       - run: >-
           uv sync --locked --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle
-          --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
+          --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface --extra s3
       - run: uv run --locked pytest -q --cov
       # One leg is enough for Sonar.
       - name: Coverage report for Sonar
