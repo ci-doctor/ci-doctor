@@ -1,5 +1,6 @@
-# Add to your .gitlab-ci.yml. Runs only when the pipeline fails, and always exits 0
-# (allow_failure is belt-and-braces) so it can never change the pipeline's outcome.
+# Add to your .gitlab-ci.yml. Runs only when the pipeline fails. The analysis always
+# exits 0; a broken setup (bad config, unreachable registry) exits 1 so you see it,
+# and allow_failure keeps even that from changing the pipeline's outcome.
 ci-doctor:
   stage: .post
   image: registry.internal.example.com/ci-doctor:latest

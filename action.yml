@@ -100,9 +100,9 @@ runs:
         CONFIG: ${{ inputs.config }}
       run: |
         # GitHub runs `shell: bash` with -e already set. Turn it off deliberately:
-        # invariant #3 is that ci-doctor never changes a pipeline's outcome, and an
-        # action that can fail the caller's workflow would break that promise from
-        # the outside no matter what the analyzer does.
+        # invariant #3 is that the analysis never changes a pipeline's outcome. The one
+        # exit passed through is 1, a broken setup (bad config, unreachable registry),
+        # which is the caller's to fix and must not hide in a green step.
         set +e
         set -uo pipefail
 
@@ -110,6 +110,7 @@ runs:
         [[ -n "$JOB_ID" ]] && args+=(--job-id "$JOB_ID")
         [[ -n "$CONFIG" ]] && args+=(--config "$CONFIG")
         ci-doctor analyze "${args[@]}"
+        status=$?
 
         # Surface the verdict so callers can branch on it (e.g. only retry when the
         # failure was infrastructure). Every read is guarded: a missing or malformed
@@ -129,6 +130,7 @@ runs:
         print(f"markdown-path={pathlib.Path('report.md').resolve()}")
         print(f"json-path={report.resolve()}")
         PY
+        [[ $status -eq 1 ]] && exit 1
         exit 0
 
     - name: Add the report to the job summary

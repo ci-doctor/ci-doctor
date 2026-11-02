@@ -59,7 +59,9 @@ def _blamed_section(sections: list[Section], phase: Phase) -> Section | None:
     return match[-1] if match else None
 
 
-def build_bundle(job: Job, attr: Attribution, sections: list[Section], cfg: Config) -> EvidenceBundle:
+def build_bundle(
+    job: Job, attr: Attribution, sections: list[Section], cfg: Config, matchers: list[MatcherConfig]
+) -> EvidenceBundle:
     """Denoise, window and budget the blamed section into a bundle.
 
     Deterministic and offline: no model is called here. Only the blamed phase's
@@ -71,6 +73,7 @@ def build_bundle(job: Job, attr: Attribution, sections: list[Section], cfg: Conf
         attr: The classifier's verdict.
         sections: The job's sections, phases already assigned.
         cfg: Config supplying the denoise, extraction and budget knobs.
+        matchers: The evidence matchers, loaded from the configured registries.
 
     Returns:
         The bundle the report step consumes.
@@ -87,10 +90,10 @@ def build_bundle(job: Job, attr: Attribution, sections: list[Section], cfg: Conf
     blamed_budget = int(cfg.llm.max_input_tokens * 0.7)
     # Budget the *selection* by matcher rank first; `fit` is the last resort
     # that cuts inside whatever survives.
-    excerpt = extract(clean, cfg.extraction.matchers, cfg.extraction.tail_lines, blamed_budget)
+    excerpt = extract(clean, matchers, cfg.extraction.tail_lines, blamed_budget)
     fitted, truncated = fit(excerpt, blamed_budget)
-    by_id = {m.id: m for m in cfg.extraction.matchers}
-    matchers = [by_id[i] for i in fired(fitted, cfg.extraction.matchers)]
+    by_id = {m.id: m for m in matchers}
+    used = [by_id[i] for i in fired(fitted, matchers)]
     log.debug(
         "blamed phase %s: denoise %d->%d, extract ->%d, fit ->%d lines (truncated=%s)",
         attr.phase,
@@ -116,6 +119,6 @@ def build_bundle(job: Job, attr: Attribution, sections: list[Section], cfg: Conf
         "confidence": attr.confidence,
         "terminal_evidence": attr.terminal_evidence,
     }
-    descriptions = "".join(m.description or "" for m in matchers)
+    descriptions = "".join(m.description or "" for m in used)
     token_estimate = estimate_tokens("\n".join(fitted) + "\n".join(secondary) + str(metadata) + descriptions)
-    return EvidenceBundle(attr.phase, fitted, secondary, metadata, token_estimate, truncated, matchers)
+    return EvidenceBundle(attr.phase, fitted, secondary, metadata, token_estimate, truncated, used)

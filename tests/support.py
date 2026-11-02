@@ -6,6 +6,7 @@ Layout::
 
     fixtures/logs/<provider>/<case>.log   provider-specific raw job logs
     fixtures/expected/<case>.json         provider-NEUTRAL attribution verdicts
+    fixtures/registry/                    a matcher registry, for anything that needs matchers
 
 Logs are provider-scoped because every CI system frames a job differently.
 Verdicts are not: attribution lives in provider-neutral ``core/``, so the same
@@ -21,12 +22,49 @@ has no registered segmenter.
 from collections.abc import Iterable
 from pathlib import Path
 
+from ci_doctor.config.schema import MatcherConfig, MatchersConfig
 from ci_doctor.core.models import Section, walk_sections
+from ci_doctor.matchers.registry import load
 from ci_doctor.providers.registry import SEGMENTERS, segmenter_for
 
 FIX = Path(__file__).parent / "fixtures"
 LOGS = FIX / "logs"
 EXPECTED = FIX / "expected"
+REGISTRY = FIX / "registry"
+
+#: Two of the formerly shipped matchers, for tests about wrappers vs tools.
+TSC = MatcherConfig(
+    id="t/tsc",
+    role="tool",
+    classification=["js", "build"],
+    description="A TypeScript compile error (`error TS2345:`) with the source excerpt around it.",
+    pattern=r"error TS\d+:",
+    before=1,
+    after=3,
+)
+NPM = MatcherConfig(
+    id="t/npm",
+    role="wrapper",
+    classification=["js", "deps"],
+    description="`npm ERR!` lines. A wrapper: npm reports the failure of the script it ran, never the cause.",
+    pattern="npm ERR!",
+    before=2,
+    after=10,
+)
+
+
+def registry_matchers(*refs: str) -> list[MatcherConfig]:
+    """Load matchers from the fixture registry, as `analyze` would from a real one.
+
+    Args:
+        *refs: Names in it (`pytest`, `python`); defaults to the `all` bundle.
+
+    Returns:
+        The matchers, ids as `fixtures/<name>`.
+    """
+    include = [f"fixtures/{r}" for r in refs or ("all",)]
+    return load(MatchersConfig(registries={"fixtures": str(REGISTRY)}, include=include))
+
 
 # `SEGMENTERS` is the shipped registry, re-exported: a fixture directory is
 # named after the CI system whose log format it holds, so the two cannot drift.

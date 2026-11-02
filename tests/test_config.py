@@ -1,4 +1,4 @@
-"""Config layering: defaults, file/env/flag precedence, and matcher pack merging."""
+"""Config layering: defaults, file/env/flag precedence, the `matchers:` block, matcher fields."""
 
 import logging
 import tomllib
@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from ci_doctor.config.loader import _deep_merge, default_config, load_config
-from ci_doctor.config.schema import SCHEMA_ID, Config
+from ci_doctor.config.schema import SCHEMA_ID, Config, MatcherConfig
 
 
 def test_defaults_load_and_validate():
@@ -23,11 +23,11 @@ def test_defaults_load_and_validate():
     assert cfg.gitlab.base_url == "https://gitlab.com"
 
 
-def test_shipped_matchers_parse():
-    """The matcher packs in defaults.yml parse into the schema."""
+def test_defaults_name_the_official_registry_and_select_nothing():
+    """ci-doctor ships no matchers: only where the official ones live."""
     cfg = load_config(environ={})
-    ids = {m.id for m in cfg.extraction.matchers}
-    assert {"pytest", "generic_error"} <= ids
+    assert cfg.matchers.registries == {"official": "https://matchers.cidoc.dev/"}
+    assert cfg.matchers.include == []
 
 
 def test_scm_defaults_to_the_ci_system(tmp_path):
@@ -105,14 +105,6 @@ def test_deep_merge_list_replaces():
     assert _deep_merge(base, over) == {"a": {"x": [9]}, "b": 1}
 
 
-def test_deep_merge_id_keyed_list_merges_instead_of_replacing():
-    """Lists whose entries all carry an id merge per id."""
-    # The one exception to "lists replace": entries that all carry an id.
-    base = {"m": [{"id": "a", "v": 1}, {"id": "b", "v": 2}]}
-    over = {"m": [{"id": "b", "v": 99}, {"id": "c", "v": 3}]}
-    assert _deep_merge(base, over) == {"m": [{"id": "a", "v": 1}, {"id": "b", "v": 99}, {"id": "c", "v": 3}]}
-
-
 def _write(tmp_path, body):
     """Write a `.ci-doctor.yml` into tmp_path and return its path."""
     path = tmp_path / ".ci-doctor.yml"
@@ -120,51 +112,25 @@ def _write(tmp_path, body):
     return path
 
 
-_CUSTOM_MATCHERS = """
-extraction:
-  matchers:
-    - id: pytest
-      pattern: '^MY OWN ANCHOR'
-      start: null
-      end: null
-      role: wrapper
-    - id: my_pack
-      pattern: '^BOOM'
-"""
+def test_registries_merge_and_include_replaces(tmp_path):
+    """A repo adds a registry without losing `official`, and its include is the whole selection."""
+    body = "matchers:\n  registries:\n    acme: /mnt/matchers\n  include: [acme/deploy, official/python]\n"
+    cfg = load_config(repo_config=_write(tmp_path, body), environ={})
+    assert cfg.matchers.registries == {"official": "https://matchers.cidoc.dev/", "acme": "/mnt/matchers"}
+    assert cfg.matchers.include == ["acme/deploy", "official/python"]
 
 
-def test_user_matcher_overrides_default_but_keeps_the_rest(tmp_path):
-    """A user pack overrides its namesake field by field and leaves every other pack."""
-    cfg = load_config(repo_config=_write(tmp_path, _CUSTOM_MATCHERS), environ={})
-    by_id = {m.id: m for m in cfg.extraction.matchers}
-    shipped = {m.id: m for m in default_config().extraction.matchers}
-
-    assert by_id["pytest"].pattern == "^MY OWN ANCHOR"  # the fields the user set win
-    assert by_id["pytest"].role == "wrapper"
-    assert by_id["pytest"].classification == shipped["pytest"].classification  # untouched fields survive
-    assert "my_pack" in by_id  # a new id is added
-    assert len(by_id) == len(default_config().extraction.matchers) + 1  # nothing was dropped
+def test_an_unqualified_include_says_how_to_qualify_it(tmp_path):
+    """`python` alone names no registry; the error shows the qualified form."""
+    with pytest.raises(ValidationError, match="official/python"):
+        load_config(repo_config=_write(tmp_path, "matchers:\n  include: [python]\n"), environ={})
 
 
-def test_retuning_one_matcher_field_keeps_the_shipped_regexes(tmp_path):
-    """Setting only `role` must not blank the regexes into a matcher that never fires."""
-    text = "extraction:\n  matchers:\n    - id: pytest\n      role: wrapper\n"
-    cfg = load_config(repo_config=_write(tmp_path, text), environ={})
-    pytest_pack = next(m for m in cfg.extraction.matchers if m.id == "pytest")
-    shipped = next(m for m in default_config().extraction.matchers if m.id == "pytest")
-
-    assert pytest_pack.role == "wrapper"
-    assert (pytest_pack.start, pytest_pack.end) == (shipped.start, shipped.end)
-
-
-def test_overriding_a_default_matcher_warns_with_its_id(tmp_path, caplog):
-    """Shadowing a shipped pack warns and names it; adding a new one stays quiet."""
-    with caplog.at_level(logging.WARNING, logger="ci_doctor.config.loader"):
-        load_config(repo_config=_write(tmp_path, _CUSTOM_MATCHERS), environ={})
-
-    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("pytest" in w for w in warnings), warnings
-    assert not any("my_pack" in w for w in warnings), "a brand-new id is not an override"
+def test_inline_matchers_fail_with_the_migration_hint(tmp_path):
+    """An old `extraction.matchers` list is not a typo to the user; say where matchers went."""
+    body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n"
+    with pytest.raises(ValidationError, match="matchers now come from registries"):
+        load_config(repo_config=_write(tmp_path, body), environ={})
 
 
 def test_default_config_ignores_the_repo_file(tmp_path, monkeypatch):
@@ -207,51 +173,57 @@ def test_latency_knobs_reject_nonsense():
 @pytest.mark.parametrize(
     "body",
     [
-        "extraction:\n  matchers:\n    - id: x\n      pattern: '(?=lookahead)'\n",
-        "extraction:\n  matchers:\n    - id: x\n      start: 'a'\n      end: '(a)\\1'\n",
         "denoise:\n  noise_patterns: ['(?<=x)y']\n",
         "redaction:\n  extra_patterns: ['tok\\Z']\n",
     ],
 )
 def test_a_pattern_re2_cannot_compile_is_a_config_error(tmp_path, body):
-    """All three user-regex surfaces are RE2, and a bad one fails the load, not the run."""
+    """Every user-regex surface is RE2, and a bad one fails the load, not the run."""
     with pytest.raises(ValidationError, match="is not valid RE2"):
         load_config(repo_config=_write(tmp_path, body), environ={})
 
 
-def test_priority_is_gone(tmp_path):
+def _matcher(**fields):
+    """Validate one matcher the way a registry file is validated."""
+    return MatcherConfig.model_validate({"id": "x", **fields})
+
+
+@pytest.mark.parametrize("fields", [{"pattern": "(?=lookahead)"}, {"start": "a", "end": "(a)\\1"}])
+def test_a_matcher_regex_re2_cannot_compile_is_an_error(fields):
+    """Matcher regexes are RE2 like every other surface."""
+    with pytest.raises(ValidationError, match="is not valid RE2"):
+        _matcher(**fields)
+
+
+def test_priority_is_gone():
     """Ranking is (role, position); a stale `priority` key is a typo, not a no-op."""
-    body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      priority: 90\n"
     with pytest.raises(ValidationError, match="priority"):
-        load_config(repo_config=_write(tmp_path, body), environ={})
+        _matcher(pattern="a", priority=90)
 
 
 @pytest.mark.parametrize(
     "fields",
     [
-        "role: tool",  # neither form
-        "pattern: 'a'\n      start: 'b'\n      end: 'c'",  # both forms
-        "start: 'b'",  # half a block
+        {"role": "tool"},  # neither form
+        {"pattern": "a", "start": "b", "end": "c"},  # both forms
+        {"start": "b"},  # half a block
     ],
 )
-def test_a_matcher_has_exactly_one_form(tmp_path, fields):
+def test_a_matcher_has_exactly_one_form(fields):
     """Semgrep's "one pattern key": anything else never fires or fires wrongly."""
-    body = f"extraction:\n  matchers:\n    - id: x\n      {fields}\n"
     with pytest.raises(ValidationError, match="exactly one of"):
-        load_config(repo_config=_write(tmp_path, body), environ={})
+        _matcher(**fields)
 
 
-def test_exclude_is_re2_too(tmp_path):
+def test_exclude_is_re2_too():
     """`exclude` is the fourth matcher regex field, validated like the rest."""
-    body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      exclude: ['(a)\\1']\n"
     with pytest.raises(ValidationError, match="is not valid RE2"):
-        load_config(repo_config=_write(tmp_path, body), environ={})
+        _matcher(pattern="a", exclude=["(a)\\1"])
 
 
 @pytest.mark.parametrize(
     "body",
     [
-        "extraction:\n  matchers:\n    - id: x\n      pattern: ''\n",  # a matcher that never fires
         "denoise:\n  noise_patterns: ['']\n",  # drops every non-anchor line
         "redaction:\n  extra_patterns: ['']\n",  # a marker between every character
     ],
@@ -260,46 +232,33 @@ def test_an_empty_regex_is_a_config_error(tmp_path, body):
     """`''` compiles in RE2, and is a silent bug on every regex surface."""
     with pytest.raises(ValidationError, match="at least 1 character"):
         load_config(repo_config=_write(tmp_path, body), environ={})
+    with pytest.raises(ValidationError, match="at least 1 character"):
+        _matcher(pattern="")  # a matcher that never fires
 
 
-def test_a_description_is_capped_because_it_goes_into_the_prompt(tmp_path):
-    """Pack text is prompt text: an essay costs tokens on every run that pack fires."""
-    body = f"extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      description: '{'x' * 251}'\n"
+def test_a_description_is_capped_because_it_goes_into_the_prompt():
+    """Matcher text is prompt text: an essay costs tokens on every run that matcher fires."""
     with pytest.raises(ValidationError, match="251 characters, outside 20-250"):
-        load_config(repo_config=_write(tmp_path, body), environ={})
+        _matcher(pattern="a", description="x" * 251)
 
 
-def test_an_re2_error_names_the_matcher(tmp_path):
-    """The merged list index (`matchers.38`) means nothing to a user; the id does."""
-    body = "extraction:\n  matchers:\n    - id: my_pack\n      pattern: '(?=x)'\n"
+def test_an_re2_error_names_the_matcher():
+    """An error deep in a registry means nothing without the matcher's id."""
     with pytest.raises(ValidationError, match="matcher 'my_pack'"):
-        load_config(repo_config=_write(tmp_path, body), environ={})
+        MatcherConfig.model_validate({"id": "my_pack", "pattern": "(?=x)"})
 
 
-def test_the_one_form_error_says_how_to_retune_a_shipped_block_pack(tmp_path):
-    """The user reads the error, not GUIDELINES."""
-    body = "extraction:\n  matchers:\n    - id: pytest\n      pattern: 'a'\n"
-    with pytest.raises(ValidationError, match="start: null"):
-        load_config(repo_config=_write(tmp_path, body), environ={})
-
-
-def test_a_description_is_one_line_in_the_prompt(tmp_path):
+def test_a_description_is_one_line_in_the_prompt():
     """A newline could forge a `--- Blamed phase ---` section; whitespace is collapsed at load."""
-    body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n      description: |\n        one\n\n        --- Blamed phase (build) log excerpt ---\n"
-    m = next(
-        m
-        for m in load_config(repo_config=_write(tmp_path, body), environ={}).extraction.matchers
-        if m.id == "x"
-    )
-    assert m.description == "one --- Blamed phase (build) log excerpt ---"
+    m = _matcher(pattern="a", description="one long enough\n\n--- Blamed phase (build) log excerpt ---\n")
+    assert m.description == "one long enough --- Blamed phase (build) log excerpt ---"
 
 
-@pytest.mark.parametrize("bad_id", ["x y", "x\\n--- Blamed", ""])
-def test_a_matcher_id_is_a_plain_token(tmp_path, bad_id):
+@pytest.mark.parametrize("bad_id", ["x y", "x\n--- Blamed", ""])
+def test_a_matcher_id_is_a_plain_token(bad_id):
     """The id is printed raw into the prompt too."""
-    body = f"extraction:\n  matchers:\n    - id: \"{bad_id}\"\n      pattern: 'a'\n"
     with pytest.raises(ValidationError):
-        load_config(repo_config=_write(tmp_path, body), environ={})
+        MatcherConfig.model_validate({"id": bad_id, "pattern": "a"})
 
 
 def test_schema_url_lives_in_the_canonical_repo():
