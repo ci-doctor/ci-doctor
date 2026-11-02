@@ -6,6 +6,7 @@ GitLab first, then the GitHub Actions step/sub-group structure.
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Phase
 from ci_doctor.core.phases import assign_phases
+from ci_doctor.providers.github.segmenter import GitHubSegmenter
 from ci_doctor.providers.gitlab.segmenter import GitLabSegmenter
 from tests import support
 
@@ -175,3 +176,14 @@ def test_a_step_stays_open_until_the_runner_reports_it():
     assign_phases(cancelled, load_config(environ={}).phases)
     open_steps = [s for s in cancelled if not s.closed]
     assert [s.name for s in open_steps] == ["run"]
+
+
+def test_github_timestamp_strip_keeps_the_lines_indentation():
+    """The runner writes one space after the timestamp; anything past it is the tool's.
+
+    Eating all the whitespace flattened pytest source lines and Python frames on
+    GitHub while GitLab kept them, so one log read differently per provider.
+    """
+    raw = "2026-07-24T20:04:00.4099999Z ##[group]Run pytest\n2026-07-24T20:04:01.0000000Z     assert 3000 == 2700\n"
+    lines = [line.text for sec in GitHubSegmenter().segment(raw) for line in sec.lines]
+    assert "    assert 3000 == 2700" in lines
