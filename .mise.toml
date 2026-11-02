@@ -72,6 +72,15 @@ run = [
   "uv run ruff format --preview $(git ls-files '*.md' ':!:.claude/**')",
 ]
 
+[tasks."docker:build"]
+description = "Build the runtime image as ci-doctor:dev"
+run = "docker build -t ci-doctor:dev ."
+
+[tasks."docker:debug"]
+description = "Build the image and open a shell inside it"
+depends = ["docker:build"]
+run = "docker run --rm -it --entrypoint bash -v \"$PWD:/app\" ci-doctor:dev"
+
 [tasks.leaks]
 description = "Scan history for secrets, same as the CI job"
 run = "gitleaks git --no-banner --redact"
