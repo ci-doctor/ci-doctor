@@ -45,8 +45,27 @@ class _NoAliasLoader(yaml.SafeLoader):
         return super().compose_node(parent, index)
 
 
+def parse_yaml(text: str, where: str) -> Any:  # noqa: ANN401 - YAML is genuinely any shape until validated
+    """Parse one registry document with the alias-free loader.
+
+    Args:
+        text: The document.
+        where: The file or URL it came from, for the error message.
+
+    Returns:
+        The parsed document.
+
+    Raises:
+        SetupError: If it isn't valid YAML, or uses an anchor or alias.
+    """
+    try:
+        return yaml.load(text, Loader=_NoAliasLoader)  # noqa: S506 - a SafeLoader subclass
+    except yaml.YAMLError as err:
+        raise SetupError(f"{where}: {err}") from None
+
+
 def load_yaml(path: Path) -> Any:  # noqa: ANN401 - YAML is genuinely any shape until validated
-    """Parse one registry file with the alias-free loader.
+    """Read and parse one registry file with the alias-free loader.
 
     Args:
         path: The file.
@@ -58,9 +77,10 @@ def load_yaml(path: Path) -> Any:  # noqa: ANN401 - YAML is genuinely any shape 
         SetupError: If the file can't be read or isn't valid YAML.
     """
     try:
-        return yaml.load(path.read_text(), Loader=_NoAliasLoader)  # noqa: S506 - a SafeLoader subclass
-    except (OSError, yaml.YAMLError) as err:
+        text = path.read_text()
+    except OSError as err:
         raise SetupError(f"{path}: {err}") from None
+    return parse_yaml(text, str(path))
 
 
 def contained(root: Path, rel: str) -> Path:
@@ -85,8 +105,49 @@ def contained(root: Path, rel: str) -> Path:
     return real
 
 
+def matcher_from(data: Any, where: str, *, dirs: tuple[str, str] | None = None) -> MatcherConfig:  # noqa: ANN401 - parsed YAML
+    """Validate one parsed matcher document, still under its bare id.
+
+    Args:
+        data: The parsed `matcher.yaml`.
+        where: The file or URL it came from, for error messages.
+        dirs: ``(ecosystem, id)`` directory names to match against, at author time.
+
+    Returns:
+        The matcher, with its bare id.
+
+    Raises:
+        SetupError: Naming `where` and everything wrong with it.
+    """
+    if not isinstance(data, dict):
+        raise SetupError(f"{where}: a matcher file must be a mapping")
+    problems = []
+    mid = data.get("id")
+    if not isinstance(mid, str) or not BARE_ID.match(mid):
+        problems.append(f"id {mid!r} must match {BARE_ID.pattern}")
+    if not data.get("description"):
+        problems.append("description is required")
+    tags = data.get("classification")
+    if not tags:
+        problems.append("classification needs at least one tag, the ecosystem first")
+    if dirs is not None:
+        eco, name = dirs
+        if isinstance(mid, str) and mid != name:
+            problems.append(f"id {mid!r} must equal its directory name {name!r}")
+        if isinstance(tags, list) and tags and tags[0] != eco:
+            problems.append(
+                f"first classification tag {tags[0]!r} must equal its ecosystem directory {eco!r}"
+            )
+    if problems:
+        raise SetupError(f"{where}: " + "; ".join(problems))
+    try:
+        return MatcherConfig.model_validate(data)
+    except ValidationError as err:
+        raise SetupError(f"{where}: {err}") from None
+
+
 def load_matcher(path: Path, *, author: bool = False) -> MatcherConfig:
-    """Load and validate one `matcher.yaml`.
+    """Load and validate one `matcher.yaml` from disk.
 
     Args:
         path: The file, at `matchers/<eco>/<id>/matcher.yaml` in its registry.
@@ -99,34 +160,31 @@ def load_matcher(path: Path, *, author: bool = False) -> MatcherConfig:
     Raises:
         SetupError: Naming the file and what is wrong with it.
     """
-    data = load_yaml(path)
-    if not isinstance(data, dict):
-        raise SetupError(f"{path}: a matcher file must be a mapping")
-    problems = []
-    mid = data.get("id")
-    if not isinstance(mid, str) or not BARE_ID.match(mid):
-        problems.append(f"id {mid!r} must match {BARE_ID.pattern}")
-    if not data.get("description"):
-        problems.append("description is required")
-    tags = data.get("classification")
-    if not tags:
-        problems.append("classification needs at least one tag, the ecosystem first")
-    if author and isinstance(mid, str) and mid != path.parent.name:
-        problems.append(f"id {mid!r} must equal its directory name {path.parent.name!r}")
-    if author and isinstance(tags, list) and tags and tags[0] != path.parent.parent.name:
-        problems.append(
-            f"first classification tag {tags[0]!r} must equal its ecosystem directory {path.parent.parent.name!r}"
-        )
-    if problems:
-        raise SetupError(f"{path}: " + "; ".join(problems))
+    dirs = (path.parent.parent.name, path.parent.name) if author else None
+    return matcher_from(load_yaml(path), str(path), dirs=dirs)
+
+
+def bundle_from(data: Any, where: str) -> Bundle:  # noqa: ANN401 - parsed YAML
+    """Validate one parsed bundle document.
+
+    Args:
+        data: The parsed `bundles/<id>.yaml`.
+        where: The file or URL it came from, for error messages.
+
+    Returns:
+        The bundle.
+
+    Raises:
+        SetupError: Naming `where` and what is wrong with it.
+    """
     try:
-        return MatcherConfig.model_validate(data)
+        return Bundle.model_validate(data)
     except ValidationError as err:
-        raise SetupError(f"{path}: {err}") from None
+        raise SetupError(f"{where}: {err}") from None
 
 
 def load_bundle(path: Path, *, author: bool = False) -> Bundle:
-    """Load and validate one `bundles/<id>.yaml`.
+    """Load and validate one `bundles/<id>.yaml` from disk.
 
     Args:
         path: The file.
@@ -138,11 +196,7 @@ def load_bundle(path: Path, *, author: bool = False) -> Bundle:
     Raises:
         SetupError: Naming the file and what is wrong with it.
     """
-    data = load_yaml(path)
-    try:
-        bundle = Bundle.model_validate(data)
-    except ValidationError as err:
-        raise SetupError(f"{path}: {err}") from None
+    bundle = bundle_from(load_yaml(path), str(path))
     if author and bundle.id != path.stem:
         raise SetupError(f"{path}: id {bundle.id!r} must equal its file name {path.stem!r}")
     return bundle
