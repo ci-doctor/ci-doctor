@@ -33,10 +33,13 @@ from ci_doctor.config.loader import default_config, load_config
 from ci_doctor.config.schema import Config
 from ci_doctor.core.models import Run
 from ci_doctor.errors import SetupError
+from ci_doctor.matchers.cli import app as matchers_app
 from ci_doctor.pipeline import JobResult, analyze_log, analyze_run
 from ci_doctor.providers.registry import make_scm_provider
 
 app = typer.Typer(add_completion=False, help="Explain why a CI pipeline failed (read-only postmortem).")
+
+app.add_typer(matchers_app, name="matchers")
 
 log = logging.getLogger("ci_doctor.cli")
 
