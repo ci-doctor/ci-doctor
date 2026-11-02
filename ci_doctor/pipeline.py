@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import NamedTuple
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schema import Config, MatcherConfig
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
@@ -41,6 +41,7 @@ class JobResult(NamedTuple):
 def process_job(
     job: Job,
     cfg: Config,
+    matchers: list[MatcherConfig],
     segmenter: LogSegmenter | None = None,
     client: LLMClient | None = None,
 ) -> JobResult:
@@ -51,6 +52,7 @@ def process_job(
     Args:
         job: The failed job, log already attached.
         cfg: The effective config.
+        matchers: The evidence matchers, loaded from the configured registries.
         segmenter: Parser for this log's format. Defaults to the one `config.ci`
             names, which is right for a live run — the provider that produced the
             log is the one we just read it from.
@@ -78,7 +80,7 @@ def process_job(
         attr.rule_id,
         attr.confidence,
     )
-    bundle = build_bundle(job, attr, job.sections, cfg)
+    bundle = build_bundle(job, attr, job.sections, cfg, matchers)
     report = produce_report(job, attr, bundle, cfg, client=client)
     log.debug(
         "job %s: report category=%s confidence=%s infra=%s",
@@ -110,13 +112,14 @@ def _ordered(jobs: list[Job]) -> list[Job]:
 
 
 def analyze_run(
-    run_id: str, cfg: Config, job_id: str | None = None
+    run_id: str, cfg: Config, matchers: list[MatcherConfig], job_id: str | None = None
 ) -> tuple[Run, CIProvider, list[JobResult]]:
     """Fetch a run from the provider and analyze its failed jobs.
 
     Args:
         run_id: The provider's run/pipeline id.
         cfg: The effective config.
+        matchers: The evidence matchers, loaded from the configured registries.
         job_id: Restrict to a single job id, or None for all failed ones.
 
     Returns:
@@ -137,10 +140,12 @@ def analyze_run(
     # Sequential on purpose: python-gitlab and PyGithub make no thread-safety promise.
     for job in selected:
         job.log = provider.fetch_job_log(job)
-    return run, provider, _analyze(selected, cfg)
+    return run, provider, _analyze(selected, cfg, matchers)
 
 
-def _analyze(jobs: list[Job], cfg: Config, segmenter: LogSegmenter | None = None) -> list[JobResult]:
+def _analyze(
+    jobs: list[Job], cfg: Config, matchers: list[MatcherConfig], segmenter: LogSegmenter | None = None
+) -> list[JobResult]:
     """Analyze every job, concurrently when the config allows it.
 
     The jobs are independent and the LLM call dominates each one, so this is where
@@ -150,6 +155,7 @@ def _analyze(jobs: list[Job], cfg: Config, segmenter: LogSegmenter | None = None
     Args:
         jobs: The selected jobs, logs already attached.
         cfg: The effective config; `analysis.max_parallel_jobs` sets the width.
+        matchers: The evidence matchers, loaded from the configured registries.
         segmenter: Parser for the log format, or None to derive it per job.
 
     Returns:
@@ -161,23 +167,24 @@ def _analyze(jobs: list[Job], cfg: Config, segmenter: LogSegmenter | None = None
     try:
         workers = min(cfg.analysis.max_parallel_jobs, len(jobs))
         if workers <= 1:
-            return [process_job(job, cfg, segmenter, client) for job in jobs]
+            return [process_job(job, cfg, matchers, segmenter, client) for job in jobs]
         log.debug("analyzing %d job(s) across %d workers", len(jobs), workers)
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ci-doctor") as pool:
             # `map` yields in submission order, so the report reads chronologically even
             # though the jobs finished in whatever order the endpoint answered them.
-            return list(pool.map(lambda job: process_job(job, cfg, segmenter, client), jobs))
+            return list(pool.map(lambda job: process_job(job, cfg, matchers, segmenter, client), jobs))
     finally:
         if client is not None:
             client.close()
 
 
-def analyze_log(path: Path, cfg: Config) -> list[JobResult]:
+def analyze_log(path: Path, cfg: Config, matchers: list[MatcherConfig]) -> list[JobResult]:
     """Analyze a captured job log offline.
 
     Args:
         path: The log file.
         cfg: The effective config.
+        matchers: The evidence matchers, loaded from the configured registries.
 
     Returns:
         One result per job in the synthetic run — today always exactly one.
@@ -190,7 +197,7 @@ def analyze_log(path: Path, cfg: Config) -> list[JobResult]:
     # The format comes from the log, not from `config.ci`: a replayed file has no
     # run metadata, so `ci` here is whatever the config defaults to.
     segmenter = segmenter_for_log(jobs[0].log or "", cfg.ci)
-    return _analyze(jobs, cfg, segmenter)
+    return _analyze(jobs, cfg, matchers, segmenter)
 
 
 def run_from_file(path: Path) -> Run:

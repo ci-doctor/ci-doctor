@@ -22,7 +22,7 @@ def test_build_bundle_excludes_fetch_noise_but_flags_it(provider):
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
 
-    bundle = build_bundle(job, attr, job.sections, cfg)
+    bundle = build_bundle(job, attr, job.sections, cfg, support.registry_matchers())
     assert bundle.blamed_phase == "script"
     assert bundle.token_estimate > 0
 

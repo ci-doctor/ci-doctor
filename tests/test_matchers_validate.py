@@ -6,7 +6,6 @@ it builds).
 """
 
 import shutil
-from importlib import resources
 from pathlib import Path
 
 import pytest
@@ -185,15 +184,3 @@ def test_a_one_letter_ecosystem_names_its_bundle(registry):
     path = registry / "bundles/c.yaml"
     path.write_text("id: c\ndescription: C and C++ compile and link errors.\ninclude: [pytest]\n")
     assert load_bundle(path, author=True).id == "c"
-
-
-def test_every_shipped_matcher_passes_the_registry_rules(tmp_path):
-    """The 38 matchers ci-doctor ships today must migrate to a registry unchanged."""
-    text = resources.files("ci_doctor.config").joinpath("defaults.yml").read_text()
-    shipped = yaml.safe_load(text)["extraction"]["matchers"]
-    assert len(shipped) == 38
-    for raw in shipped:
-        path = tmp_path / "matchers" / raw["classification"][0] / raw["id"] / "matcher.yaml"
-        path.parent.mkdir(parents=True)
-        path.write_text(yaml.safe_dump(raw, sort_keys=False))
-        load_matcher(path, author=True)

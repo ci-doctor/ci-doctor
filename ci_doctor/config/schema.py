@@ -1,8 +1,8 @@
 """Pydantic config model, and the source of truth for the published JSON Schema.
 
 ``extra="forbid"`` everywhere means an unknown key is an error, not a silent typo.
-Scalar defaults live here; the data-heavy baseline (phase map, matcher packs, noise
-patterns) ships in ``defaults.yml``.
+Scalar defaults live here; the data-heavy baseline (phase map, the official matcher
+registry, noise patterns) ships in ``defaults.yml``.
 
 Every field carries a ``description``: it is the text editors show when completing a
 ``.ci-doctor.yml`` against the schema emitted by ``ci-doctor config --schema``, so a
@@ -178,7 +178,7 @@ def _re2(pattern: str, info: ValidationInfo) -> str:
     return pattern
 
 
-#: Caps on what a matcher may cost, set from the 38 shipped ones with headroom: the
+#: Caps on what a matcher may cost, set from the 38 that once shipped, with headroom: the
 #: largest RE2 program was 109, the longest pattern 104 characters.
 MAX_PATTERN_CHARS = 500
 MAX_PROGRAM_SIZE = 1000
@@ -290,7 +290,7 @@ class MatcherConfig(_Strict):
 
     id: str = Field(
         pattern=r"^[A-Za-z0-9_./-]+$",
-        description="Unique matcher id. Reusing a shipped id overrides just the fields you set, and logs a warning.",
+        description="Matcher id: bare in a registry file (`pytest`), `alias/id` once loaded (`official/pytest`).",
     )
     role: Role = Field(
         "tool",
@@ -338,10 +338,7 @@ class MatcherConfig(_Strict):
         line = self.pattern is not None and self.start is None and self.end is None
         block = self.pattern is None and self.start is not None and self.end is not None
         if not (line or block):
-            raise ValueError(
-                f"matcher {self.id!r}: set exactly one of `pattern`, or `start` and `end` "
-                "(to switch a shipped block pack to `pattern`, also set `start: null` and `end: null`)"
-            )
+            raise ValueError(f"matcher {self.id!r}: set exactly one of `pattern`, or `start` and `end`")
         return self
 
 
@@ -351,11 +348,86 @@ class ExtractionConfig(_Strict):
     tail_lines: int = Field(
         default=120, description="Lines kept from the end of the blamed section as a fallback."
     )
-    matchers: list[MatcherConfig] = Field(
+
+    @model_validator(mode="before")
+    @classmethod
+    def _matchers_moved(cls, data: object) -> object:
+        """Turn the old inline matcher list into a migration hint, not a bare "extra key".
+
+        Args:
+            data: The raw `extraction:` mapping.
+
+        Returns:
+            The mapping, unchanged.
+
+        Raises:
+            ValueError: If it still carries `matchers`.
+        """
+        if isinstance(data, dict) and "matchers" in data:
+            raise ValueError(
+                "matchers now come from registries. See `matchers.include`, and put custom "
+                "matchers in your own registry: https://matchers.cidoc.dev"
+            )
+        return data
+
+
+#: A registry alias, the part before the `/` in `alias/name`.
+_ALIAS = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+#: A qualified matcher or bundle reference.
+_REF = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}/[a-z][a-z0-9_]{0,63}$")  # name: matchers.models.BARE_ID
+
+
+def _alias(value: str) -> str:
+    """Validate a registry alias.
+
+    Args:
+        value: The key under `matchers.registries`.
+
+    Returns:
+        The alias, unchanged.
+
+    Raises:
+        ValueError: If it is not a valid alias.
+    """
+    if not _ALIAS.match(value):
+        raise ValueError(f"registry alias {value!r} must match {_ALIAS.pattern}")
+    return value
+
+
+def _ref(value: str) -> str:
+    """Validate an `alias/name` reference, with a hint for the unqualified form.
+
+    Args:
+        value: One entry of `matchers.include`.
+
+    Returns:
+        The reference, unchanged.
+
+    Raises:
+        ValueError: If it is not `<registry>/<name>`.
+    """
+    if not _REF.match(value):
+        raise ValueError(
+            f"{value!r} is not a qualified reference: write `<registry>/<name>`, e.g. `official/{value}`"
+        )
+    return value
+
+
+class MatchersConfig(_Strict):
+    """Which registries to read matchers from, and what to load from them."""
+
+    registries: dict[Annotated[str, AfterValidator(_alias)], str] = Field(
+        default_factory=dict,
+        description=(
+            "Registry alias -> its folder (the one holding index.yaml): a path, `file://`, "
+            "`http://` or `https://`. Merged onto the defaults, so `official` stays unless you override it."
+        ),
+    )
+    include: list[Annotated[str, AfterValidator(_ref)]] = Field(
         default_factory=list,
         description=(
-            "Language packs, merged by id onto the shipped ones. Reusing a shipped id overrides "
-            "only the fields you set on it; a new id adds to them."
+            "Matchers and bundles to load, as `<registry>/<name>` (e.g. `official/python`). "
+            "Replaces the default list. Browse https://matchers.cidoc.dev"
         ),
     )
 
@@ -432,6 +504,9 @@ class Config(_Strict):
     phases: dict[str, str] = Field(
         default_factory=dict,
         description="Section/step name -> phase (setup, script, after_script, ...). Deep-merged onto the shipped map.",
+    )
+    matchers: MatchersConfig = Field(
+        default_factory=MatchersConfig, description="Matcher registries, and what to load from them."
     )
     extraction: ExtractionConfig = Field(default_factory=ExtractionConfig, description="Evidence extraction.")
     denoise: DenoiseConfig = Field(default_factory=DenoiseConfig, description="Log cleanup.")

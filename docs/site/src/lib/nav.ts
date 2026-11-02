@@ -50,7 +50,6 @@ export const nav: NavSection[] = [
       { href: '/concepts/pipeline/', label: 'The pipeline', blurb: 'Ten stages, one pass, no loops — and the config that tunes each one.' },
       { href: '/concepts/attribution/', label: 'Sections & attribution', blurb: 'Sections, phases, the shipped phase map, and the rule ladder that picks the blame.' },
       { href: '/concepts/evidence/', label: 'Evidence', blurb: 'Denoising, matcher windows, the token budget, redaction, and the bundle the report sees.' },
-      { href: '/concepts/matchers/', label: 'Matchers', blurb: 'All 35 shipped packs — what each one catches, and how to add or retune your own.' },
       { href: '/concepts/code-map/', label: 'Code map', blurb: 'Package by package: what every file decides, and the function to open first.' },
     ],
   },

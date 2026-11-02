@@ -26,7 +26,6 @@ export default defineConfig({
     '/usage': '/reference/cli/',
     '/configuration': '/reference/configuration/',
     '/requirements': '/start/requirements/',
-    '/matchers': '/concepts/matchers/',
     '/action': '/cicd/github/',
   },
 });

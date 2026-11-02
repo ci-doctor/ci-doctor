@@ -44,7 +44,7 @@ def _analyzed_pipeline():
         log=support.read_log("gitlab", "script_failure_noisy"),
     )
     jobs = _ordered([deploy, build])  # provider order is newest-first; we re-sort
-    results = [process_job(j, cfg, seg) for j in jobs]
+    results = [process_job(j, cfg, support.registry_matchers(), seg) for j in jobs]
     run = Run(id="900", ref="main", sha="abc1234", web_url="https://gl/900", jobs=jobs)
     return run, results
 

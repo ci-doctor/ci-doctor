@@ -6,7 +6,7 @@ is an error rather than a silently ignored typo.
 """
 
 import re
-from typing import Annotated, Literal
+from typing import Annotated, Literal, NamedTuple
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, model_validator
 
@@ -48,6 +48,33 @@ def check_relative_path(path: str) -> str:
 
 
 BareId = Annotated[str, StringConstraints(pattern=BARE_ID.pattern)]
+
+
+class Ref(NamedTuple):
+    """A qualified `alias/name` reference, as written in `matchers.include`.
+
+    The config schema has already checked the shape, so parsing is a split.
+    """
+
+    alias: str
+    name: str
+
+    @classmethod
+    def parse(cls, ref: str) -> "Ref":
+        """Split `alias/name`.
+
+        Args:
+            ref: A validated `matchers.include` entry.
+
+        Returns:
+            The two halves.
+        """
+        alias, _, name = ref.partition("/")
+        return cls(alias, name)
+
+    def __str__(self) -> str:
+        """The reference as the user writes it, and the loaded matcher's id."""
+        return f"{self.alias}/{self.name}"
 
 
 class Bundle(Strict):

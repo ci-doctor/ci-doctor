@@ -27,7 +27,7 @@ def test_full_offline_pipeline_no_network(provider):
     job.sections = support.segment(provider, log)
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
-    bundle = build_bundle(job, attr, job.sections, cfg)
+    bundle = build_bundle(job, attr, job.sections, cfg, support.registry_matchers())
     report = produce_report(job, attr, bundle, cfg)  # llm unconfigured -> deterministic, no network
 
     md = MarkdownRenderer().render(report)

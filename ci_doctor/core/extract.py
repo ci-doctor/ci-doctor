@@ -48,7 +48,7 @@ def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Windo
 
     Args:
         lines: The denoised log lines.
-        matchers: Matcher packs from `extraction.matchers`.
+        matchers: The evidence matchers, loaded from the configured registries.
 
     Returns:
         One window per hit, unsorted and possibly overlapping. Empty when nothing
@@ -151,7 +151,7 @@ def extract(
 
     Args:
         lines: The denoised log lines.
-        matchers: Matcher packs from `extraction.matchers`.
+        matchers: The evidence matchers, loaded from the configured registries.
         tail_lines: How many trailing lines to always keep, ranked below every
             matcher. Pass 0 to test a pack in isolation — otherwise the tail masks
             a matcher that never fired.
@@ -179,7 +179,7 @@ def fired(lines: list[str], matchers: list[MatcherConfig]) -> list[str]:
 
     Args:
         lines: The evidence as it will be sent, after every cut.
-        matchers: Matcher packs from `extraction.matchers`.
+        matchers: The evidence matchers, loaded from the configured registries.
 
     Returns:
         Ids of the matchers with at least one anchor in `lines`, in log order.

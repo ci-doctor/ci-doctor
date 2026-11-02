@@ -325,16 +325,21 @@ def _render_prompt(job: Job, attr: Attribution, bundle: EvidenceBundle) -> str:
 
 
 def _packs(bundle: EvidenceBundle) -> str:
-    """One line per pack behind the excerpt: its id, role and author's description.
+    """One JSON object per matcher behind the excerpt: its id, role and author's description.
+
+    A description comes from a registry, i.e. from someone else. JSON-quoting it
+    keeps it inside its own string, so it can't close the prompt's matcher section
+    or open a new one, whatever quotes, dashes or markers it carries.
 
     Args:
         bundle: The budgeted evidence.
 
     Returns:
-        The lines for the prompt's matcher section, or a note that no pack matched.
+        The lines for the prompt's matcher section, or a note that no matcher fired.
     """
     lines = [
-        f"- {m.id} [{m.role}]" + (f": {m.description}" if m.description else "") for m in bundle.matchers
+        json.dumps({"id": m.id, "role": m.role, "description": m.description or ""}, ensure_ascii=False)
+        for m in bundle.matchers
     ]
     return "\n".join(lines) or "none — no pack matched; the excerpt is the log's tail, or all of it"
 
