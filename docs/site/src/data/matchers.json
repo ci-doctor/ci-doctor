@@ -57,7 +57,7 @@
         "end": "^Tests:",
         "before": 0,
         "after": 0,
-        "note": "A jest test failure \u2014 the `\u25cf` header names the test, and the diff below it shows expected against received."
+        "note": "A jest test failure - the bullet header names the test, and the diff below it shows expected against received."
       },
       {
         "id": "tsc",
@@ -83,7 +83,7 @@
         "end": "",
         "before": 2,
         "after": 6,
-        "note": "ESLint's `line:col error rule-name` entries and its `\u2716 N problems` footer."
+        "note": "ESLint's `line:col error rule-name` entries and its `N problems` summary footer."
       },
       {
         "id": "pnpm",
@@ -96,7 +96,7 @@
         "end": "",
         "before": 1,
         "after": 10,
-        "note": "pnpm's `ERR_PNPM_*` codes \u2014 the resolver or lockfile refusing, which is the cause itself."
+        "note": "pnpm's `ERR_PNPM_*` codes - the resolver or lockfile refusing, which is the cause itself."
       },
       {
         "id": "yarn",
@@ -109,7 +109,7 @@
         "end": "",
         "before": 1,
         "after": 8,
-        "note": "Yarn Classic's `error <Capital>` lines and Berry's `\u27a4 YN####:` diagnostic codes."
+        "note": "Yarn Classic's `error <Capital>` lines and Berry's `YN0000:` diagnostic codes."
       },
       {
         "id": "bun",
@@ -123,7 +123,7 @@
         "end": "",
         "before": 2,
         "after": 12,
-        "note": "A failed `bun test` (the `\u2717` test and its assertion), or a `bun install` that found no matching version."
+        "note": "A failed `bun test` (the crossed-out test and its assertion), or a `bun install` that found no matching version."
       },
       {
         "id": "node_runtime",
@@ -149,7 +149,7 @@
         "end": "",
         "before": 0,
         "after": 20,
-        "note": "A Playwright test failure \u2014 the `1) suite \u203a test` header names the test; its trace and diff follow."
+        "note": "A Playwright test failure - the `1) suite > test` header names the test; its trace and diff follow."
       },
       {
         "id": "cypress",
@@ -186,7 +186,7 @@
         "end": "",
         "before": 1,
         "after": 4,
-        "note": "A JS package manager announcing that a lifecycle script exited non-zero \u2014 pnpm's `ELIFECYCLE`, bun's `error: script \"x\" exited with code N`."
+        "note": "A JS package manager announcing that a lifecycle script exited non-zero - pnpm's `ELIFECYCLE`, bun's `error: script \"x\" exited with code N`."
       }
     ]
   },
@@ -279,7 +279,7 @@
         "end": "",
         "before": 3,
         "after": 15,
-        "note": "Maven's `[ERROR]` lines \u2014 the compiler and test diagnostics Maven relays."
+        "note": "Maven's `[ERROR]` lines - the compiler and test diagnostics Maven relays."
       },
       {
         "id": "gradle",
@@ -292,7 +292,7 @@
         "end": "^\\* (Try|Get more help)",
         "before": 0,
         "after": 0,
-        "note": "Gradle's `* What went wrong:` block, stopping before the `* Try:` boilerplate advice. A wrapper \u2014 it names the failed task, the compiler output above it is the cause."
+        "note": "Gradle's `* What went wrong:` block, stopping before the `* Try:` boilerplate advice. A wrapper - it names the failed task, the compiler output above it is the cause."
       },
       {
         "id": "build_failure_banner",
@@ -336,7 +336,7 @@
         "end": "",
         "before": 1,
         "after": 3,
-        "note": "MSBuild, Roslyn and NuGet error codes \u2014 `error CS0103`, `error NU1101`, `error MSB3073`."
+        "note": "MSBuild, Roslyn and NuGet error codes - `error CS0103`, `error NU1101`, `error MSB3073`."
       }
     ]
   },
@@ -380,7 +380,7 @@
         "end": "",
         "before": 2,
         "after": 10,
-        "note": "An unhandled Ruby exception \u2014 a backtrace frame naming the error class."
+        "note": "An unhandled Ruby exception - a backtrace frame naming the error class."
       },
       {
         "id": "bundler",
@@ -393,7 +393,7 @@
         "end": "",
         "before": 1,
         "after": 6,
-        "note": "Bundler failing to resolve \u2014 a missing gem, or a version conflict it prints the tree for."
+        "note": "Bundler failing to resolve - a missing gem, or a version conflict it prints the tree for."
       }
     ]
   },
@@ -455,7 +455,7 @@
         "end": "",
         "before": 3,
         "after": 8,
-        "note": "C/C++ builds \u2014 CMake configure errors and linker `undefined reference` / `collect2` failures."
+        "note": "C/C++ builds - CMake configure errors and linker `undefined reference` / `collect2` failures."
       }
     ]
   },
@@ -473,7 +473,7 @@
         "end": "",
         "before": 3,
         "after": 8,
-        "note": "`make: ***` \u2014 make reporting that a recipe it ran failed. The recipe's own output above it is the cause."
+        "note": "`make: ***` - make reporting that a recipe it ran failed. The recipe's own output above it is the cause."
       },
       {
         "id": "bazel",
@@ -486,7 +486,7 @@
         "end": "",
         "before": 2,
         "after": 10,
-        "note": "Bazel reporting that an action or target failed. A wrapper \u2014 the compiler or test output it relays is the cause."
+        "note": "Bazel reporting that an action or target failed. A wrapper - the compiler or test output it relays is the cause."
       },
       {
         "id": "oom",
@@ -499,7 +499,7 @@
         "end": "",
         "before": 5,
         "after": 2,
-        "note": "The job being killed \u2014 exit code 137, `Killed`, `Out of memory`. Nothing else in the log explains a SIGKILL."
+        "note": "The job being killed - exit code 137, `Killed`, `Out of memory`. Nothing else in the log explains a SIGKILL."
       },
       {
         "id": "generic_error",
@@ -510,7 +510,7 @@
         "end": "",
         "before": 5,
         "after": 20,
-        "note": "A line starting `ERROR` or `FATAL` from a tool with no pack of its own \u2014 the weakest signal; read it in context."
+        "note": "A line starting `ERROR` or `FATAL` from a tool with no pack of its own - the weakest signal; read it in context."
       }
     ]
   },
@@ -528,7 +528,7 @@
         "end": "",
         "before": 3,
         "after": 8,
-        "note": "BuildKit giving up \u2014 `failed to solve` / `executor failed running` \u2014 around the Dockerfile step that failed. A wrapper: the `RUN` step's own output is the cause."
+        "note": "BuildKit giving up - `failed to solve` / `executor failed running` - around the Dockerfile step that failed. A wrapper: the `RUN` step's own output is the cause."
       }
     ]
   },
@@ -544,7 +544,7 @@
         "end": "",
         "before": 1,
         "after": 12,
-        "note": "Terraform's boxed `\u2502 Error:` and the `on main.tf line 12` it points at."
+        "note": "Terraform's boxed `Error:` and the `on main.tf line 12` it points at."
       }
     ]
   }

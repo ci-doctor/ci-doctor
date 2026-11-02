@@ -171,9 +171,6 @@ Pure data — no Python. In `config/defaults.yml` under `extraction.matchers`:
   exclude: ['^MYTOOL ERROR: retrying'] # anchor lines to reject; RE2 has no lookaround
   before: 2
   after: 10
-  examples:
-    match: ['MYTOOL ERROR: config.yaml:3: unknown key']
-    no_match: ['MYTOOL ERROR: retrying in 5s']
 ```
 
 Then **add the fixture and a row in `test_matcher_packs.py`**, or the pack proves
@@ -195,10 +192,9 @@ Windows are `before`/`after` lines around the anchor.
 
 Every regex is **RE2** (`core/regex.py`), compiled when the config loads: no lookaround
 (use `exclude`), no backreferences, `\z` not `\Z`, repeats of at most 1000, and
-`\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). `examples` are run by
-`test_every_example_is_accepted_or_rejected_by_the_anchor` for shipped packs only — in a
-user's `.ci-doctor.yml` they are documentation until `packs verify` (E11). A `no_match`
-line is the cheapest place to pin a wrong-tool trap from §7.
+`\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). A pattern is at most 500
+characters and 1,000 RE2 instructions, and an anchor (`pattern`/`start`/`end`) must not
+match an empty line.
 
 **Ranking.** When the evidence exceeds the token budget, `extract.py` sheds whole windows
 by `(role, position)` before `budget.py` truncates what is left: `fallback` first, then
@@ -213,8 +209,9 @@ and keep the highest role among them.
 **`description` is prompt text.** The LLM sees `id [role]: description` for every pack whose
 window reached the excerpt. It knows jest, not your in-house deploy CLI, so say what the
 tool is and what its failure *means* (`E-LOCK: another deploy holds the lock, not a code
-bug`), not only which lines the window keeps. Capped at 400 characters; the prompt frames
-it as context, and the log wins where the two disagree.
+bug`), not only which lines the window keeps. One line of 20-250 printable ASCII
+characters, with no phrase that reads as an instruction to the model; the prompt frames it
+as context, and the log wins where the two disagree.
 
 Config **lists replace, mappings deep-merge** — except lists whose entries all carry an
 `id`, which merge per id (`_merge_by_id` in `config/loader.py`). So a user pack with a new
