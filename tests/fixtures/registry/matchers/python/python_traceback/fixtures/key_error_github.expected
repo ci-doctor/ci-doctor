@@ -1,0 +1,8 @@
+… [3 lines elided] …
+Traceback (most recent call last):
+File "/home/runner/work/app/scripts/migrate.py", line 21, in <module>
+run(load_settings())
+File "/home/runner/work/app/scripts/migrate.py", line 15, in run
+url = settings["DATABASE_URL"]
+KeyError: 'DATABASE_URL'
+##[error]Process completed with exit code 1.

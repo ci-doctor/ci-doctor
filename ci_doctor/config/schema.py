@@ -258,13 +258,11 @@ def _description(text: str, info: ValidationInfo) -> str:
     text = " ".join(text.split())
     low, high = DESCRIPTION_CHARS
     if not low <= len(text) <= high:
-        raise ValueError(f"matcher {owner!r}: description is {len(text)} characters, outside {low}-{high}")
+        raise ValueError(f"{owner!r}: description is {len(text)} characters, outside {low}-{high}")
     if bad := sorted({c for c in text if not " " <= c <= "~"}):
-        raise ValueError(f"matcher {owner!r}: description must be printable ASCII, found {bad!r}")
+        raise ValueError(f"{owner!r}: description must be printable ASCII, found {bad!r}")
     if hit := _TRIPWIRE.search(text):
-        raise ValueError(
-            f"matcher {owner!r}: description contains {hit.group(0)!r}, which reads as prompt injection"
-        )
+        raise ValueError(f"{owner!r}: description contains {hit.group(0)!r}, which reads as prompt injection")
     return text
 
 
@@ -277,6 +275,8 @@ MatcherRe2 = Annotated[Re2, AfterValidator(_matcher_re2)]
 Anchor = Annotated[MatcherRe2, AfterValidator(_anchor)]
 #: A classification tag: lowercase, digits and dashes.
 Tag = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
+#: A description: one line of printable ASCII, safe to put in a prompt.
+Description = Annotated[str, AfterValidator(_description)]
 #: What a matcher's output is; ranks its windows (`extract.ROLE_RANK`).
 Role = Literal["tool", "wrapper", "fallback"]
 
@@ -305,7 +305,7 @@ class MatcherConfig(_Strict):
         max_length=5,
         description="Up to 5 tags describing the pack, ecosystem first (`[python, test]`). Metadata only.",
     )
-    description: Annotated[str, AfterValidator(_description)] | None = Field(
+    description: Description | None = Field(
         None,
         description=(
             "Shown to the LLM beside the windows this pack selected: what the tool is and what "
