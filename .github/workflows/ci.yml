@@ -62,7 +62,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --extra s3  # ty resolves boto3 for the s3 transport
       - name: ruff check
         run: uv run --locked ruff check ci_doctor tests
       - name: ruff format
