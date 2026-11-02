@@ -184,18 +184,23 @@ def test_a_plain_http_registry_loads_and_warns(caplog):
     assert any("unencrypted" in r.getMessage() for r in caplog.records)
 
 
-@pytest.mark.parametrize(
-    ("target", "match"),
-    [
-        ("http://reg.test/m/index.yaml", "redirect from https"),
-        ("https://evil.test/index.yaml", "another host"),
-    ],
-)
-def test_a_redirect_may_not_downgrade_or_change_host(target, match):
-    """A registry the user put on https stays on https, on its own host."""
-    client = _http({}, **{"https://reg.test/m/index.yaml": (302, target)})
-    with pytest.raises(SetupError, match=match):
+def test_a_redirect_may_not_downgrade_https():
+    """A registry the user put on https stays on https."""
+    client = _http({}, **{"https://reg.test/m/index.yaml": (302, "http://reg.test/m/index.yaml")})
+    with pytest.raises(SetupError, match="redirect from https"):
         load(_cfg(["fx/all"], fx="https://reg.test/m/"), client=client)
+
+
+def test_a_redirect_to_another_host_is_followed_with_a_warning(caplog):
+    """Pages to a custom domain, an S3 region, a CDN: allowed, but never silently."""
+    files = _fixture_files()
+    served = {f"reg.test/m/{k}": v for k, v in files.items()} | {"cdn.test/m/index.yaml": files["index.yaml"]}
+    client = _http(
+        served, base="https://", **{"https://reg.test/m/index.yaml": (301, "https://cdn.test/m/index.yaml")}
+    )
+    with caplog.at_level(logging.WARNING, logger="ci_doctor.matchers"):
+        assert len(load(_cfg(["fx/all"], fx="https://reg.test/m/"), client=client)) == 2
+    assert any("another host" in r.getMessage() for r in caplog.records)
 
 
 def test_a_redirect_on_the_same_host_is_followed():
