@@ -4,7 +4,7 @@ name: ci
 # result ("up to date" is off) and give Sonar its baseline.
 on:
   pull_request:
-    branches: [master]
+    branches: [master, 'feat/**']
   push:
     branches: [master]
 

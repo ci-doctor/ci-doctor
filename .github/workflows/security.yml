@@ -4,7 +4,7 @@ name: security
 # the master push is the baseline CodeQL compares PRs against.
 on:
   pull_request:
-    branches: [master]
+    branches: [master, 'feat/**']
   push:
     branches: [master]
   schedule:

@@ -4,7 +4,7 @@ name: conventions
 # a retitle fires only `edited`, which must not re-run ci.yml.
 on:
   pull_request:
-    branches: [master]
+    branches: [master, 'feat/**']
     types: [opened, edited, synchronize, reopened]
 
 concurrency:
