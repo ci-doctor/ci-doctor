@@ -7,7 +7,8 @@ agent, a future `mcp` command) needs the same run without typer in the call stac
 What stays here is what only a CLI needs: options, rendering, artifacts, the note.
 
 Invariant #3: the analyzer must never change a pipeline's outcome, so `main()`
-catches everything and always exits 0.
+catches everything and exits 0. The one exception is a broken setup
+(:class:`~ci_doctor.errors.SetupError`), which exits 1.
 """
 
 import difflib
@@ -31,6 +32,7 @@ from ci_doctor import __version__
 from ci_doctor.config.loader import default_config, load_config
 from ci_doctor.config.schema import Config
 from ci_doctor.core.models import Run
+from ci_doctor.errors import SetupError
 from ci_doctor.pipeline import JobResult, analyze_log, analyze_run
 from ci_doctor.providers.registry import make_scm_provider
 
@@ -192,8 +194,8 @@ def _validate(paths: list[Path]) -> None:
         paths: The `--config/-f` files, lowest precedence first.
 
     Note:
-        Reports to stderr and still exits 0 — invariant #3 applies to every
-        subcommand, so grep the output rather than the exit code.
+        Reports to stderr and still exits 0 (an invalid config is not yet a
+        `SetupError`), so grep the output rather than the exit code.
     """
     try:
         cfg = load_config(repo_config=paths)
@@ -366,8 +368,9 @@ _LEVEL_COLORS = Theme(
 def main() -> None:
     """Console-script entry point.
 
-    Invariant #3: catches everything and always exits 0, so a crash in the
-    analyzer can never turn a passing pipeline red.
+    Invariant #3: a `SetupError` exits 1, so a broken setup is seen; everything
+    else, a crash included, exits 0, so the analyzer can never turn a passing
+    pipeline red.
     """
     # NullHighlighter, not highlighter=None: rich falls back to ReprHighlighter on None.
     # stderr, because stdout carries the report or the JSON meant to be piped onward.
@@ -386,6 +389,9 @@ def main() -> None:
     )
     try:
         app()
+    except SetupError as exc:
+        print(f"ci-doctor: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
     except SystemExit:
         # typer/click signal both normal and usage exits via SystemExit; force 0.
         raise SystemExit(0) from None

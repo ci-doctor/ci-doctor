@@ -24,7 +24,7 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 
 ```
 ci_doctor/
-  cli.py            typer entrypoint (always exits 0): options, rendering, delivery
+  cli.py            typer entrypoint (exits 0 once analysis starts): options, delivery
   pipeline.py       the analysis itself, with no CLI in it — segment, classify,
                     evidence, report — over a live run or a log file
   config/           pydantic schema + defaults.yml + layered loader
@@ -68,8 +68,11 @@ invariants go on the end. The first three, and #10, are load-bearing:
    literal. Pinned by `test_core_carries_no_vendor_name_in_its_code`, which strips
    comments and docstrings first: prose naming the vendors a port deliberately
    spans is the invariant being honoured, not broken.
-3. **Always `exit 0`.** The analyzer must never change a pipeline's outcome — `main()`
-   catches `BaseException` and exits 0. Never add a code path that can exit non-zero.
+3. **Exit 1 only for a broken setup, detected before analysis starts** (config, matcher
+   resolution, CLI usage, a registry failing `matchers index --check` / `verify`). Once
+   analysis starts, always exit 0: the analyzer must never change a pipeline's outcome.
+   `main()` maps `SetupError` (`ci_doctor/errors.py`) to 1 and every other `BaseException`
+   to 0. Never raise `SetupError` from inside the analysis.
 4. **Nothing reaches the public internet** by default — no telemetry, update checks, or
    runtime downloads of models/rules/schemas.
 5. **Never emit unredacted log content.** Redaction runs on the prompt *and* the report.

@@ -36,6 +36,19 @@ def test_main_always_exits_zero_on_error(monkeypatch):
     assert exc.value.code == 0
 
 
+def test_a_setup_error_is_the_one_exit_one(monkeypatch, capsys):
+    """Invariant #3: a broken setup exits 1 and says why; nothing else does."""
+
+    def broken_setup():
+        raise cli.SetupError("registry 'acme': index.yaml is out of date")
+
+    monkeypatch.setattr(cli, "app", broken_setup)
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 1
+    assert "index.yaml is out of date" in capsys.readouterr().err
+
+
 def test_verbose_enables_debug_logging():
     """`--verbose` turns on DEBUG; without it the level returns to INFO."""
     import logging
