@@ -144,8 +144,8 @@ def git_checkout(location: str) -> Path:
 def _s3_client() -> Any:  # noqa: ANN401 - boto3 is an optional extra, so no type to name
     """The run's S3 client, from the standard AWS credential/region/endpoint chain."""
     try:
-        import boto3
-        from botocore.config import Config
+        import boto3  # ty: ignore[unresolved-import]
+        from botocore.config import Config  # ty: ignore[unresolved-import]
     except ImportError:
         raise SetupError("s3:// registries need `pip install ci-doctorr[s3]`") from None
     return boto3.client("s3", config=Config(connect_timeout=10, read_timeout=10, retries={"max_attempts": 2}))
@@ -166,7 +166,7 @@ def s3_get(location: str, rel: str, cap: int) -> bytes:
         SetupError: If the extra is missing, the object can't be read, or is over `cap`.
     """
     client = _s3_client()
-    from botocore.exceptions import BotoCoreError, ClientError
+    from botocore.exceptions import BotoCoreError, ClientError  # ty: ignore[unresolved-import]
 
     parts = urlsplit(location)
     key = parts.path.lstrip("/") + rel
