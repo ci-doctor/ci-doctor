@@ -1,12 +1,11 @@
-"""Registry transports beyond http(s) and local dirs: `git+https/ssh://` and `s3://`.
+"""Registry transports beyond http(s) and local dirs: `git+https/ssh://`.
 
-Neither one adds auth of its own: git uses whatever git already has (SSH agent,
-credential helpers, `insteadOf`), S3 uses the standard AWS chain. Failures raise a
+No auth of its own: git uses whatever git already has (SSH agent,
+credential helpers, `insteadOf`). Failures raise a
 bare `SetupError(cause)`; `registry.py` wraps it with the registry name and location.
 """
 
 import atexit
-import functools
 import os
 import re
 import shutil
@@ -14,7 +13,6 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
 from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from ci_doctor.errors import SetupError
@@ -138,44 +136,3 @@ def git_checkout(location: str) -> Path:
         raise
     _checkouts[location] = root
     return root
-
-
-@functools.cache
-def _s3_client() -> Any:  # noqa: ANN401 - boto3 is an optional extra, so no type to name
-    """The run's S3 client, from the standard AWS credential/region/endpoint chain."""
-    try:
-        import boto3
-        from botocore.config import Config
-    except ImportError:
-        raise SetupError("s3:// registries need `pip install ci-doctorr[s3]`") from None
-    return boto3.client("s3", config=Config(connect_timeout=10, read_timeout=10, retries={"max_attempts": 2}))
-
-
-def s3_get(location: str, rel: str, cap: int) -> bytes:
-    """Read one object of an `s3://bucket/prefix/` registry, at most `cap` bytes.
-
-    Args:
-        location: The registry, ending in `/`.
-        rel: The file, relative to the prefix.
-        cap: The most bytes accepted.
-
-    Returns:
-        The object's bytes.
-
-    Raises:
-        SetupError: If the extra is missing, the object can't be read, or is over `cap`.
-    """
-    client = _s3_client()
-    from botocore.exceptions import BotoCoreError, ClientError
-
-    parts = urlsplit(location)
-    key = parts.path.lstrip("/") + rel
-    try:
-        body = client.get_object(Bucket=parts.netloc, Key=key)["Body"].read(cap + 1)
-    except ClientError as err:
-        raise SetupError(f"GET {rel}: {err.response.get('Error', {}).get('Code', 'error')}") from None
-    except BotoCoreError as err:
-        raise SetupError(f"GET {rel}: {err}") from None
-    if len(body) > cap:
-        raise SetupError(f"{rel} is over the {cap}-byte cap")
-    return body

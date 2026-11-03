@@ -1,9 +1,7 @@
-"""`git+` and `s3://` registries, offline: a local repo stands in for the remote, botocore is stubbed."""
+"""`git+` registries, offline: a local repo stands in for the remote."""
 
-import io
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -11,7 +9,7 @@ import pytest
 from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers import transports
-from ci_doctor.matchers.registry import INDEX_CAP, load, registry_dir
+from ci_doctor.matchers.registry import load, registry_dir
 
 FIXTURE = Path(__file__).parent / "fixtures" / "registry"
 needs_git = pytest.mark.skipif(not shutil.which("git"), reason="git not installed")
@@ -126,65 +124,9 @@ def test_git_credentials_are_redacted():
     assert "s3cret" not in str(err.value)
 
 
-def test_new_schemes_are_accepted_and_unknown_still_refused():
-    """New schemes are accepted and unknown still refused."""
-    assert registry_dir("r", "s3://bucket/pre") == "s3://bucket/pre/"
+def test_git_schemes_are_accepted_and_unknown_still_refused():
+    """Git schemes are accepted and unknown still refused."""
     git_url = "git+https://h/r.git@v1#subdirectory=a"
     assert registry_dir("r", git_url) == git_url
     with pytest.raises(SetupError, match="unsupported scheme 'ftp'"):
         registry_dir("r", "ftp://h/x")
-    with pytest.raises(SetupError, match="needs a bucket"):
-        registry_dir("r", "s3://")
-
-
-# --- s3 --------------------------------------------------------------------------
-
-boto3 = pytest.importorskip("boto3", reason="boto3 not installed")
-from botocore.response import StreamingBody
-from botocore.stub import Stubber
-
-
-@pytest.fixture
-def s3(monkeypatch):
-    """A stubbed client; fake credentials so botocore never looks for real ones."""
-    client = boto3.client("s3", region_name="us-east-1", aws_access_key_id="k", aws_secret_access_key="s")  # noqa: S106
-    monkeypatch.setattr(transports, "_s3_client", lambda: client)
-    with Stubber(client) as stub:
-        yield stub
-
-
-def _get(stub, key, text):
-    raw = text.encode()
-    body = {"Body": StreamingBody(io.BytesIO(raw), len(raw))}
-    stub.add_response("get_object", body, {"Bucket": "b", "Key": key})
-
-
-def test_s3_registry_loads_end_to_end(s3):
-    """S3 registry loads end to end."""
-    _get(s3, "pre/index.yaml", (FIXTURE / "index.yaml").read_text())
-    path = "matchers/python/pytest/matcher.yaml"
-    _get(s3, f"pre/{path}", (FIXTURE / path).read_text())
-    assert [m.id for m in load(_cfg("s3://b/pre/"))] == ["r/pytest"]
-    s3.assert_no_pending_responses()
-
-
-def test_s3_missing_key_names_the_registry(s3):
-    """S3 missing key names the registry."""
-    s3.add_client_error("get_object", "NoSuchKey", expected_params={"Bucket": "b", "Key": "pre/index.yaml"})
-    with pytest.raises(SetupError, match="registry 'r'.*NoSuchKey"):
-        load(_cfg("s3://b/pre/"))
-
-
-def test_s3_object_over_the_cap_fails(s3):
-    """S3 object over the cap fails."""
-    _get(s3, "pre/index.yaml", "x" * (INDEX_CAP + 1))
-    with pytest.raises(SetupError, match="byte cap"):
-        load(_cfg("s3://b/pre/"))
-
-
-def test_s3_extra_missing(monkeypatch):
-    """S3 extra missing."""
-    transports._s3_client.cache_clear()
-    monkeypatch.setitem(sys.modules, "boto3", None)
-    with pytest.raises(SetupError, match=r"pip install ci-doctorr\[s3\]"):
-        load(_cfg("s3://b/pre/"))

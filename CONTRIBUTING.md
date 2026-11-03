@@ -29,7 +29,7 @@ them, sync every extra that can coexist (CI's `providers` job does exactly this)
 
 ```sh
 uv sync --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle \
-  --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface --extra s3
+  --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
 ```
 
 `uv sync --all-extras` fails by design: `litellm` pins `openai<3.0` while Pydantic AI's
