@@ -71,11 +71,6 @@ def verify(
 # --- the user's side: edit and browse `matchers:` ---------------------------------
 
 
-def _http() -> httpx.Client | None:
-    """The HTTP client for a command; None means a fresh one. Tests swap in a mock transport."""
-    return None
-
-
 def _effective(path: Path) -> MatchersConfig:
     """The `matchers:` block as analysis would see it: defaults, then this file.
 
@@ -173,7 +168,7 @@ def add(
     current = list(read_block(config).get("include", []))
     cache: dict[str, Index] = {}
     new: list[str] = []
-    with session(_http()) as http:
+    with session() as http:
         parsed = [_check_ref(r, cfg, http, cache) for r in refs]
         via = _via(cfg, current, http)
     for ref in map(str, parsed):
@@ -198,7 +193,7 @@ def remove(
     cfg = _effective(config)
     current = list(read_block(config).get("include", []))
     if missing := [r for r in refs if r not in current]:
-        with session(_http()) as http:
+        with session() as http:
             via = _via(cfg, current, http)
         for ref in missing:
             if (bundle := via.get(ref, "direct")) != "direct":
@@ -219,7 +214,7 @@ def list_(config: Path = _CONFIG) -> None:
     if not cfg.include:
         typer.echo("nothing included. Run `ci-doctor matchers add <registry>/<name>`.")
         return
-    with session(_http()) as http:
+    with session() as http:
         resolved = resolve(cfg, http)
     for key, via in resolved.matchers.items():
         ref = Ref.parse(key)
@@ -239,7 +234,7 @@ def search(
     aliases = [registry] if registry else sorted(cfg.registries)
     cache: dict[str, Index] = {}
     hits = 0
-    with session(_http()) as http:
+    with session() as http:
         for alias in aliases:
             served = _index(cfg, alias, http, cache)
             for kind, entries in (("matcher", served.matchers), ("bundle", served.bundles)):
@@ -282,7 +277,7 @@ def info(ref: str = typer.Argument(..., metavar="ALIAS/NAME"), config: Path = _C
     """Show one matcher or bundle: what it does, where it lives, what a bundle holds."""
     cfg = _effective(config)
     cache: dict[str, Index] = {}
-    with session(_http()) as http:
+    with session() as http:
         parsed = _check_ref(ref, cfg, http, cache)
         served = cache[parsed.alias]
         location = registry_dir(parsed.alias, cfg.registries[parsed.alias])
@@ -322,7 +317,7 @@ def registry_add(
         if not eq or not name or not location:
             raise SetupError(f"{pair!r} is not NAME=LOCATION")
         new[name] = location
-    with session(_http()) as http:
+    with session() as http:
         for name, location in new.items():
             fetch_index(name, registry_dir(name, location), http)
     edit_matchers(config, lambda m: m.setdefault("registries", {}).update(new))
@@ -379,7 +374,7 @@ def ping(
     if unknown := [n for n in names or [] if n not in cfg.registries]:
         raise SetupError(f"unknown registry {unknown[0]!r} (configured: {', '.join(sorted(cfg.registries))})")
     down = 0
-    with session(_http()) as http:
+    with session() as http:
         for alias in names or sorted(cfg.registries):
             start = time.perf_counter()
             try:

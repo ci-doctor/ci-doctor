@@ -13,6 +13,7 @@ import yaml
 
 from ci_doctor import cli
 from ci_doctor.matchers import cli as mcli
+from ci_doctor.matchers import registry
 from ci_doctor.matchers.cli import _history_url
 
 
@@ -32,7 +33,7 @@ def _mock_http(monkeypatch, fx_registry):
         return httpx.Response(404)
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    monkeypatch.setattr(mcli, "_http", lambda: client)
+    monkeypatch.setattr(mcli, "session", lambda: registry.session(client))
 
 
 @pytest.fixture
