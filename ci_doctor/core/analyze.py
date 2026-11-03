@@ -95,13 +95,7 @@ def build_bundle(
     by_id = {m.id: m for m in matchers}
     used = [by_id[i] for i in fired(fitted, matchers)]
     log.debug(
-        "blamed phase %s: denoise %d->%d, extract ->%d, fit ->%d lines (truncated=%s)",
-        attr.phase,
-        len(raw),
-        len(clean),
-        len(excerpt),
-        len(fitted),
-        truncated,
+        f"blamed phase {attr.phase}: denoise {len(raw)}->{len(clean)}, extract ->{len(excerpt)}, fit ->{len(fitted)} lines (truncated={truncated})",
     )
 
     secondary = [f"{phase}: warnings present (non-causal)" for phase in attr.secondary_phases]

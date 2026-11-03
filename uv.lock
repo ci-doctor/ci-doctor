@@ -519,9 +519,6 @@ mistral = [
 openai = [
     { name = "pydantic-ai-slim", extra = ["openai"], marker = "extra == 'extra-10-ci-doctorr-openai' or (extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm')" },
 ]
-s3 = [
-    { name = "boto3" },
-]
 xai = [
     { name = "pydantic-ai-slim", extra = ["xai"] },
 ]
@@ -537,7 +534,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "boto3", marker = "extra == 's3'", specifier = ">=1.35" },
     { name = "google-re2", specifier = ">=1.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.40,<1.104" },
@@ -560,7 +556,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32" },
     { name = "typer", specifier = ">=0.12" },
 ]
-provides-extras = ["openai", "anthropic", "bedrock", "bedrock-mantle", "google", "groq", "mistral", "cohere", "xai", "huggingface", "s3", "litellm"]
+provides-extras = ["openai", "anthropic", "bedrock", "bedrock-mantle", "google", "groq", "mistral", "cohere", "xai", "huggingface", "litellm"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -79,12 +79,12 @@ def client_for_run(cfg: Config, environ: Mapping[str, str] | None = None) -> LLM
     from ci_doctor.llm.backends import backend_ready, make_client
 
     if not (cfg.llm.enabled and backend_ready(cfg.llm)):
-        log.debug("LLM disabled/not ready (backend=%s); no client for this run", cfg.llm.backend)
+        log.debug(f"LLM disabled/not ready (backend={cfg.llm.backend}); no client for this run")
         return None
     try:
         return make_client(cfg.llm, environ=environ)
     except Exception as exc:  # noqa: BLE001 - never crash on a bad backend
-        log.info("LLM backend %s unavailable (%s); deterministic reports", cfg.llm.backend, exc)
+        log.info(f"LLM backend {cfg.llm.backend} unavailable ({exc}); deterministic reports")
         return None
 
 
@@ -119,25 +119,25 @@ def produce_report(
     if str(attr.reason) in cfg.analysis.skip_llm_for:
         # The reason already settles it (no runner, missing artifact, cancelled):
         # a model has nothing left to explain, so don't pay for the call.
-        log.debug("reason %s is in analysis.skip_llm_for -> deterministic report", attr.reason)
+        log.debug(f"reason {attr.reason} is in analysis.skip_llm_for -> deterministic report")
         return redact_report(deterministic_report(job, attr, bundle), cfg.redaction, environ)
 
     if not (cfg.llm.enabled and (client is not None or backend_ready(cfg.llm))):
-        log.debug("LLM disabled/not ready (backend=%s) -> deterministic report", cfg.llm.backend)
+        log.debug(f"LLM disabled/not ready (backend={cfg.llm.backend}) -> deterministic report")
         return redact_report(deterministic_report(job, attr, bundle), cfg.redaction, environ)
 
     if client is None:
         try:
             client = make_client(cfg.llm, environ=environ)
         except Exception as exc:  # noqa: BLE001 - never crash on a bad backend
-            log.info("LLM backend %s unavailable (%s); deterministic report", cfg.llm.backend, exc)
+            log.info(f"LLM backend {cfg.llm.backend} unavailable ({exc}); deterministic report")
             return redact_report(deterministic_report(job, attr, bundle), cfg.redaction, environ)
 
     prompt = redact_text(_render_prompt(job, attr, bundle), cfg.redaction, environ)
     log.info(
-        "job %s: calling LLM backend=%s model=%s (may take a while)", job.name, cfg.llm.backend, cfg.llm.model
+        f"job {job.name}: calling LLM backend={cfg.llm.backend} model={cfg.llm.model} (may take a while)"
     )
-    log.debug("prompt=%d chars", len(prompt))
+    log.debug(f"prompt={len(prompt)} chars")
     report = _call_and_validate(client, prompt)
     if report is None:
         log.info("no valid LLM report; using deterministic fallback")
@@ -149,10 +149,7 @@ def produce_report(
             # owns the phase. A model that argues with it gets overruled, silently
             # for the reader but loudly in the log.
             log.warning(
-                "LLM answered phase=%s; overruled by attribution phase=%s (rule %s)",
-                report.failure_phase,
-                attr.phase,
-                attr.rule_id,
+                f"LLM answered phase={report.failure_phase}; overruled by attribution phase={attr.phase} (rule {attr.rule_id})",
             )
             report = report.model_copy(update={"failure_phase": attr.phase})
     return redact_report(report, cfg.redaction, environ)
@@ -176,10 +173,10 @@ def _call_and_validate(client: LLMClient, prompt: str) -> Report | None:
     try:
         return client.complete_structured(prompt, Report)
     except (ValidationError, ValueError, json.JSONDecodeError) as exc:
-        log.info("LLM reply invalid; using deterministic fallback: %s", exc)
+        log.info(f"LLM reply invalid; using deterministic fallback: {exc}")
         return None
     except Exception as exc:  # noqa: BLE001 - network/LLM failure -> deterministic fallback
-        log.warning("LLM call failed, using deterministic fallback: %s", exc)
+        log.warning(f"LLM call failed, using deterministic fallback: {exc}")
         return None
 
 

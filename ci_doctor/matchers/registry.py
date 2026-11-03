@@ -242,7 +242,7 @@ def registry_dir(alias: str, value: str) -> str:
         value: As written under `matchers.registries`.
 
     Returns:
-        An `http(s)://` or `s3://` URL ending in `/`, a `git+` location as written, or a
+        An `http(s)://` URL ending in `/`, a `git+` location as written, or a
         local directory path.
 
     Raises:
@@ -259,17 +259,13 @@ def registry_dir(alias: str, value: str) -> str:
         except SetupError as err:
             raise _fail(alias, value, err) from None
         return value
-    if scheme == "s3":
-        if not urlsplit(value).netloc:
-            raise _fail(alias, value, "s3:// needs a bucket: s3://bucket/prefix/")
-        return value if value.endswith("/") else value + "/"
     if scheme == "file":
         return unquote(urlsplit(value).path)
     if len(scheme) > 1:  # one letter is a Windows drive, not a scheme
         raise _fail(
             alias,
             value,
-            f"unsupported scheme {scheme!r}: use a path, file://, http(s)://, git+https://, git+ssh:// or s3://",
+            f"unsupported scheme {scheme!r}: use a path, file://, http(s)://, git+https:// or git+ssh://",
         )
     return value
 
@@ -292,11 +288,6 @@ def fetch_file(alias: str, location: str, rel: str, *, cap: int, client: httpx.C
     """
     if location.startswith(("http://", "https://")):
         return _http_get(alias, location, rel, cap, client)
-    if location.startswith("s3://"):
-        try:
-            return _decode(alias, location, rel, transports.s3_get(location, rel, cap))
-        except SetupError as err:
-            raise _fail(alias, location, err) from None
     if transports.is_git(location):
         try:
             root = transports.git_checkout(location)
@@ -386,7 +377,7 @@ def _http_get(alias: str, location: str, rel: str, cap: int, client: httpx.Clien
                     if urlsplit(url).scheme == "https" and urlsplit(nxt).scheme != "https":
                         raise _fail(alias, location, f"{rel}: redirect from https to {nxt} refused")
                     if urlsplit(nxt).hostname != host:
-                        log.warning("registry %r: %s redirects to another host (%s)", alias, rel, redact(nxt))
+                        log.warning(f"registry {alias!r}: {rel} redirects to another host ({redact(nxt)})")
                     url = nxt
                     continue
                 if resp.status_code != 200:
@@ -482,9 +473,7 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
                 raise SetupError(f"unknown registry {alias!r} in matchers.include (configured: {known})")
             location = registry_dir(alias, cfg.registries[alias])
             if location.startswith("http://"):
-                log.warning(
-                    "registry %r is fetched over plain http, unencrypted: %s", alias, redact(location)
-                )
+                log.warning(f"registry {alias!r} is fetched over plain http, unencrypted: {redact(location)}")
             out.locations[alias] = location
             out.indexes[alias] = fetch_index(alias, location, http)
         bundles: dict[str, Bundle] = {}

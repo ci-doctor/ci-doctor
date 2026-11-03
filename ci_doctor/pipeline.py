@@ -69,25 +69,16 @@ def process_job(
     from ci_doctor.llm.report import produce_report
 
     job.sections = (segmenter or make_segmenter(cfg)).segment(job.log or "")
-    log.debug("job %s: %d top-level sections", job.name, len(job.sections))
+    log.debug(f"job {job.name}: {len(job.sections)} top-level sections")
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
     log.debug(
-        "job %s: attribution phase=%s reason=%s rule=%s confidence=%s",
-        job.name,
-        attr.phase,
-        attr.reason,
-        attr.rule_id,
-        attr.confidence,
+        f"job {job.name}: attribution phase={attr.phase} reason={attr.reason} rule={attr.rule_id} confidence={attr.confidence}",
     )
     bundle = build_bundle(job, attr, job.sections, cfg, matchers)
     report = produce_report(job, attr, bundle, cfg, client=client)
     log.debug(
-        "job %s: report category=%s confidence=%s infra=%s",
-        job.name,
-        report.category,
-        report.confidence,
-        report.is_infra_not_code,
+        f"job {job.name}: report category={report.category} confidence={report.confidence} infra={report.is_infra_not_code}",
     )
     return JobResult(job, attr, report)
 
@@ -133,10 +124,10 @@ def analyze_run(
     jobs = select_failed_jobs(run.jobs, cfg.analysis.include_allowed_failures)
     if job_id is not None:
         jobs = [j for j in jobs if j.id == job_id]
-    log.debug("run %s: %d jobs, %d failed and selected", run_id, len(run.jobs), len(jobs))
+    log.debug(f"run {run_id}: {len(run.jobs)} jobs, {len(jobs)} failed and selected")
 
     selected = _ordered(jobs)[: cfg.analysis.max_jobs_analyzed]
-    log.info("analyzing %d failed job(s) from run %s", len(selected), run_id)
+    log.info(f"analyzing {len(selected)} failed job(s) from run {run_id}")
     # Sequential on purpose: python-gitlab and PyGithub make no thread-safety promise.
     for job in selected:
         job.log = provider.fetch_job_log(job)
@@ -168,7 +159,7 @@ def _analyze(
         workers = min(cfg.analysis.max_parallel_jobs, len(jobs))
         if workers <= 1:
             return [process_job(job, cfg, matchers, segmenter, client) for job in jobs]
-        log.debug("analyzing %d job(s) across %d workers", len(jobs), workers)
+        log.debug(f"analyzing {len(jobs)} job(s) across {workers} workers")
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ci-doctor") as pool:
             # `map` yields in submission order, so the report reads chronologically even
             # though the jobs finished in whatever order the endpoint answered them.
@@ -193,7 +184,7 @@ def analyze_log(path: Path, cfg: Config, matchers: list[MatcherConfig]) -> list[
         OSError: If the file cannot be read.
     """
     jobs = run_from_file(path).jobs
-    log.info("analyzing %d job(s) from %s", len(jobs), path)
+    log.info(f"analyzing {len(jobs)} job(s) from {path}")
     # The format comes from the log, not from `config.ci`: a replayed file has no
     # run metadata, so `ci` here is whatever the config defaults to.
     segmenter = segmenter_for_log(jobs[0].log or "", cfg.ci)
