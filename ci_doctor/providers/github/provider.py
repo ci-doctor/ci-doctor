@@ -123,7 +123,7 @@ class GitHubProvider(CIProvider, SCMProvider):
         wr = self._repo().get_workflow_run(int(run_ref))
         self._raw_jobs = {str(j.id): j for j in wr.jobs()}
         jobs = [self._to_job(j) for j in self._raw_jobs.values()]
-        log.debug("run %s: %d jobs", run_ref, len(jobs))
+        log.debug(f"run {run_ref}: {len(jobs)} jobs")
         return Run(
             id=str(wr.id),
             ref=wr.head_branch or "",
@@ -146,7 +146,7 @@ class GitHubProvider(CIProvider, SCMProvider):
         """
         raw = self._raw_jobs.get(job.id)
         if raw is None:
-            log.warning("no raw job cached for %s; cannot fetch its log", job.id)
+            log.warning(f"no raw job cached for {job.id}; cannot fetch its log")
             return None
         try:
             # Logs expire, and a job that never started never wrote any: 404 here.
@@ -157,9 +157,9 @@ class GitHubProvider(CIProvider, SCMProvider):
             resp.raise_for_status()
             text = resp.text
         except (GithubException, requests.RequestException) as exc:
-            log.warning("could not fetch log for job %s: %s", job.id, exc)
+            log.warning(f"could not fetch log for job {job.id}: {exc}")
             return None
-        log.debug("job %s log: %d chars", job.id, len(text))
+        log.debug(f"job {job.id} log: {len(text)} chars")
         return text or None
 
     # --- SCMProvider ------------------------------------------------------

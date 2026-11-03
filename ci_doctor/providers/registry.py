@@ -117,7 +117,7 @@ def make_scm_provider(cfg: Config, ci_provider: object = None) -> SCMProvider | 
         return ci_provider
     adapter = make_adapter(vendor, cfg)
     if not isinstance(adapter, SCMProvider):
-        log.debug("no git-host adapter for %r; the note has nowhere to go", vendor)
+        log.debug(f"no git-host adapter for {vendor!r}; the note has nowhere to go")
         return None
     return adapter
 
@@ -167,7 +167,7 @@ def segmenter_for_log(raw_log: str, fallback: str) -> LogSegmenter:
     """
     for ci, signature in _LOG_SIGNATURES.items():
         if signature.search(raw_log):
-            log.debug("log looks like %s output", ci)
+            log.debug(f"log looks like {ci} output")
             return segmenter_for(ci)
-    log.debug("no runner signature in the log; falling back to ci=%r", fallback)
+    log.debug(f"no runner signature in the log; falling back to ci={fallback!r}")
     return segmenter_for(fallback)

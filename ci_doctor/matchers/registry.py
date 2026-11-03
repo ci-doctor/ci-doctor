@@ -377,7 +377,7 @@ def _http_get(alias: str, location: str, rel: str, cap: int, client: httpx.Clien
                     if urlsplit(url).scheme == "https" and urlsplit(nxt).scheme != "https":
                         raise _fail(alias, location, f"{rel}: redirect from https to {nxt} refused")
                     if urlsplit(nxt).hostname != host:
-                        log.warning("registry %r: %s redirects to another host (%s)", alias, rel, redact(nxt))
+                        log.warning(f"registry {alias!r}: {rel} redirects to another host ({redact(nxt)})")
                     url = nxt
                     continue
                 if resp.status_code != 200:
@@ -473,9 +473,7 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
                 raise SetupError(f"unknown registry {alias!r} in matchers.include (configured: {known})")
             location = registry_dir(alias, cfg.registries[alias])
             if location.startswith("http://"):
-                log.warning(
-                    "registry %r is fetched over plain http, unencrypted: %s", alias, redact(location)
-                )
+                log.warning(f"registry {alias!r} is fetched over plain http, unencrypted: {redact(location)}")
             out.locations[alias] = location
             out.indexes[alias] = fetch_index(alias, location, http)
         bundles: dict[str, Bundle] = {}

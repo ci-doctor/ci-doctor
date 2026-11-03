@@ -77,9 +77,9 @@ class GitLabProvider(CIProvider, SCMProvider):
         )
         try:
             version, revision = gl.version()
-            log.info("connected to GitLab %s (%s) at %s", version, revision, self.cfg.base_url)
+            log.info(f"connected to GitLab {version} ({revision}) at {self.cfg.base_url}")
         except Exception as exc:  # noqa: BLE001 - version endpoint may be gated; degrade
-            log.warning("could not detect GitLab version (continuing): %s", exc)
+            log.warning(f"could not detect GitLab version (continuing): {exc}")
         return gl
 
     def _project(self) -> Project:
@@ -116,7 +116,7 @@ class GitLabProvider(CIProvider, SCMProvider):
         project = self._project()
         pipeline = project.pipelines.get(int(run_ref))
         jobs = [self._to_job(pj) for pj in pipeline.jobs.list(all=True)]
-        log.debug("pipeline %s: %d jobs", run_ref, len(jobs))
+        log.debug(f"pipeline {run_ref}: {len(jobs)} jobs")
         return Run(
             id=str(getattr(pipeline, "id", run_ref)),
             ref=getattr(pipeline, "ref", "") or "",
@@ -154,12 +154,12 @@ class GitLabProvider(CIProvider, SCMProvider):
         try:
             raw = self._project().jobs.get(int(job.id)).trace()
         except Exception as exc:  # noqa: BLE001
-            log.warning("could not fetch trace for job %s: %s", job.id, exc)
+            log.warning(f"could not fetch trace for job {job.id}: {exc}")
             return None
         if not raw:
             return None
         text = raw.decode("utf-8", "replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
-        log.debug("job %s trace: %d chars", job.id, len(text))
+        log.debug(f"job {job.id} trace: {len(text)} chars")
         return text or None
 
     # --- SCMProvider ------------------------------------------------------

@@ -125,7 +125,7 @@ def analyze(
     """
     _configure_logging(verbose)
     cfg = _load(config_path)
-    log.debug("ci=%s scm=%s target=%s job_id=%s", cfg.ci, cfg.scm_vendor, target, job_id)
+    log.debug(f"ci={cfg.ci} scm={cfg.scm_vendor} target={target} job_id={job_id}")
     if target is None:
         raise SetupError("nothing to do: pass a pipeline id, or the path to a log to replay.")
     replay = Path(target).is_file()
