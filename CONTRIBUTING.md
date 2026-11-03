@@ -59,7 +59,7 @@ is not the same as garbage: it keeps `.venv`, `docs/site/node_modules`, the
 It does remove the per-version `.venv-3.x` that `test:matrix` builds.
 
 The suite blocks real sockets and never calls an LLM, so it runs in seconds. What a
-*good* test looks like, the fixture layout, and which file to put it in are in
+*good* test looks like, how to build a synthetic log, and which file to put it in are in
 [GUIDELINES.md §4](GUIDELINES.md).
 
 - **`test:matrix`** gives each version its own cached `.venv-3.x`, so your default
@@ -180,6 +180,7 @@ Invariant #2 (no provider names in `core/`) is enforced by
 grep also hits the prose explaining why the ports are vendor-neutral, which is
 the invariant being honoured, not broken.
 
-- New behaviour has a test. New matcher has a fixture.
+- New behaviour has a test. A new matcher goes to the
+  [matchers registry](https://github.com/ci-doctor/matchers), with its fixtures.
 - Never commit `report.md` / `report.json` (local run artifacts).
 - Branch off `master` and open a PR — see §3.
