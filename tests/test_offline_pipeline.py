@@ -14,20 +14,18 @@ from ci_doctor.llm.report import produce_report
 from ci_doctor.render.markdown import MarkdownRenderer
 from tests import support
 
-CASE = "script_failure_noisy"
 
-
-@pytest.mark.parametrize("provider", support.providers_with(CASE))
-def test_full_offline_pipeline_no_network(provider):
+@pytest.mark.parametrize("provider", support.PROVIDERS)
+def test_full_offline_pipeline_no_network(provider, fx_registry):
     """Every deterministic stage runs end to end without touching the network."""
-    log = support.read_log(provider, CASE)
+    log = support.NOISY[provider]
     job = Job(id="1", name="build", status="failed", failure_reason=FailureReason.SCRIPT_FAILURE, log=log)
     cfg = load_config(environ={})
 
     job.sections = support.segment(provider, log)
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
-    bundle = build_bundle(job, attr, job.sections, cfg, support.registry_matchers())
+    bundle = build_bundle(job, attr, job.sections, cfg, support.registry_matchers(fx_registry))
     report = produce_report(job, attr, bundle, cfg)  # llm unconfigured -> deterministic, no network
 
     md = MarkdownRenderer().render(report)

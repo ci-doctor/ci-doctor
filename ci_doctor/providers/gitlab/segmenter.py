@@ -8,7 +8,7 @@ Real markers look like::
 
 with optional ``[collapsed=true]`` after the name and legal nesting. The ANSI
 wrapper and the trailing ``\r\e[0K`` are optional in this parser so plain-text
-fixtures parse the same way. Content outside any section becomes the synthetic
+logs parse the same way. Content outside any section becomes the synthetic
 ``__preamble__`` (before the first section) or ``__trailer__`` (after) — the
 trailer carries the terminal ``ERROR: Job failed:`` line.
 
@@ -17,7 +17,7 @@ gitlab.com's trace prefixes every line with its own metadata —
 ``<hex-flags><stream>`` token (``00O``/``01E``, a ``+`` for a continued line).
 That prefix sits *before* the ``section_start`` markers too, so it is stripped
 first or the segmenter would see no sections at all and leave the timestamps in
-the evidence. Older logs and the fixtures carry no such prefix, so the strip is a
+the evidence. Older logs and the tests' synthetic logs carry no such prefix, so the strip is a
 no-op on them.
 """
 

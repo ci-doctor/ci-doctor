@@ -1,3 +1,0 @@
-id: python
-description: Python test failures and uncaught exceptions.
-include: [pytest, python_traceback]

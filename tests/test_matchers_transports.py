@@ -2,7 +2,6 @@
 
 import shutil
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -10,8 +9,8 @@ from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers import transports
 from ci_doctor.matchers.registry import load, registry_dir
+from tests import support
 
-FIXTURE = Path(__file__).parent / "fixtures" / "registry"
 needs_git = pytest.mark.skipif(not shutil.which("git"), reason="git not installed")
 
 
@@ -26,7 +25,7 @@ def _fresh(monkeypatch):
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
-    """A bare repo holding the fixture registry at its root and under `reg/`, tagged v1.
+    """A bare repo holding a two-matcher registry at its root and under `reg/`, tagged v1.
 
     The `file` protocol is allowed for the test only; the real allowlist refuses it.
     """
@@ -34,8 +33,8 @@ def repo(tmp_path, monkeypatch):
     for var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):  # set when run from a git hook
         monkeypatch.delenv(var, raising=False)
     work, bare = tmp_path / "work", tmp_path / "bare.git"
-    shutil.copytree(FIXTURE, work)
-    shutil.copytree(FIXTURE, work / "reg")
+    support.py_registry(work)
+    support.py_registry(work / "reg")
 
     def git(*args, cwd=work):
         return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout  # noqa: S607

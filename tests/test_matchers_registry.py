@@ -1,7 +1,7 @@
 """Loading matchers from registries: resolve, fetch, validate, rename.
 
 Every case is offline: local registries are directories under tmp_path or the
-committed fixture registry, and `http(s)://` goes through `httpx.MockTransport`.
+shared `fx_registry`, and `http(s)://` goes through `httpx.MockTransport`.
 """
 
 import logging
@@ -13,7 +13,6 @@ import yaml
 from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.registry import FILE_CAP, INDEX_CAP, load, resolve
-from tests import support
 
 _MATCHER = {
     "role": "tool",
@@ -80,30 +79,29 @@ def _http(files, base="https://reg.test/m/", **headers_by_path):
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _fixture_files():
-    """The committed fixture registry, as `{relative path: text}` for an HTTP mock."""
-    root = support.REGISTRY
+def _files(root):
+    """A registry directory as `{relative path: text}`, for an HTTP mock."""
     return {p.relative_to(root).as_posix(): p.read_text() for p in root.rglob("*.yaml")}
 
 
 # --- resolution ------------------------------------------------------------------
 
 
-def test_a_nested_bundle_flattens_and_ids_carry_the_alias():
+def test_a_nested_bundle_flattens_and_ids_carry_the_alias(fx_registry):
     """`all` -> `python` -> two matchers, renamed `alias/id`."""
-    matchers = load(_cfg(["fx/all"], fx=str(support.REGISTRY)))
+    matchers = load(_cfg(["fx/all"], fx=str(fx_registry)))
     assert [m.id for m in matchers] == ["fx/pytest", "fx/python_traceback"]
 
 
-def test_a_matcher_listed_directly_and_in_a_bundle_loads_once():
+def test_a_matcher_listed_directly_and_in_a_bundle_loads_once(fx_registry):
     """Dedupe by `alias/name`: the direct listing keeps its place."""
-    matchers = load(_cfg(["fx/pytest", "fx/python"], fx=str(support.REGISTRY)))
+    matchers = load(_cfg(["fx/pytest", "fx/python"], fx=str(fx_registry)))
     assert [m.id for m in matchers] == ["fx/pytest", "fx/python_traceback"]
 
 
-def test_resolve_records_how_each_matcher_got_in():
+def test_resolve_records_how_each_matcher_got_in(fx_registry):
     """`matchers list` shows the bundle a matcher came through, or `direct`."""
-    resolved = resolve(_cfg(["fx/pytest", "fx/all"], fx=str(support.REGISTRY)))
+    resolved = resolve(_cfg(["fx/pytest", "fx/all"], fx=str(fx_registry)))
     assert resolved.matchers == {"fx/pytest": "direct", "fx/python_traceback": "fx/all"}
 
 
@@ -133,25 +131,25 @@ def test_an_empty_include_says_how_to_pick_matchers():
         load(_cfg([], official="https://matchers.cidoc.dev/"))
 
 
-def test_an_unknown_alias_lists_the_configured_ones():
+def test_an_unknown_alias_lists_the_configured_ones(fx_registry):
     """A typo in the alias names what exists."""
     with pytest.raises(SetupError, match="unknown registry 'acme'.*configured: fx"):
-        load(_cfg(["acme/pytest"], fx=str(support.REGISTRY)))
+        load(_cfg(["acme/pytest"], fx=str(fx_registry)))
 
 
-def test_an_unknown_name_suggests_the_closest(tmp_path):
+def test_an_unknown_name_suggests_the_closest(tmp_path, fx_registry):
     """`pytset` is one transposition from `pytest`."""
     with pytest.raises(SetupError, match="did you mean fx/pytest"):
-        load(_cfg(["fx/pytset"], fx=str(support.REGISTRY)))
+        load(_cfg(["fx/pytset"], fx=str(fx_registry)))
 
 
 # --- locations and transports ----------------------------------------------------
 
 
 @pytest.mark.parametrize("form", ["{p}", "{p}/", "file://{p}", "file://{p}/"])
-def test_a_local_registry_by_path_or_file_url(form):
+def test_a_local_registry_by_path_or_file_url(form, fx_registry):
     """Bare paths and `file://`, with or without the trailing slash, need no network."""
-    location = form.format(p=support.REGISTRY)
+    location = form.format(p=fx_registry)
     assert len(load(_cfg(["fx/all"], fx=location))) == 2
 
 
@@ -170,15 +168,15 @@ def test_an_unsupported_scheme_is_refused():
         load(_cfg(["r/x"], r="ftp://reg.test/m/"))
 
 
-def test_an_https_registry_loads_through_the_shared_client():
+def test_an_https_registry_loads_through_the_shared_client(fx_registry):
     """The trailing slash is added, so `index.yaml` joins under the folder."""
-    matchers = load(_cfg(["fx/all"], fx="https://reg.test/m"), client=_http(_fixture_files()))
+    matchers = load(_cfg(["fx/all"], fx="https://reg.test/m"), client=_http(_files(fx_registry)))
     assert [m.id for m in matchers] == ["fx/pytest", "fx/python_traceback"]
 
 
-def test_a_plain_http_registry_loads_and_warns(caplog):
+def test_a_plain_http_registry_loads_and_warns(caplog, fx_registry):
     """Allowed — an internal server without TLS is the user's call — but never silently."""
-    client = _http(_fixture_files(), base="http://reg.internal/m/")
+    client = _http(_files(fx_registry), base="http://reg.internal/m/")
     with caplog.at_level(logging.WARNING, logger="ci_doctor.matchers"):
         assert len(load(_cfg(["fx/all"], fx="http://reg.internal/m/"), client=client)) == 2
     assert any("unencrypted" in r.getMessage() for r in caplog.records)
@@ -191,9 +189,9 @@ def test_a_redirect_may_not_downgrade_https():
         load(_cfg(["fx/all"], fx="https://reg.test/m/"), client=client)
 
 
-def test_a_redirect_to_another_host_is_followed_with_a_warning(caplog):
+def test_a_redirect_to_another_host_is_followed_with_a_warning(caplog, fx_registry):
     """Pages to a custom domain, an S3 region, a CDN: allowed, but never silently."""
-    files = _fixture_files()
+    files = _files(fx_registry)
     served = {f"reg.test/m/{k}": v for k, v in files.items()} | {"cdn.test/m/index.yaml": files["index.yaml"]}
     client = _http(
         served, base="https://", **{"https://reg.test/m/index.yaml": (301, "https://cdn.test/m/index.yaml")}
@@ -203,21 +201,21 @@ def test_a_redirect_to_another_host_is_followed_with_a_warning(caplog):
     assert any("another host" in r.getMessage() for r in caplog.records)
 
 
-def test_a_redirect_on_the_same_host_is_followed():
+def test_a_redirect_on_the_same_host_is_followed(fx_registry):
     """A moved folder on the same host still works."""
-    files = {f"v2/{k}": v for k, v in _fixture_files().items()}
+    files = {f"v2/{k}": v for k, v in _files(fx_registry).items()}
     client = _http(
         files, base="https://reg.test/", **{"https://reg.test/m/index.yaml": (301, "/v2/index.yaml")}
     )
     # Only the index is redirected; every other file is fetched under the configured folder.
-    files.update({f"m/{k}": v for k, v in _fixture_files().items()})
+    files.update({f"m/{k}": v for k, v in _files(fx_registry).items()})
     assert len(load(_cfg(["fx/all"], fx="https://reg.test/m/"), client=client)) == 2
 
 
 @pytest.mark.parametrize("missing", ["index.yaml", "matchers/python/pytest/matcher.yaml"])
-def test_a_404_names_the_registry_and_the_file(missing):
+def test_a_404_names_the_registry_and_the_file(missing, fx_registry):
     """Unreachable index and missing matcher file both stop the setup."""
-    files = _fixture_files()
+    files = _files(fx_registry)
     del files[missing]
     with pytest.raises(SetupError, match=f"registry 'fx' .*GET {missing}: HTTP 404"):
         load(_cfg(["fx/all"], fx="https://reg.test/m/"), client=_http(files))

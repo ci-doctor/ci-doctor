@@ -53,7 +53,7 @@ def _windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[_Windo
     Returns:
         One window per hit, unsorted and possibly overlapping. Empty when nothing
         matched — which is why a pack that never fires fails *silently*, and why
-        each one needs a fixture in `test_matcher_packs.py`.
+        each one needs positive fixtures under `ci-doctor matchers verify`.
     """
     regexes: list[str] = []
 

@@ -1,6 +1,0 @@
-id: pytest
-role: tool
-classification: [python, test]
-description: pytest's === FAILURES === block, from the first failing test through to the short summary.
-start: '^=+ FAILURES =+'
-end: '^=+ short test summary'

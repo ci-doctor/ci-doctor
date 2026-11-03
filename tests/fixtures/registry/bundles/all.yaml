@@ -1,3 +1,0 @@
-id: all
-description: Every matcher in this registry, through its ecosystem bundles.
-include: [python]
