@@ -20,6 +20,7 @@ from ci_doctor.core.denoise import denoise
 from ci_doctor.core.extract import extract, fired
 from ci_doctor.core.models import walk_sections
 from ci_doctor.errors import SetupError
+from ci_doctor.matchers.models import MATCHER_GLOB
 from ci_doctor.matchers.validate import load_matcher
 from ci_doctor.providers.registry import segmenter_for_log
 
@@ -147,7 +148,7 @@ def verify(root: Path, *, update: bool = False) -> int:
     """
     if not root.is_dir():
         raise SetupError(f"{root} is not a directory")
-    paths = sorted(root.glob("matchers/*/*/matcher.yaml"))
+    paths = sorted(root.glob(MATCHER_GLOB))
     exempt = _exempt(root)
     problems = [
         f"{EXEMPT}: {name!r} is not a matcher in this registry"

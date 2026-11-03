@@ -9,7 +9,7 @@ import yaml
 
 from ci_doctor import cli
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.registry import build_index, write_index
+from ci_doctor.matchers.index import build_index, write_index
 from tests import support
 
 PYTEST = "matchers/python/pytest/matcher.yaml"
@@ -38,7 +38,7 @@ def _main(monkeypatch, *argv) -> int:
 def test_the_index_is_deterministic(registry):
     """Same tree, same bytes: the property that makes merge conflicts a rerun."""
     assert build_index(registry) == build_index(registry)
-    assert build_index(registry) == (registry / "index.yaml").read_text()
+    assert build_index(registry)[0] == (registry / "index.yaml").read_text()
 
 
 def test_check_fails_on_a_stale_index_and_write_fixes_it(registry):

@@ -23,7 +23,8 @@ import yaml
 
 from ci_doctor.config.schema import MatcherConfig, MatchersConfig
 from ci_doctor.core.models import Section
-from ci_doctor.matchers.registry import load, write_index
+from ci_doctor.matchers.index import write_index
+from ci_doctor.matchers.registry import load
 from ci_doctor.providers.registry import SEGMENTERS, segmenter_for
 
 #: A step or section: its name, then the lines it printed.

@@ -19,7 +19,8 @@ from ci_doctor.config.loader import default_config, load_config
 from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.config_edit import edit_matchers, read_block
-from ci_doctor.matchers.models import Index, Ref
+from ci_doctor.matchers.index import write_index
+from ci_doctor.matchers.models import INDEX, Index, Ref
 from ci_doctor.matchers.registry import (
     FILE_CAP,
     fetch_file,
@@ -28,7 +29,6 @@ from ci_doctor.matchers.registry import (
     registry_dir,
     resolve,
     session,
-    write_index,
 )
 from ci_doctor.matchers.validate import matcher_from, parse_yaml
 from ci_doctor.matchers.verify import verify as run_verify
@@ -53,7 +53,7 @@ def index(
 ) -> None:
     """Validate every matcher and bundle, then write index.yaml."""
     n = write_index(root, check=check)
-    typer.echo(f"{root / 'index.yaml'}: {'current' if check else 'written'}, {n} entries")
+    typer.echo(f"{root / INDEX}: {'current' if check else 'written'}, {n} entries")
 
 
 @app.command()

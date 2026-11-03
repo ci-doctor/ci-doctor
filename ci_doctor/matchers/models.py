@@ -18,6 +18,13 @@ from ci_doctor.config.types import Strict
 BARE_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 #: Bounds the work one index can cause.
 MAX_INDEX_ENTRIES = 2000
+#: How deep bundles may nest (a bundle of matchers is depth 1).
+MAX_BUNDLE_DEPTH = 5
+
+#: A registry's layout, relative to its directory.
+INDEX = "index.yaml"
+MATCHER_GLOB = "matchers/*/*/matcher.yaml"
+BUNDLE_GLOB = "bundles/*.yaml"
 
 
 def check_relative_path(path: str) -> str:
