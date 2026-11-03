@@ -23,6 +23,7 @@ from ci_doctor.errors import SetupError
 from ci_doctor.matchers.validate import load_matcher
 from ci_doctor.providers.registry import segmenter_for_log
 
+# Plaster: remove EXEMPT and its logic (_exempt, the `exempt` branch) once every matcher meets the minimum.
 EXEMPT = "verify-exempt.txt"
 MIN_POSITIVE, MIN_NEGATIVE = 3, 2
 MAX_FIXTURE_BYTES = 200 * 1024
