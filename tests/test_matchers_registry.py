@@ -232,6 +232,17 @@ def test_an_unreachable_registry_is_a_setup_error():
         load(_cfg(["fx/all"], fx="https://reg.test/m/"), client=client)
 
 
+def test_a_transport_failure_without_a_message_is_named_by_its_type():
+    """A timeout carries no text; the error still says what happened."""
+
+    def slow(request):
+        raise httpx.ReadTimeout("", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(slow))
+    with pytest.raises(SetupError, match="GET index.yaml: ReadTimeout"):
+        load(_cfg(["fx/all"], fx="https://reg.test/m/"), client=client)
+
+
 def test_a_missing_local_registry_is_a_setup_error(tmp_path):
     """Same message shape as the network case."""
     with pytest.raises(SetupError, match="registry 'r' .*index.yaml"):

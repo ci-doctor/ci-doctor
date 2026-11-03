@@ -389,7 +389,7 @@ def _http_get(alias: str, location: str, rel: str, cap: int, client: httpx.Clien
                         raise _fail(alias, location, f"{rel} is over the {cap}-byte cap")
                 return _decode(alias, location, rel, bytes(body))
         except httpx.HTTPError as err:
-            raise _fail(alias, location, f"GET {rel}: {err or type(err).__name__}") from None
+            raise _fail(alias, location, f"GET {rel}: {str(err) or type(err).__name__}") from None
     raise _fail(alias, location, f"{rel}: more than {MAX_REDIRECTS} redirects")
 
 
