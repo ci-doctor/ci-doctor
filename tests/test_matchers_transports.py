@@ -1,4 +1,4 @@
-"""`git+` registries, offline: a local repo stands in for the remote."""
+"""Picking a transport by location, and `git+` registries offline: a local repo stands in for the remote."""
 
 import shutil
 import subprocess
@@ -7,8 +7,9 @@ import pytest
 
 from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers import transports
 from ci_doctor.matchers.registry import load, registry_dir
+from ci_doctor.matchers.transports import git as git_transport
+from ci_doctor.matchers.transports import transport_for
 from tests import support
 
 needs_git = pytest.mark.skipif(not shutil.which("git"), reason="git not installed")
@@ -18,9 +19,26 @@ def _cfg(location):
     return MatchersConfig(registries={"r": location}, include=["r/pytest"])
 
 
+@pytest.mark.parametrize(
+    ("location", "kind"),
+    [
+        ("/srv/reg", "LocalTransport"),
+        ("C:/reg", "LocalTransport"),
+        ("file:///srv/reg", "LocalTransport"),
+        ("https://h/reg/", "HttpTransport"),
+        ("http://h/reg/", "HttpTransport"),
+        ("git+https://h/r.git", "GitTransport"),
+        ("git@h:g/r.git", "GitTransport"),
+    ],
+)
+def test_the_transport_is_picked_by_the_location(location, kind):
+    """One lookup, not an if-chain per caller."""
+    assert type(transport_for(location)).__name__ == kind
+
+
 @pytest.fixture(autouse=True)
 def _fresh(monkeypatch):
-    monkeypatch.setattr(transports, "_checkouts", {})
+    monkeypatch.setattr(git_transport, "_checkouts", {})
 
 
 @pytest.fixture
@@ -29,7 +47,7 @@ def repo(tmp_path, monkeypatch):
 
     The `file` protocol is allowed for the test only; the real allowlist refuses it.
     """
-    monkeypatch.setattr(transports, "_PROTOCOLS", ("https", "ssh", "file"))
+    monkeypatch.setattr(git_transport, "ALLOW_FILE", True)
     for var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):  # set when run from a git hook
         monkeypatch.delenv(var, raising=False)
     work, bare = tmp_path / "work", tmp_path / "bare.git"
@@ -81,8 +99,10 @@ def test_git_missing_ref_fails_naming_the_registry(repo):
 def test_git_checkout_is_cloned_once_per_run(repo, monkeypatch):
     """Git checkout is cloned once per run."""
     calls = []
-    real = transports._git
-    monkeypatch.setattr(transports, "_git", lambda args, *rest: (calls.append(args[0]), real(args, *rest))[1])
+    real = git_transport._git
+    monkeypatch.setattr(
+        git_transport, "_git", lambda args, *rest: (calls.append(args[0]), real(args, *rest))[1]
+    )
     load(MatchersConfig(registries={"r": repo[0]}, include=["r/pytest", "r/python_traceback"]))
     assert calls.count("fetch") == 1
 
@@ -90,7 +110,7 @@ def test_git_checkout_is_cloned_once_per_run(repo, monkeypatch):
 @needs_git
 def test_git_checkout_over_the_size_cap_fails(repo, monkeypatch):
     """Git checkout over the size cap fails."""
-    monkeypatch.setattr(transports, "MAX_CHECKOUT_BYTES", 10)
+    monkeypatch.setattr(git_transport, "MAX_CHECKOUT_BYTES", 10)
     with pytest.raises(SetupError, match="over the 10-byte cap"):
         load(_cfg(repo[0]))
 

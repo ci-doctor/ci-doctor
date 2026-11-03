@@ -18,12 +18,10 @@ import difflib
 import hashlib
 import logging
 import os
-import re
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import unquote, urljoin, urlsplit
 
 import httpx
 import yaml
@@ -31,11 +29,10 @@ from pydantic import ValidationError
 
 from ci_doctor.config.schema import MatcherConfig, MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers import transports
 from ci_doctor.matchers.models import Bundle, Index, Ref
+from ci_doctor.matchers.transports import redact, transport_for
 from ci_doctor.matchers.validate import (
     bundle_from,
-    contained,
     load_bundle,
     load_matcher,
     matcher_from,
@@ -198,26 +195,12 @@ def write_index(root: Path, *, check: bool = False) -> int:
 # --- loading ---------------------------------------------------------------------
 
 TIMEOUT = 10.0
-MAX_REDIRECTS = 3
 INDEX_CAP = 1024 * 1024
 FILE_CAP = 64 * 1024
 EMPTY_INCLUDE = (
     "no matchers or bundles selected. Run `ci-doctor matchers add official/<name>` "
     "or browse https://matchers.cidoc.dev"
 )
-_USERINFO = re.compile(r"(?<=://)[^/@\s]+@")
-
-
-def redact(text: str) -> str:
-    """Hide credentials embedded in a URL (`https://user:token@host`).
-
-    Args:
-        text: A message that may quote a registry location.
-
-    Returns:
-        The message with every URL's userinfo replaced by `***`.
-    """
-    return _USERINFO.sub("***@", text)
 
 
 def _fail(alias: str, location: str, cause: object) -> SetupError:
@@ -242,36 +225,22 @@ def registry_dir(alias: str, value: str) -> str:
         value: As written under `matchers.registries`.
 
     Returns:
-        An `http(s)://` URL ending in `/`, a `git+` location as written, or a
-        local directory path.
+        The location its transport reads from: an `http(s)://` URL ending in `/`,
+        a `git+` location as written, or a local directory path.
 
     Raises:
-        SetupError: On a location naming the index file, or an unsupported scheme.
+        SetupError: On a location naming the index file, or one no transport accepts.
     """
     if value.rstrip("/").endswith(".yaml"):
         raise _fail(alias, value, "point at the registry folder, not the index file")
-    scheme = urlsplit(value).scheme
-    if scheme in ("http", "https"):
-        return value if value.endswith("/") else value + "/"
-    if transports.is_git(value) or transports.SCP_STYLE.match(value):
-        try:
-            transports.check_git(value)
-        except SetupError as err:
-            raise _fail(alias, value, err) from None
-        return value
-    if scheme == "file":
-        return unquote(urlsplit(value).path)
-    if len(scheme) > 1:  # one letter is a Windows drive, not a scheme
-        raise _fail(
-            alias,
-            value,
-            f"unsupported scheme {scheme!r}: use a path, file://, http(s)://, git+https:// or git+ssh://",
-        )
-    return value
+    try:
+        return transport_for(value).locate(value)
+    except SetupError as err:
+        raise _fail(alias, value, err) from None
 
 
 def fetch_file(alias: str, location: str, rel: str, *, cap: int, client: httpx.Client) -> str:
-    """Read one file of a registry. The single place a transport is chosen.
+    """Read one file of a registry through the transport its location calls for.
 
     Args:
         alias: The registry's alias, for errors.
@@ -286,111 +255,10 @@ def fetch_file(alias: str, location: str, rel: str, *, cap: int, client: httpx.C
     Raises:
         SetupError: If it can't be read, is over `cap`, or leaves the registry.
     """
-    if location.startswith(("http://", "https://")):
-        return _http_get(alias, location, rel, cap, client)
-    if transports.is_git(location):
-        try:
-            root = transports.git_checkout(location)
-        except SetupError as err:
-            raise _fail(alias, location, err) from None
-        return _read_local(alias, str(root), rel, cap, shown=location)
-    return _read_local(alias, location, rel, cap)
-
-
-def _decode(alias: str, location: str, rel: str, body: bytes) -> str:
-    """UTF-8 text, or a `SetupError` naming the file.
-
-    Args:
-        alias: The registry's alias.
-        location: Its directory.
-        rel: The file.
-        body: Its bytes.
-
-    Returns:
-        The decoded text.
-
-    Raises:
-        SetupError: If the bytes are not UTF-8.
-    """
     try:
-        return body.decode("utf-8")
-    except UnicodeDecodeError:
-        raise _fail(alias, location, f"{rel} is not UTF-8 text") from None
-
-
-def _read_local(alias: str, location: str, rel: str, cap: int, shown: str = "") -> str:
-    """Read a file from a registry on disk, contained by its real path.
-
-    Args:
-        alias: The registry's alias.
-        location: Its directory.
-        rel: The file, relative to it.
-        cap: The most bytes accepted.
-        shown: The location to name in errors when `location` is a temporary checkout.
-
-    Returns:
-        The file's text.
-
-    Raises:
-        SetupError: If it can't be read, is over `cap`, or resolves outside the registry.
-    """
-    try:
-        path = contained(Path(location), rel)
+        return transport_for(location).read(alias, location, rel, cap=cap, client=client)
     except SetupError as err:
-        raise _fail(alias, shown or location, err) from None
-    try:
-        size = path.stat().st_size
-        body = path.read_bytes() if size <= cap else b""
-    except OSError as err:
-        raise _fail(alias, shown or location, f"{rel}: {err.strerror or err}") from None
-    if size > cap:
-        raise _fail(alias, shown or location, f"{rel} is {size} bytes, over the {cap}-byte cap")
-    return _decode(alias, shown or location, rel, body)
-
-
-def _http_get(alias: str, location: str, rel: str, cap: int, client: httpx.Client) -> str:
-    """GET a registry file: bounded redirects that never downgrade (another host warns), capped size.
-
-    Args:
-        alias: The registry's alias.
-        location: Its directory URL, ending in `/`.
-        rel: The file, relative to it.
-        cap: The most bytes accepted, checked while streaming.
-        client: The run's shared HTTP client.
-
-    Returns:
-        The file's text.
-
-    Raises:
-        SetupError: On a refused redirect, a non-200 answer, an oversized body,
-            or a transport error.
-    """
-    url = urljoin(location, rel)
-    if not url.startswith(location):
-        raise _fail(alias, location, f"{rel} resolves outside the registry")
-    host = urlsplit(location).hostname
-    for _ in range(MAX_REDIRECTS + 1):
-        try:
-            with client.stream("GET", url, follow_redirects=False) as resp:
-                if resp.is_redirect:
-                    nxt = urljoin(url, resp.headers.get("location", ""))
-                    if urlsplit(url).scheme == "https" and urlsplit(nxt).scheme != "https":
-                        raise _fail(alias, location, f"{rel}: redirect from https to {nxt} refused")
-                    if urlsplit(nxt).hostname != host:
-                        log.warning(f"registry {alias!r}: {rel} redirects to another host ({redact(nxt)})")
-                    url = nxt
-                    continue
-                if resp.status_code != 200:
-                    raise _fail(alias, location, f"GET {rel}: HTTP {resp.status_code}")
-                body = bytearray()
-                for chunk in resp.iter_bytes():
-                    body += chunk
-                    if len(body) > cap:
-                        raise _fail(alias, location, f"{rel} is over the {cap}-byte cap")
-                return _decode(alias, location, rel, bytes(body))
-        except httpx.HTTPError as err:
-            raise _fail(alias, location, f"GET {rel}: {str(err) or type(err).__name__}") from None
-    raise _fail(alias, location, f"{rel}: more than {MAX_REDIRECTS} redirects")
+        raise _fail(alias, location, err) from None
 
 
 def fetch_index(alias: str, location: str, client: httpx.Client) -> Index:
