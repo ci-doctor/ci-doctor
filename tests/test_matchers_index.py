@@ -10,17 +10,15 @@ import yaml
 from ci_doctor import cli
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.registry import build_index, write_index
+from tests import support
 
-FIXTURE = Path(__file__).parent / "fixtures" / "registry"
 PYTEST = "matchers/python/pytest/matcher.yaml"
 
 
 @pytest.fixture
 def registry(tmp_path):
-    """A writable copy of the fixture registry."""
-    root = tmp_path / "registry"
-    shutil.copytree(FIXTURE, root)
-    return root
+    """A freshly written two-matcher registry, free to edit."""
+    return support.py_registry(tmp_path / "registry")
 
 
 def _bundle(root: Path, name: str, include: list[str]) -> None:
@@ -37,15 +35,10 @@ def _main(monkeypatch, *argv) -> int:
     return exc.value.code
 
 
-def test_the_committed_fixture_index_is_current():
-    """The fixture registry doubles as the reference output; Phase 3 tests read it."""
-    write_index(FIXTURE, check=True)
-
-
 def test_the_index_is_deterministic(registry):
     """Same tree, same bytes: the property that makes merge conflicts a rerun."""
     assert build_index(registry) == build_index(registry)
-    assert build_index(registry) == (FIXTURE / "index.yaml").read_text()
+    assert build_index(registry) == (registry / "index.yaml").read_text()
 
 
 def test_check_fails_on_a_stale_index_and_write_fixes_it(registry):

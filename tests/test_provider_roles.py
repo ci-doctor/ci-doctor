@@ -90,7 +90,7 @@ def test_segmenter_follows_the_ci_not_the_git_host():
     assert isinstance(make_segmenter(Config(ci="github", scm="gitlab")), GitHubSegmenter)
 
 
-@pytest.mark.parametrize("provider", support.providers())
+@pytest.mark.parametrize("provider", support.PROVIDERS)
 def test_replay_reads_the_log_not_the_config(provider):
     """Offline replay picks the segmenter from the log's own framing.
 
@@ -100,7 +100,7 @@ def test_replay_reads_the_log_not_the_config(provider):
     the synthetic preamble, and attribution answers "no signal". The fallback
     here is deliberately a CI that does not exist, so only the log can decide.
     """
-    raw = support.read_log(provider, "sample")
+    raw = support.script_log(provider, support.FAIL)
     chosen = segmenter_for_log(raw, fallback="nonexistent-ci")
     assert type(chosen) is type(segmenter_for(provider))
 

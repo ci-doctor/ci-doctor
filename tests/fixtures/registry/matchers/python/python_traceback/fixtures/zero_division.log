@@ -1,7 +1,0 @@
-$ python -m cart.report
-Traceback (most recent call last):
-  File "/app/cart/report.py", line 12, in <module>
-    main()
-  File "/app/cart/report.py", line 9, in main
-    print(total([]) / len([]))
-ZeroDivisionError: division by zero

@@ -58,7 +58,7 @@ class _FakeProvider:
 
 def _wire_provider(monkeypatch, names):
     """Point analyze_run at a fake provider serving `names` as failed jobs."""
-    log = support.read_log("github", "jest_test_failure")
+    log = support.script_log("github", support.FAIL)
     jobs = [
         Job(id=n, name=n, status="failed", started_at=f"2024-01-01T00:0{i}:00Z") for i, n in enumerate(names)
     ]

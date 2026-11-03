@@ -1,8 +1,8 @@
 """Registry file rules (E11 §1b): every field cap, the bare id, and safe loading.
 
-Each rule gets a failing case built by editing a copy of the fixture registry, so
-the passing case is the fixture registry itself (`test_matchers_index.py` proves
-it builds).
+Each rule gets a failing case built by editing a freshly written registry, so the
+passing case is that registry itself (`write_registry` indexes it, which proves it
+builds).
 """
 
 import shutil
@@ -15,18 +15,16 @@ from pydantic import ValidationError
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import Index, check_relative_path
 from ci_doctor.matchers.validate import contained, load_bundle, load_matcher
+from tests import support
 
-FIXTURE = Path(__file__).parent / "fixtures" / "registry"
 PYTEST = "matchers/python/pytest/matcher.yaml"
 RLO, EM_DASH, ZWSP = chr(0x202E), chr(0x2014), chr(0x200B)
 
 
 @pytest.fixture
 def registry(tmp_path):
-    """A writable copy of the fixture registry."""
-    root = tmp_path / "registry"
-    shutil.copytree(FIXTURE, root)
-    return root
+    """A freshly written two-matcher registry, free to edit."""
+    return support.py_registry(tmp_path / "registry")
 
 
 def _edit(root: Path, rel: str, **changes) -> Path:
@@ -42,7 +40,7 @@ def _edit(root: Path, rel: str, **changes) -> Path:
     return path
 
 
-def test_the_fixture_matcher_loads_as_written(registry):
+def test_the_registry_matcher_loads_as_written(registry):
     """The passing case every failing case below is an edit of."""
     m = load_matcher(registry / PYTEST, author=True)
     assert m.id == "pytest"

@@ -3,12 +3,15 @@
 GitLab first, then the GitHub Actions step/sub-group structure.
 """
 
+import pytest
+
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Phase
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.providers.github.segmenter import GitHubSegmenter
 from ci_doctor.providers.gitlab.segmenter import GitLabSegmenter
 from tests import support
+from tests.support import gh_log
 
 
 def _seg(text):
@@ -110,18 +113,34 @@ def test_phase_assignment_and_inheritance():
 
 # --- GitHub Actions -----------------------------------------------------------
 #
-# These pin the shape that broke the segmenter, which only shows up in a log long
-# enough to have one: output *after* `##[endgroup]`, sub-groups inside a step, and a
-# runner completion marker. The original hand-written GitHub fixture was five lines
-# and had none of it, so every assertion passed while each step's output was being
-# dropped on the floor.
+# These pin the shape that broke the segmenter: output *after* `##[endgroup]`,
+# sub-groups inside a step, and a runner completion marker. A log without them
+# passes every assertion while each step's output is dropped on the floor, so the
+# log below carries all three.
 
-CASE = "rust_test_failure"
+_GH_LOG = gh_log(
+    [
+        (
+            "Run actions/checkout@v4",
+            [
+                "Syncing repository: acme/ledger",
+                "##[group]Getting Git version info",
+                "Working directory is '/home/runner/work/ledger/ledger'",
+                "##[endgroup]",
+                "/usr/bin/git checkout --progress --force 8ad41f02",
+            ],
+        ),
+        (
+            "Run cargo test --locked",
+            ["running 2 tests", "assertion `left == right` failed: fx conversion lost precision"],
+        ),
+    ]
+)
 
 
-def _gh():
-    """Segment a GitHub Actions fixture and assign phases."""
-    sections = support.segment("github", support.read_log("github", CASE))
+def _gh(log=_GH_LOG):
+    """Segment a GitHub Actions log and assign phases."""
+    sections = support.segment("github", log)
     assign_phases(sections, load_config(environ={}).phases)
     return sections
 
@@ -137,7 +156,7 @@ def test_a_step_owns_the_output_it_printed():
     Reading the group as the step collects `with:`/`env:` and drops everything the
     command actually printed — the evidence the whole tool exists to find.
     """
-    step = _by_header(_gh(), "Run cargo --version")
+    step = _by_header(_gh(), "Run cargo test")
     text = "\n".join(line.text for line in step.lines)
 
     assert "shell: /usr/bin/bash -e {0}" in text  # the header block, inside the group
@@ -146,11 +165,12 @@ def test_a_step_owns_the_output_it_printed():
 
 def test_output_does_not_pile_up_in_the_trailer():
     """The trailer is the runner's closing verdict, not most of the job."""
-    sections = _gh()
-    trailer = next(s for s in sections if s.name == "__trailer__")
-    steps = [s for s in sections if s.name not in {"__preamble__", "__trailer__"}]
-
-    assert len(trailer.lines) < sum(len(s.lines) for s in steps) / 5
+    trailer = next(s for s in _gh() if s.name == "__trailer__")
+    assert [line.text for line in trailer.lines] == [
+        "##[error]Process completed with exit code 1.",
+        "Post job cleanup.",
+        "Cleaning up orphan processes",
+    ]
 
 
 def test_sub_groups_nest_into_their_step_and_inherit_its_phase():
@@ -172,8 +192,7 @@ def test_a_step_stays_open_until_the_runner_reports_it():
     assert all(s.closed for s in finished), "a completed job left a step open"
 
     # Same shape, cut off mid-output the way a cancelled job is.
-    cancelled = support.segment("github", support.read_log("github", "timeout_unclosed_script"))
-    assign_phases(cancelled, load_config(environ={}).phases)
+    cancelled = _gh(gh_log([("Run ./soak.sh", ["still working..."])], cancelled=True))
     open_steps = [s for s in cancelled if not s.closed]
     assert [s.name for s in open_steps] == ["run"]
 
@@ -187,3 +206,21 @@ def test_github_timestamp_strip_keeps_the_lines_indentation():
     raw = "2026-07-24T20:04:00.4099999Z ##[group]Run pytest\n2026-07-24T20:04:01.0000000Z     assert 3000 == 2700\n"
     lines = [line.text for sec in GitHubSegmenter().segment(raw) for line in sec.lines]
     assert "    assert 3000 == 2700" in lines
+
+
+@pytest.mark.parametrize(
+    ("group", "name", "phase"),
+    [
+        ("Set up job", "setup_job", Phase.PREPARE),
+        ("Set up Python 3.12", "setup", Phase.PREPARE),
+        ("Run actions/checkout@v4", "checkout", Phase.FETCH),
+        ("Run actions/download-artifact@v4", "download_artifacts", Phase.FETCH),
+        ("Run make test", "run", Phase.SCRIPT),
+        ("Post Run ./notify.sh", "post", Phase.POST),
+        ("Complete job", "complete_job", Phase.POST),
+    ],
+)
+def test_github_step_names_canonicalise_to_the_phase_map(group, name, phase):
+    """Group names embed versions and titles, so each is reduced to a token `phases:` keys on."""
+    step = _by_header(_gh(gh_log([(group, ["output"])])), group)
+    assert (step.name, step.phase) == (name, phase)

@@ -28,13 +28,20 @@ def _run(monkeypatch, capsys, *argv):
 
 
 @pytest.fixture
-def registry_config(tmp_path, monkeypatch):
-    """Run in tmp_path with a `.ci-doctor.yml` selecting the fixture registry's matchers."""
+def registry_config(tmp_path, monkeypatch, fx_registry):
+    """Run in tmp_path with a `.ci-doctor.yml` selecting the test registry's matchers."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".ci-doctor.yml").write_text(
-        f"matchers:\n  registries:\n    fixtures: {support.REGISTRY}\n  include: [fixtures/all]\n"
+        f"matchers:\n  registries:\n    fx: {fx_registry}\n  include: [fx/all]\n"
     )
     return tmp_path
+
+
+def _job_log(where, provider):
+    """Write a failed pytest job's log in `provider`'s format, for offline replay."""
+    path = where / "job.log"
+    path.write_text(support.script_log(provider, support.FAIL))
+    return str(path)
 
 
 def test_main_always_exits_zero_on_error(monkeypatch):
@@ -100,11 +107,11 @@ def test_verbose_enables_debug_logging():
     assert logging.getLogger("ci_doctor").level == logging.INFO
 
 
-@pytest.mark.parametrize("provider", support.providers_with("sample"))
+@pytest.mark.parametrize("provider", support.PROVIDERS)
 def test_from_file_replay_smoke(provider, monkeypatch, capsys, registry_config):
     """Offline replay renders a report and writes both artifacts."""
     tmp_path = registry_config  # report.md/report.json land here, not in the repo
-    log = str(support.log_path(provider, "sample").resolve())
+    log = _job_log(tmp_path, provider)
     monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "--no-color", log])
     with pytest.raises(SystemExit) as exc:
         cli.main()
@@ -117,11 +124,11 @@ def test_from_file_replay_smoke(provider, monkeypatch, capsys, registry_config):
     assert (tmp_path / "report.json").exists()
 
 
-@pytest.mark.parametrize("provider", support.providers_with("sample"))
+@pytest.mark.parametrize("provider", support.PROVIDERS)
 def test_format_json_puts_a_parseable_report_on_stdout(provider, monkeypatch, capsys, registry_config):
     """`--format json` is what an agent reads: stdout must parse, with no panels in it."""
     tmp_path = registry_config
-    log = str(support.log_path(provider, "sample").resolve())
+    log = _job_log(tmp_path, provider)
     monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "--format", "json", log])
     with pytest.raises(SystemExit) as exc:
         cli.main()
@@ -146,7 +153,6 @@ def test_format_json_stdout_has_nothing_but_json(registry_config):
     """
     import subprocess
 
-    provider = support.providers_with("sample")[0]
     proc = subprocess.run(
         [
             sys.executable,
@@ -155,7 +161,7 @@ def test_format_json_stdout_has_nothing_but_json(registry_config):
             "analyze",
             "--format",
             "json",
-            str(support.log_path(provider, "sample").resolve()),
+            _job_log(registry_config, support.PROVIDERS[0]),
         ],
         cwd=registry_config,
         capture_output=True,

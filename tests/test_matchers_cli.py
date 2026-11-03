@@ -1,8 +1,8 @@
-"""`ci-doctor matchers …` and `matchers registry …`, over the fixture registry.
+"""`ci-doctor matchers …` and `matchers registry …`, over a small test registry.
 
-Nothing touches the network: paths read the committed fixture registry, and the
-built-in `official` registry (an https URL) is served from the same files through
-`httpx.MockTransport`.
+Nothing touches the network: paths read a registry written by `tests.support`, and
+the built-in `official` registry (an https URL) is served from the same files
+through `httpx.MockTransport`.
 """
 
 import sys
@@ -14,22 +14,17 @@ import yaml
 from ci_doctor import cli
 from ci_doctor.matchers import cli as mcli
 from ci_doctor.matchers.cli import _history_url
-from tests import support
-
-FX = str(support.REGISTRY)
-_FILES = {
-    p.relative_to(support.REGISTRY).as_posix(): p.read_bytes() for p in support.REGISTRY.rglob("*.yaml")
-}
 
 
 @pytest.fixture(autouse=True)
-def _mock_http(monkeypatch):
-    """Serve the fixture registry at https://matchers.cidoc.dev/, a broken one and a dead one."""
+def _mock_http(monkeypatch, fx_registry):
+    """Serve the test registry at https://matchers.cidoc.dev/, a broken one and a dead one."""
+    files = {p.relative_to(fx_registry).as_posix(): p.read_bytes() for p in fx_registry.rglob("*.yaml")}
 
     def handler(request):
         host, rel = request.url.host, request.url.path.lstrip("/")
-        if host == "matchers.cidoc.dev" and rel in _FILES:
-            return httpx.Response(200, content=_FILES[rel])
+        if host == "matchers.cidoc.dev" and rel in files:
+            return httpx.Response(200, content=files[rel])
         if host == "bad.test":
             return httpx.Response(200, text="schema: 2\n")
         if host == "down.test":
@@ -163,9 +158,10 @@ def test_search_matches_name_description_and_classification_case_insensitively(c
     assert "no matchers match" in out
 
 
-def test_search_can_be_limited_to_one_registry(cfg, monkeypatch, capsys):
+def test_search_can_be_limited_to_one_registry(cfg, monkeypatch, capsys, fx_registry):
     """Search can be limited to one registry."""
-    _write(cfg, f"matchers:\n  registries:\n    fx: {FX}\n")
+    fx = str(fx_registry)
+    _write(cfg, f"matchers:\n  registries:\n    fx: {fx}\n")
     _, out, _ = _run(monkeypatch, capsys, "search", "pytest", "--registry", "fx")
     assert "fx/pytest" in out
     assert "official/" not in out
@@ -212,19 +208,21 @@ def test_history_link_for_github_hosts_only():
 # --- registry ------------------------------------------------------------------------
 
 
-def test_registry_add_validates_then_writes(cfg, monkeypatch, capsys):
+def test_registry_add_validates_then_writes(cfg, monkeypatch, capsys, fx_registry):
     """Registry add validates then writes."""
-    code, out, _ = _run(monkeypatch, capsys, "registry", "add", f"fx={FX}")
+    fx = str(fx_registry)
+    code, out, _ = _run(monkeypatch, capsys, "registry", "add", f"fx={fx}")
     assert code == 0
-    assert f"fx: added {FX}" in out
-    assert _block(cfg)["registries"] == {"fx": FX}
+    assert f"fx: added {fx}" in out
+    assert _block(cfg)["registries"] == {"fx": fx}
 
 
-def test_registry_add_overwrite_prints_old_and_new(cfg, monkeypatch, capsys):
+def test_registry_add_overwrite_prints_old_and_new(cfg, monkeypatch, capsys, fx_registry):
     """Registry add overwrite prints old and new."""
-    _write(cfg, f"matchers:\n  registries:\n    fx: {FX}/\n")
-    _, out, _ = _run(monkeypatch, capsys, "registry", "add", f"fx={FX}")
-    assert f"fx: {FX}/ -> {FX}" in out
+    fx = str(fx_registry)
+    _write(cfg, f"matchers:\n  registries:\n    fx: {fx}/\n")
+    _, out, _ = _run(monkeypatch, capsys, "registry", "add", f"fx={fx}")
+    assert f"fx: {fx}/ -> {fx}" in out
 
 
 def test_registry_add_with_a_failing_index_exits_1_and_leaves_the_config(cfg, monkeypatch, capsys):
@@ -241,38 +239,42 @@ def test_registry_add_needs_name_equals_location(cfg, monkeypatch, capsys):
     assert _run(monkeypatch, capsys, "registry", "add", "nolocation")[0] == 1
 
 
-def test_registry_remove_drops_an_unused_registry(cfg, monkeypatch, capsys):
+def test_registry_remove_drops_an_unused_registry(cfg, monkeypatch, capsys, fx_registry):
     """Registry remove drops an unused registry."""
-    _write(cfg, f"matchers:\n  registries:\n    fx: {FX}\n  include: [official/pytest]\n")
+    fx = str(fx_registry)
+    _write(cfg, f"matchers:\n  registries:\n    fx: {fx}\n  include: [official/pytest]\n")
     code, _, _ = _run(monkeypatch, capsys, "registry", "remove", "fx")
     assert code == 0
     assert _block(cfg) == {"include": ["official/pytest"]}
 
 
-def test_registry_remove_refuses_while_include_uses_it(cfg, monkeypatch, capsys):
+def test_registry_remove_refuses_while_include_uses_it(cfg, monkeypatch, capsys, fx_registry):
     """Registry remove refuses while include uses it."""
-    _write(cfg, f"matchers:\n  registries:\n    fx: {FX}\n  include: [fx/pytest]\n")
+    fx = str(fx_registry)
+    _write(cfg, f"matchers:\n  registries:\n    fx: {fx}\n  include: [fx/pytest]\n")
     code, _, err = _run(monkeypatch, capsys, "registry", "remove", "fx")
     assert code == 1
     assert "fx/pytest" in err
     assert "fx" in _block(cfg)["registries"]
 
 
-def test_registry_remove_official_and_unknown_exit_1(cfg, monkeypatch, capsys):
+def test_registry_remove_official_and_unknown_exit_1(cfg, monkeypatch, capsys, fx_registry):
     """Registry remove official and unknown exit 1."""
-    _write(cfg, f"matchers:\n  registries:\n    official: {FX}\n")
+    fx = str(fx_registry)
+    _write(cfg, f"matchers:\n  registries:\n    official: {fx}\n")
     code, _, err = _run(monkeypatch, capsys, "registry", "remove", "official")
     assert code == 1
     assert "built in" in err
     assert _run(monkeypatch, capsys, "registry", "remove", "ghost")[0] == 1
 
 
-def test_registry_list(cfg, monkeypatch, capsys):
+def test_registry_list(cfg, monkeypatch, capsys, fx_registry):
     """Registry list."""
-    _write(cfg, f"matchers:\n  registries:\n    fx: {FX}\n")
+    fx = str(fx_registry)
+    _write(cfg, f"matchers:\n  registries:\n    fx: {fx}\n")
     _, out, _ = _run(monkeypatch, capsys, "registry", "list")
     assert "official  https://matchers.cidoc.dev/" in out
-    assert f"fx  {FX}" in out
+    assert f"fx  {fx}" in out
 
 
 def test_ping_reports_counts_and_exits_0_when_all_are_up(cfg, monkeypatch, capsys):
@@ -283,9 +285,10 @@ def test_ping_reports_counts_and_exits_0_when_all_are_up(cfg, monkeypatch, capsy
     assert "2 matchers, 2 bundles" in out
 
 
-def test_ping_exits_1_when_a_registry_is_down(cfg, monkeypatch, capsys):
+def test_ping_exits_1_when_a_registry_is_down(cfg, monkeypatch, capsys, fx_registry):
     """Ping exits 1 when a registry is down."""
-    _write(cfg, f"matchers:\n  registries:\n    gone: https://down.test/\n    fx: {FX}\n")
+    fx = str(fx_registry)
+    _write(cfg, f"matchers:\n  registries:\n    gone: https://down.test/\n    fx: {fx}\n")
     code, out, _ = _run(monkeypatch, capsys, "registry", "ping")
     assert code == 1
     assert "gone: FAILED" in out
