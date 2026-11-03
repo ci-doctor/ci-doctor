@@ -6,7 +6,6 @@ change the config touch only its `matchers:` block (`config_edit.py`) and fetch 
 they write, so a bad registry or name leaves the file as it was.
 """
 
-import difflib
 import time
 from pathlib import Path
 from typing import Annotated
@@ -20,17 +19,19 @@ from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.config_edit import edit_matchers, read_block
 from ci_doctor.matchers.index import write_index
-from ci_doctor.matchers.models import INDEX, Index, Ref
+from ci_doctor.matchers.models import INDEX, Ref
 from ci_doctor.matchers.registry import (
-    FILE_CAP,
-    fetch_file,
+    Resolved,
+    check_ref,
     fetch_index,
+    fetch_matcher,
+    index_for,
     redact,
     registry_dir,
     resolve,
     session,
+    unknown_registry,
 )
-from ci_doctor.matchers.validate import matcher_from, parse_yaml
 from ci_doctor.matchers.verify import verify as run_verify
 
 app = typer.Typer(no_args_is_help=True, help="Browse, select and build matchers.")
@@ -90,56 +91,6 @@ def _effective(path: Path) -> MatchersConfig:
     return cfg.matchers
 
 
-def _index(cfg: MatchersConfig, alias: str, http: httpx.Client, cache: dict[str, Index]) -> Index:
-    """Fetch an alias's index once per command.
-
-    Args:
-        cfg: The effective block.
-        alias: A configured registry alias.
-        http: The command's HTTP client.
-        cache: Indexes already fetched, by alias.
-
-    Returns:
-        The index.
-
-    Raises:
-        SetupError: On an unknown alias or a failing fetch.
-    """
-    if alias not in cache:
-        if alias not in cfg.registries:
-            known = ", ".join(sorted(cfg.registries)) or "none"
-            raise SetupError(f"unknown registry {alias!r} (configured: {known})")
-        cache[alias] = fetch_index(alias, registry_dir(alias, cfg.registries[alias]), http)
-    return cache[alias]
-
-
-def _check_ref(ref: str, cfg: MatchersConfig, http: httpx.Client, cache: dict[str, Index]) -> Ref:
-    """Parse `alias/name` and prove the registry serves it.
-
-    Args:
-        ref: As typed.
-        cfg: The effective block.
-        http: The command's HTTP client.
-        cache: Indexes already fetched, by alias.
-
-    Returns:
-        The parsed reference.
-
-    Raises:
-        SetupError: On a bad shape, unknown alias, or unknown name (with a "did you mean").
-    """
-    if "/" not in ref:
-        raise SetupError(f"{ref!r} is not qualified: write `<registry>/<name>`, e.g. `official/{ref}`")
-    parsed = Ref.parse(ref)
-    served = _index(cfg, parsed.alias, http, cache)
-    names = [*served.matchers, *served.bundles]
-    if parsed.name not in names:
-        hint = difflib.get_close_matches(parsed.name, names, n=1)
-        suggestion = f"; did you mean {parsed.alias}/{hint[0]}?" if hint else ""
-        raise SetupError(f"{ref} is not in registry {parsed.alias!r}{suggestion}")
-    return parsed
-
-
 def _via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str, str]:
     """Which top-level entry brings in each matcher.
 
@@ -166,10 +117,10 @@ def add(
     """Add matchers or bundles to `matchers.include`."""
     cfg = _effective(config)
     current = list(read_block(config).get("include", []))
-    cache: dict[str, Index] = {}
+    seen = Resolved()
     new: list[str] = []
     with session() as http:
-        parsed = [_check_ref(r, cfg, http, cache) for r in refs]
+        parsed = [check_ref(r, cfg, http, seen) for r in refs]
         via = _via(cfg, current, http)
     for ref in map(str, parsed):
         if ref in current or ref in new:
@@ -232,11 +183,11 @@ def search(
     cfg = _effective(config)
     needle = term.lower()
     aliases = [registry] if registry else sorted(cfg.registries)
-    cache: dict[str, Index] = {}
+    seen = Resolved()
     hits = 0
     with session() as http:
         for alias in aliases:
-            served = _index(cfg, alias, http, cache)
+            served = index_for(cfg, alias, http, seen)
             for kind, entries in (("matcher", served.matchers), ("bundle", served.bundles)):
                 for name, e in entries.items():
                     if needle in " ".join([name, e.description, *e.classification]).lower():
@@ -276,20 +227,17 @@ def _history_url(location: str, path: str) -> str | None:
 def info(ref: str = typer.Argument(..., metavar="ALIAS/NAME"), config: Path = _CONFIG) -> None:
     """Show one matcher or bundle: what it does, where it lives, what a bundle holds."""
     cfg = _effective(config)
-    cache: dict[str, Index] = {}
+    seen = Resolved()
     with session() as http:
-        parsed = _check_ref(ref, cfg, http, cache)
-        served = cache[parsed.alias]
-        location = registry_dir(parsed.alias, cfg.registries[parsed.alias])
+        parsed = check_ref(ref, cfg, http, seen)
+        served, location = seen.indexes[parsed.alias], seen.locations[parsed.alias]
         is_matcher = parsed.name in served.matchers
         entry = served.matchers[parsed.name] if is_matcher else served.bundles[parsed.name]
         typer.echo(f"{ref} ({'matcher' if is_matcher else 'bundle'})")
         typer.echo(f"description: {entry.description}")
         if is_matcher:
             typer.echo(f"classification: {', '.join(entry.classification)}")
-            where = redact(f"registry {parsed.alias!r} ({location}): {entry.path}")
-            text = fetch_file(parsed.alias, location, entry.path, cap=FILE_CAP, client=http)
-            typer.echo(f"role: {matcher_from(parse_yaml(text, where), where).role}")
+            typer.echo(f"role: {fetch_matcher(parsed, seen, http).role}")
         typer.echo(f"registry: {redact(location)}")
         typer.echo(f"path: {entry.path}")
         if url := _history_url(location, entry.path):
@@ -372,13 +320,13 @@ def ping(
     """Fetch each registry's index and report reachability, latency and size."""
     cfg = _effective(config)
     if unknown := [n for n in names or [] if n not in cfg.registries]:
-        raise SetupError(f"unknown registry {unknown[0]!r} (configured: {', '.join(sorted(cfg.registries))})")
+        raise unknown_registry(unknown[0], cfg.registries)
     down = 0
     with session() as http:
         for alias in names or sorted(cfg.registries):
             start = time.perf_counter()
             try:
-                served = fetch_index(alias, registry_dir(alias, cfg.registries[alias]), http)
+                served = index_for(cfg, alias, http, Resolved())
             except SetupError as err:
                 down += 1
                 typer.echo(f"{alias}: FAILED {err}")

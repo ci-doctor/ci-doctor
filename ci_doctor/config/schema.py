@@ -394,6 +394,18 @@ def _alias(value: str) -> str:
     return value
 
 
+def unqualified(value: str) -> str:
+    """The hint for a bare name where `<registry>/<name>` was needed.
+
+    Args:
+        value: The name as written.
+
+    Returns:
+        The message.
+    """
+    return f"{value!r} is not a qualified reference: write `<registry>/<name>`, e.g. `official/{value}`"
+
+
 def _ref(value: str) -> str:
     """Validate an `alias/name` reference, with a hint for the unqualified form.
 
@@ -407,9 +419,7 @@ def _ref(value: str) -> str:
         ValueError: If it is not `<registry>/<name>`.
     """
     if not _REF.match(value):
-        raise ValueError(
-            f"{value!r} is not a qualified reference: write `<registry>/<name>`, e.g. `official/{value}`"
-        )
+        raise ValueError(unqualified(value))
     return value
 
 

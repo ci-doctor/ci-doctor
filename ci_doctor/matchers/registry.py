@@ -13,13 +13,14 @@ The author's side, building `index.yaml`, is `index.py`.
 import contextlib
 import difflib
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 from pydantic import ValidationError
 
-from ci_doctor.config.schema import MatcherConfig, MatchersConfig
+from ci_doctor.config.schema import MatcherConfig, MatchersConfig, unqualified
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
 from ci_doctor.matchers.transports import redact, transport_for
@@ -135,7 +136,10 @@ def session(client: httpx.Client | None = None) -> Iterator[httpx.Client]:
 
 @dataclass
 class Resolved:
-    """What `matchers.include` expands to, before any matcher file is fetched.
+    """Registries read so far, and what `matchers.include` expands to.
+
+    Also the per-command cache of the CLI's lookups: an alias's index is fetched
+    into it once, however many references name that alias.
 
     Attributes:
         locations: Each referenced registry's directory, by alias.
@@ -147,6 +151,124 @@ class Resolved:
     locations: dict[str, str] = field(default_factory=dict)
     indexes: dict[str, Index] = field(default_factory=dict)
     matchers: dict[str, str] = field(default_factory=dict)
+
+
+def unknown_registry(alias: str, registries: Mapping[str, str]) -> SetupError:
+    """The error for an alias no registry is configured under.
+
+    Args:
+        alias: The alias as written.
+        registries: The configured registries.
+
+    Returns:
+        The error, listing the configured aliases, for the caller to raise.
+    """
+    known = ", ".join(sorted(registries)) or "none"
+    return SetupError(f"unknown registry {alias!r} (configured: {known})")
+
+
+def _not_served(ref: Ref, index: Index) -> SetupError:
+    """The error for a name its registry does not serve, with the closest it does.
+
+    Args:
+        ref: The missing reference.
+        index: Its registry's index.
+
+    Returns:
+        The error, for the caller to raise.
+    """
+    hint = difflib.get_close_matches(ref.name, [*index.matchers, *index.bundles], n=1)
+    suggestion = f"; did you mean {ref.alias}/{hint[0]}?" if hint else ""
+    return SetupError(f"{ref} is not in registry {ref.alias!r}{suggestion}")
+
+
+def index_for(cfg: MatchersConfig, alias: str, http: httpx.Client, seen: Resolved) -> Index:
+    """Locate a configured registry and fetch its index, once per `seen`.
+
+    Args:
+        cfg: The `matchers:` config block.
+        alias: A registry alias.
+        http: The run's HTTP client.
+        seen: Registries already read; filled in with this one.
+
+    Returns:
+        The registry's index.
+
+    Raises:
+        SetupError: On an unknown alias, or an index that can't be fetched or validated.
+    """
+    if alias not in seen.indexes:
+        if alias not in cfg.registries:
+            raise unknown_registry(alias, cfg.registries)
+        seen.locations[alias] = registry_dir(alias, cfg.registries[alias])
+        seen.indexes[alias] = fetch_index(alias, seen.locations[alias], http)
+    return seen.indexes[alias]
+
+
+def check_ref(value: str, cfg: MatchersConfig, http: httpx.Client, seen: Resolved) -> Ref:
+    """Parse `alias/name` as typed and prove its registry serves it.
+
+    Args:
+        value: As typed on the command line.
+        cfg: The `matchers:` config block.
+        http: The run's HTTP client.
+        seen: Registries already read.
+
+    Returns:
+        The parsed reference.
+
+    Raises:
+        SetupError: On a bad shape, an unknown alias, or an unknown name (with a "did you mean").
+    """
+    if "/" not in value:
+        raise SetupError(unqualified(value))
+    ref = Ref.parse(value)
+    index = index_for(cfg, ref.alias, http, seen)
+    if ref.name not in index.matchers and ref.name not in index.bundles:
+        raise _not_served(ref, index)
+    return ref
+
+
+def _fetch_entry(ref: Ref, seen: Resolved, http: httpx.Client) -> tuple[Any, str]:
+    """Fetch and parse the file one served name points at.
+
+    Args:
+        ref: A matcher or bundle its registry's index lists.
+        seen: Registries already read, holding `ref`'s.
+        http: The run's HTTP client.
+
+    Returns:
+        The parsed document, and where it came from (redacted) for error messages.
+
+    Raises:
+        SetupError: If the file can't be fetched or isn't valid YAML.
+    """
+    index, location = seen.indexes[ref.alias], seen.locations[ref.alias]
+    entry = index.matchers.get(ref.name) or index.bundles[ref.name]
+    where = redact(f"registry {ref.alias!r} ({location}): {entry.path}")
+    text = fetch_file(ref.alias, location, entry.path, cap=FILE_CAP, client=http)
+    return parse_yaml(text, where), where
+
+
+def fetch_matcher(ref: Ref, seen: Resolved, http: httpx.Client) -> MatcherConfig:
+    """Fetch and validate one matcher its registry serves, still under its bare id.
+
+    Args:
+        ref: A matcher its registry's index lists.
+        seen: Registries already read, holding `ref`'s.
+        http: The run's HTTP client.
+
+    Returns:
+        The matcher.
+
+    Raises:
+        SetupError: If it can't be fetched, fails a load-time rule, or its id is not its index name.
+    """
+    data, where = _fetch_entry(ref, seen, http)
+    m = matcher_from(data, where)
+    if m.id != ref.name:
+        raise SetupError(f"{where}: id {m.id!r} does not match its index name {ref.name!r}")
+    return m
 
 
 def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved:
@@ -169,14 +291,9 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
     out = Resolved()
     with session(client) as http:
         for alias in dict.fromkeys(r.alias for r in refs):
-            if alias not in cfg.registries:
-                known = ", ".join(sorted(cfg.registries)) or "none"
-                raise SetupError(f"unknown registry {alias!r} in matchers.include (configured: {known})")
-            location = registry_dir(alias, cfg.registries[alias])
-            if location.startswith("http://"):
+            index_for(cfg, alias, http, out)
+            if (location := out.locations[alias]).startswith("http://"):
                 log.warning(f"registry {alias!r} is fetched over plain http, unencrypted: {redact(location)}")
-            out.locations[alias] = location
-            out.indexes[alias] = fetch_index(alias, location, http)
         bundles: dict[str, Bundle] = {}
         for ref in refs:
             _expand(ref, "direct", (), out, bundles, http)
@@ -205,18 +322,13 @@ def _expand(
         out.matchers.setdefault(key, via)
         return
     if ref.name not in index.bundles:
-        hint = difflib.get_close_matches(ref.name, [*index.matchers, *index.bundles], n=1)
-        suggestion = f"; did you mean {ref.alias}/{hint[0]}?" if hint else ""
-        raise SetupError(f"{key} is not in registry {ref.alias!r}{suggestion}")
+        raise _not_served(ref, index)
     if key in stack:
         raise SetupError(f"bundle cycle: {' -> '.join((*stack, key))}")
     if len(stack) >= MAX_BUNDLE_DEPTH:
         raise SetupError(f"bundle {stack[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
     if key not in bundles:
-        location, path = out.locations[ref.alias], index.bundles[ref.name].path
-        where = redact(f"registry {ref.alias!r} ({location}): {path}")
-        text = fetch_file(ref.alias, location, path, cap=FILE_CAP, client=http)
-        bundles[key] = bundle_from(parse_yaml(text, where), where)
+        bundles[key] = bundle_from(*_fetch_entry(ref, out, http))
     for name in bundles[key].include:
         _expand(Ref(ref.alias, name), key if via == "direct" else via, (*stack, key), out, bundles, http)
 
@@ -235,19 +347,11 @@ def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[Matche
         SetupError: On anything :func:`resolve` rejects, or a matcher file that
             can't be fetched or fails a load-time rule.
     """
-    matchers = []
     with session(client) as http:
         resolved = resolve(cfg, http)
-        for key in resolved.matchers:
-            ref = Ref.parse(key)
-            location = resolved.locations[ref.alias]
-            path = resolved.indexes[ref.alias].matchers[ref.name].path
-            where = redact(f"registry {ref.alias!r} ({location}): {path}")
-            text = fetch_file(ref.alias, location, path, cap=FILE_CAP, client=http)
-            m = matcher_from(parse_yaml(text, where), where)
-            if m.id != ref.name:
-                raise SetupError(f"{where}: id {m.id!r} does not match its index name {ref.name!r}")
-            # model_copy skips validation: the bare id was checked above, and `alias/id`
-            # is what makes the same bare id from two registries two distinct matchers.
-            matchers.append(m.model_copy(update={"id": key}))
-    return matchers
+        # model_copy skips validation: the bare id was checked on fetch, and `alias/id`
+        # is what makes the same bare id from two registries two distinct matchers.
+        return [
+            fetch_matcher(Ref.parse(key), resolved, http).model_copy(update={"id": key})
+            for key in resolved.matchers
+        ]
