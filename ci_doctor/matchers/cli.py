@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 import httpx
 import typer
 
-from ci_doctor.config.loader import default_config, load_config
+from ci_doctor.config.loader import load_or_fail
 from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.config_edit import edit_matchers, read_block
@@ -73,7 +73,7 @@ def verify(
 
 
 def _effective(path: Path) -> MatchersConfig:
-    """The `matchers:` block as analysis would see it: defaults, then this file.
+    """The `matchers:` block as `analyze -f <path>` would see it; a missing file adds nothing.
 
     Args:
         path: The config file, which may not exist.
@@ -82,13 +82,9 @@ def _effective(path: Path) -> MatchersConfig:
         The merged block.
 
     Raises:
-        SetupError: If the file does not validate.
+        SetupError: If the config does not validate.
     """
-    try:
-        cfg = load_config(repo_config=[path]) if path.is_file() else default_config()
-    except Exception as exc:  # noqa: BLE001 - every way a config can be wrong is the user's to fix
-        raise SetupError(f"invalid config: {exc}") from None
-    return cfg.matchers
+    return load_or_fail([path] if path.is_file() else []).matchers
 
 
 def _via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str, str]:

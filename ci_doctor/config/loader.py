@@ -17,6 +17,7 @@ from typing import Any
 import yaml
 
 from ci_doctor.config.schema import Config
+from ci_doctor.errors import SetupError
 
 log = logging.getLogger(__name__)
 
@@ -171,3 +172,24 @@ def load_config(
         merged = _deep_merge(merged, overrides)
 
     return Config(**merged)  # extra="forbid" -> unknown keys raise ValidationError
+
+
+def load_or_fail(paths: list[Path]) -> Config:
+    """:func:`load_config` for a command, turning a bad config into a `SetupError`.
+
+    Every command reads its config through this, so `analyze` and `matchers …`
+    see the same layers, env vars included.
+
+    Args:
+        paths: The `--config/-f` files, lowest precedence first.
+
+    Returns:
+        The effective config.
+
+    Raises:
+        SetupError: If a file is missing or unreadable, or the result doesn't validate.
+    """
+    try:
+        return load_config(repo_config=paths)
+    except Exception as exc:  # noqa: BLE001 - every way a config can be wrong is the user's to fix
+        raise SetupError(f"invalid config: {exc}") from None

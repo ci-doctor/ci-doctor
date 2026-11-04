@@ -302,3 +302,16 @@ def test_an_invalid_config_is_a_setup_error(cfg, monkeypatch, capsys):
     """An invalid config is a setup error."""
     _write(cfg, "bogus_key: 1\n")
     assert _run(monkeypatch, capsys, "list")[0] == 1
+
+
+@pytest.mark.parametrize("with_file", [False, True])
+def test_matchers_commands_see_the_env_layer_like_analyze(cfg, monkeypatch, capsys, fx_registry, with_file):
+    """A registry set through `CI_DOCTOR_*` is as configured for `matchers …` as for `analyze`."""
+    if with_file:
+        _write(cfg, "ci: gitlab\n")
+    monkeypatch.setenv("CI_DOCTOR_MATCHERS__REGISTRIES__ACME", str(fx_registry))
+    _, out, _ = _run(monkeypatch, capsys, "registry", "list")
+    assert f"acme  {fx_registry}" in out
+    code, out, _ = _run(monkeypatch, capsys, "search", "pytest", "--registry", "acme")
+    assert code == 0
+    assert "acme/pytest" in out

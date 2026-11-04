@@ -29,7 +29,7 @@ from rich.syntax import Syntax
 from rich.theme import Theme
 
 from ci_doctor import __version__
-from ci_doctor.config.loader import default_config, load_config
+from ci_doctor.config.loader import default_config, load_or_fail
 from ci_doctor.config.schema import Config
 from ci_doctor.core.models import Run
 from ci_doctor.errors import SetupError
@@ -124,7 +124,7 @@ def analyze(
         verbose: Enable debug logging.
     """
     _configure_logging(verbose)
-    cfg = _load(config_path)
+    cfg = load_or_fail(config_path)
     log.debug(f"ci={cfg.ci} scm={cfg.scm_vendor} target={target} job_id={job_id}")
     if target is None:
         raise SetupError("nothing to do: pass a pipeline id, or the path to a log to replay.")
@@ -172,9 +172,9 @@ def config(
     if schema:
         text, lexer = _schema_json(), "json"
     elif not diff:
-        text, lexer = _as_yaml(_load(config_path)), "yaml"
+        text, lexer = _as_yaml(load_or_fail(config_path)), "yaml"
     else:
-        lines = _diff_lines(_as_yaml(default_config()), _as_yaml(_load(config_path)))
+        lines = _diff_lines(_as_yaml(default_config()), _as_yaml(load_or_fail(config_path)))
         text, lexer = "\n".join(lines) or "no differences: running on the shipped defaults.", "diff"
 
     if plain or (not less and not sys.stdout.isatty()):
@@ -189,24 +189,6 @@ def config(
         console.print(Syntax(text, lexer, theme="ansi_dark", background_color="default"))
 
 
-def _load(paths: list[Path]) -> Config:
-    """Merge every config layer, turning a bad config into a `SetupError`.
-
-    Args:
-        paths: The `--config/-f` files, lowest precedence first.
-
-    Returns:
-        The effective config.
-
-    Raises:
-        SetupError: If a file is missing or unreadable, or the result doesn't validate.
-    """
-    try:
-        return load_config(repo_config=paths)
-    except Exception as exc:  # noqa: BLE001 - every way a config can be wrong is the user's to fix
-        raise SetupError(f"invalid config: {exc}") from None
-
-
 def _validate(paths: list[Path]) -> None:
     """The dry run: every setup step `analyze` takes before analysis starts.
 
@@ -218,7 +200,7 @@ def _validate(paths: list[Path]) -> None:
     Raises:
         SetupError: On the first setup problem, which exits 1.
     """
-    cfg = _load(paths)
+    cfg = load_or_fail(paths)
     matchers = load_matchers(cfg.matchers)
     registries = len({Ref.parse(r).alias for r in cfg.matchers.include})
     typer.echo(
