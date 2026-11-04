@@ -32,8 +32,9 @@ export CI_DOCTOR_GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxx"
             > handles this for you: nothing to install, no Python setup step.
         </li>
         <li>
-            Runs in your pipeline's <em>post</em> stage, only on failure. It is read-only
-            and always exits 0.
+            Runs in your pipeline's <em>post</em> stage, only on failure. It is
+            read-only and exits 0 once analysis starts; only a broken setup (a bad
+            config, no matchers selected, an unreachable registry) exits 1.
         </li>
     </ul>
 
@@ -120,11 +121,18 @@ export CI_DOCTOR_GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxx"
         <li>
             At runtime it only ever contacts the GitLab/GitHub and LLM endpoints <em
                 >you</em
-            > configure.
+            > configure, and the matcher registries you declare.
         </li>
         <li>
-            No telemetry, no update checks, no runtime downloads of models,
-            rules, or schemas.
+            Matchers are read from their registries on every run, with no cache.
+            The default <code>official</code> registry is
+            <code>https://matchers.cidoc.dev/</code>; on an air-gapped network,
+            clone the registry inside it and point <code>matchers.registries</code>
+            at the local path — see <a href={url("/concepts/matchers/")}>Matchers</a>.
+        </li>
+        <li>
+            No telemetry, no update checks, no runtime downloads of models or
+            schemas.
         </li>
         <li>
             Distribute via an internal container registry or an offline wheel

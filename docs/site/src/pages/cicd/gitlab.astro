@@ -3,7 +3,7 @@ import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
 import { url } from "../../lib/url";
 
-const gitlab = `# runs only on failure; always exits 0.
+const gitlab = `# runs only on failure; exits 0 once analysis starts, 1 on a broken setup.
 ci-doctor:
   stage: .post
   image: registry.internal.example.com/ci-doctor:latest
@@ -102,9 +102,10 @@ const gitlabSelfHosted = `  variables:
     </p>
 
     <div class="note">
-        <strong>It always exits 0</strong> and is read-only, so adding this job can
-        never fail your pipeline or mask the real error. <code
-            >allow_failure: true</code
-        > is belt-and-braces.
+        <strong>It exits 0 once analysis starts</strong> and is read-only, so adding
+        this job can never fail your pipeline or mask the real error. A broken setup
+        (a bad config, no <code>matchers.include</code>, an unreachable registry)
+        exits 1, and <code>allow_failure: true</code> turns that into a warning
+        rather than a red pipeline.
     </div>
 </Base>

@@ -26,8 +26,16 @@ const section = nav.find((s) => s.href === "/cicd/")!;
             result, not a step in your build.
         </li>
         <li>
-            <strong>Read-only, and always exits 0.</strong> Adding it cannot fail
-            your pipeline or mask the real error.
+            <strong>Read-only, and exits 0 once analysis starts.</strong> Adding it
+            cannot fail your pipeline or mask the real error. A broken setup exits 1,
+            so a typo in its config is seen.
+        </li>
+        <li>
+            <strong>Needs matchers selected.</strong> Commit a
+            <code>.ci-doctor.yml</code> with <code>matchers.include</code> (<code
+                >ci-doctor matchers add official/python</code
+            >), or set <code>CI_DOCTOR_MATCHERS__INCLUDE</code>. With none selected
+            the job exits 1 — see <a href={url("/concepts/matchers/")}>Matchers</a>.
         </li>
         <li>
             <strong>Needs one read-scoped token</strong> to fetch the failed run's

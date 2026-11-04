@@ -133,12 +133,13 @@ const section = nav.find((s) => s.href === "/concepts/")!;
             by grep in CI.
         </li>
         <li>
-            <strong>Always <code>exit 0</code>.</strong> ci-doctor can never change
-            your pipeline's outcome or mask the real failure.
+            <strong><code>exit 0</code> once analysis starts.</strong> ci-doctor
+            can never change your pipeline's outcome or mask the real failure. Only
+            a broken setup, caught before analysis, exits 1.
         </li>
         <li>
-            Nothing reaches the public internet by default — no telemetry, no
-            update checks, no runtime downloads.
+            No telemetry, no update checks. The only hosts it reaches are your CI
+            provider, your LLM, and the matcher registries you declare.
         </li>
         <li>
             Never emit unredacted log content: redaction runs on the prompt <em

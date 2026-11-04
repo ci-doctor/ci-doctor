@@ -3,7 +3,7 @@ import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
 import { url } from "../../lib/url";
 
-const local = `# Replay a log you saved from a failed job — no network, no token, no LLM:
+const local = `# Replay a log you saved from a failed job — no CI, no token, no LLM:
 ci-doctor analyze ~/Downloads/failing-job.log
 
 # Or hit a live run from your checkout. With no CI_PROJECT_ID / GITHUB_REPOSITORY
@@ -15,13 +15,22 @@ docker build -t ci-doctor:latest .
 docker tag  ci-doctor:latest registry.internal.example.com/ci-doctor:latest
 docker push registry.internal.example.com/ci-doctor:latest
 
-# The image needs no network at job runtime beyond your GitLab/LLM endpoints.`;
+# At job runtime the image reaches only your GitLab/LLM endpoints and the
+# matcher registries you declare.`;
 
 const offline = `# Where there IS internet — build a wheel bundle:
 pip wheel . -w ./wheels
 
 # Copy ./wheels inside the air-gapped network, then:
 pip install --no-index --find-links ./wheels ci-doctorr`;
+
+const localRegistry = `# Where there IS internet:
+git clone https://github.com/ci-doctor/matchers.git
+
+# Inside, point official at the copy (the folder holding index.yaml):
+ci-doctor matchers registry add official=./matchers
+ci-doctor matchers add official/python
+ci-doctor config --validate`;
 ---
 
 <Base
@@ -31,8 +40,8 @@ pip install --no-index --find-links ./wheels ci-doctorr`;
     <h1>Local &amp; air-gapped</h1>
     <p class="lead">
         Nothing about ci-doctor requires CI, and nothing about it requires the
-        public internet. Both facts come from the same design rule: no runtime
-        downloads, ever.
+        public internet: keep the matcher registry local and it reaches only the
+        hosts you run yourself.
     </p>
 
     <h2>On your laptop</h2>
@@ -42,8 +51,9 @@ pip install --no-index --find-links ./wheels ci-doctorr`;
     </p>
     <Code code={local} lang="bash" theme="github-dark" />
     <p>
-        Passing a path that exists means no fetch is attempted at all — see
-        <a href={url("/start/first-run/")}>First run</a>.
+        Passing a path that exists means no run is fetched — see
+        <a href={url("/start/first-run/")}>First run</a>. The selected matchers are
+        still read from their registries.
     </p>
 
     <h2>Ship it as an image</h2>
@@ -53,6 +63,17 @@ pip install --no-index --find-links ./wheels ci-doctorr`;
     <h2 id="offline">…or as an offline wheel bundle</h2>
     <p>Where Docker isn't an option:</p>
     <Code code={offline} lang="bash" theme="github-dark" />
+
+    <h2>A local matcher registry</h2>
+    <p>
+        Matchers are read from their registries on every run, with no cache. Clone
+        the registry where there is internet, carry it in, and point the alias at
+        the copy; a relative path resolves against the config file that names it:
+    </p>
+    <Code code={localRegistry} lang="bash" theme="github-dark" />
+    <p>
+        To update, pull or copy a newer revision. Nothing else is fetched.
+    </p>
 
     <h2>What it still needs to reach</h2>
     <ul class="tight">
@@ -64,10 +85,15 @@ pip install --no-index --find-links ./wheels ci-doctorr`;
             Your LLM endpoint, if you configured one. Skip it and the
             deterministic report is the output.
         </li>
+        <li>
+            Each matcher registry you declare — none, if it is a local path.
+        </li>
     </ul>
     <p>
-        Nothing else. No telemetry, no update checks, no model or rule
-        downloads, no hardcoded hosts. The one thing to avoid in a strict air
+        Nothing else. No telemetry, no update checks, no model downloads. The
+        <code>official</code> registry's address,
+        <code>https://matchers.cidoc.dev/</code>, is the one shipped default host,
+        and you replace it as above. The one thing to avoid in a strict air
         gap is the <code>litellm</code> backend: it may pull <code
             >tiktoken</code
         >, which fetches its vocabulary at runtime.

@@ -232,10 +232,11 @@ const ghe = `      - uses: ci-doctor/ci-doctor@master
     </p>
 
     <div class="note">
-        <strong>It always exits 0.</strong> The analyze step runs with <code
-            >set +e</code
-        > and a guarded read of the report, so a crash, a malformed report, or an
-        unreachable LLM leaves the outputs empty rather than failing your workflow.
-        Adding this step cannot break your CI.
+        <strong>It exits 0 once analysis starts.</strong> The analyze step runs with
+        <code>set +e</code> and a guarded read of the report, so a crash, a
+        malformed report, or an unreachable LLM leaves the outputs empty rather than
+        failing your workflow. The one exit passed through is 1, a broken setup (a
+        bad config, no <code>matchers.include</code>, an unreachable registry), so
+        the person who broke it sees a red step.
     </div>
 </Base>
