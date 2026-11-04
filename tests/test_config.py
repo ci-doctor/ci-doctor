@@ -126,6 +126,15 @@ def test_an_unqualified_include_says_how_to_qualify_it(tmp_path):
         load_config(repo_config=_write(tmp_path, "matchers:\n  include: [python]\n"), environ={})
 
 
+@pytest.mark.parametrize(
+    "matchers", [{"include": ["official/pytest\n"]}, {"registries": {"acme\n": "/srv/reg"}}]
+)
+def test_a_trailing_newline_does_not_pass_as_an_alias_or_reference(matchers):
+    """`re.match` with `$` accepts one; the whole string must match."""
+    with pytest.raises(ValidationError):
+        Config(matchers=matchers)
+
+
 def test_inline_matchers_fail_with_the_migration_hint(tmp_path):
     """An old `extraction.matchers` list is not a typo to the user; say where matchers went."""
     body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n"

@@ -5,18 +5,14 @@ rules only a registry adds; the other shapes are the registry's own. Every model
 strict, so a key we don't know is an error rather than a silently ignored typo.
 """
 
-import re
 from collections import Counter
 from typing import Annotated, Literal, NamedTuple
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, model_validator
 
-from ci_doctor.config.schema import Description, MatcherConfig, Tag
+from ci_doctor.config.schema import BARE_ID, Description, MatcherConfig, Tag
 from ci_doctor.config.types import Strict
 
-#: A registry name: what users type in `alias/name`, and the matcher's directory name.
-#: One character is enough: a bundle is named after its ecosystem tag, and `c` is one.
-BARE_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 #: Bounds the work one index can cause.
 MAX_INDEX_ENTRIES = 2000
 #: How deep bundles may nest (a bundle of matchers is depth 1).
@@ -55,7 +51,7 @@ def check_relative_path(path: str) -> str:
     return path
 
 
-BareId = Annotated[str, StringConstraints(pattern=BARE_ID.pattern)]
+BareId = Annotated[str, StringConstraints(pattern=rf"^{BARE_ID}$")]
 
 
 class Ref(NamedTuple):

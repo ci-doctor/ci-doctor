@@ -371,10 +371,14 @@ class ExtractionConfig(_Strict):
         return data
 
 
+#: A registry name: what users type after the `/` in `alias/name`, and the matcher's
+#: directory name. One character is enough: a bundle is named after its ecosystem tag,
+#: and `c` is one. Unanchored; match it whole.
+BARE_ID = r"[a-z][a-z0-9_]{0,63}"
 #: A registry alias, the part before the `/` in `alias/name`.
-_ALIAS = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+_ALIAS = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 #: A qualified matcher or bundle reference.
-_REF = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}/[a-z][a-z0-9_]{0,63}$")  # name: matchers.models.BARE_ID
+_REF = re.compile(rf"{_ALIAS.pattern}/{BARE_ID}")
 
 
 def _alias(value: str) -> str:
@@ -389,7 +393,7 @@ def _alias(value: str) -> str:
     Raises:
         ValueError: If it is not a valid alias.
     """
-    if not _ALIAS.match(value):
+    if not _ALIAS.fullmatch(value):
         raise ValueError(f"registry alias {value!r} must match {_ALIAS.pattern}")
     return value
 
@@ -418,7 +422,7 @@ def _ref(value: str) -> str:
     Raises:
         ValueError: If it is not `<registry>/<name>`.
     """
-    if not _REF.match(value):
+    if not _REF.fullmatch(value):
         raise ValueError(unqualified(value))
     return value
 
