@@ -7,11 +7,15 @@ schema is covered end-to-end in tests/test_report.py.
 """
 
 import asyncio
+import importlib
+import inspect
 import os
+import pkgutil
 import sys
 import threading
 import time
 import types
+import typing
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
@@ -423,6 +427,61 @@ class _UnresolvableProvider:
 def test_the_ca_bundle_client_is_the_kind_the_provider_takes(provider_class, expected):
     """httpx2 wherever the provider's annotation accepts it, legacy httpx otherwise."""
     assert type(backends._ca_bundle_client(provider_class, certifi.where())) is expected
+
+
+def _installed_providers():
+    """Every pydantic-ai provider class importable here that takes an `http_client`."""
+    import pydantic_ai.providers
+
+    found = []
+    for info in pkgutil.iter_modules(pydantic_ai.providers.__path__):
+        try:
+            module = importlib.import_module(f"pydantic_ai.providers.{info.name}")
+        except ImportError:  # its SDK is a backend extra that isn't installed
+            continue
+        found += [
+            pytest.param(cls, id=cls.__name__)
+            for cls in vars(module).values()
+            if inspect.isclass(cls)
+            and cls.__module__ == module.__name__
+            and "http_client" in inspect.signature(cls.__init__).parameters
+        ]
+    return found
+
+
+def _classes(hint):
+    """The classes a type hint names, unions and Optional unpacked."""
+    if args := typing.get_args(hint):
+        return {c for a in args for c in _classes(a)}
+    return {hint} if isinstance(hint, type) else set()
+
+
+INSTALLED_PROVIDERS = _installed_providers()
+
+
+def test_the_survey_finds_providers():
+    """An empty survey would pass everything below; the openai extra alone brings dozens."""
+    assert len(INSTALLED_PROVIDERS) >= 10
+
+
+@pytest.mark.parametrize("provider_class", INSTALLED_PROVIDERS)
+def test_every_installed_provider_accepts_its_ca_bundle_client(provider_class):
+    """The client we build is one the provider declares, and httpx2 whenever it declares that.
+
+    Runs over the real classes, so a pydantic-ai upgrade that moves a provider to httpx2,
+    or drops legacy httpx, fails here instead of on a user's first `ca_bundle` run.
+    """
+    client = backends._ca_bundle_client(provider_class, certifi.where())
+    try:
+        declared = _classes(typing.get_type_hints(provider_class.__init__)["http_client"])
+    except NameError:  # annotation names a typing-only import: we fall back to legacy httpx
+        annotation = str(inspect.signature(provider_class.__init__).parameters["http_client"].annotation)
+        assert "httpx" in annotation, annotation
+        assert type(client) is httpx.AsyncClient
+        return
+    assert isinstance(client, tuple(declared)), f"built {type(client)}, declared {declared}"
+    if httpx2.AsyncClient in declared:
+        assert type(client) is httpx2.AsyncClient  # the legacy client warns, and goes in v3
 
 
 def test_the_openai_provider_takes_the_ca_bundle_client_without_a_deprecation_warning():
