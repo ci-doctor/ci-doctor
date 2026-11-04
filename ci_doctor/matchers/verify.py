@@ -12,6 +12,7 @@ valid fixture as it is, and a `^` anchor sees what it will see in production.
 
 import difflib
 from collections.abc import Iterator
+from functools import cache
 from pathlib import Path
 
 from ci_doctor.config.loader import default_config
@@ -30,6 +31,11 @@ MIN_POSITIVE, MIN_NEGATIVE = 3, 2
 MAX_FIXTURE_BYTES = 200 * 1024
 
 
+#: The shipped config, read once: it is the same for every fixture, and it is all a
+#: fixture is read with (no repo file, no env), so a verify run is reproducible anywhere.
+_shipped = cache(default_config)
+
+
 def read_fixture(path: Path) -> list[str]:
     """A fixture log as the extractor receives it in a real run.
 
@@ -39,7 +45,7 @@ def read_fixture(path: Path) -> list[str]:
     Returns:
         Every content line in log order, framing stripped and denoised.
     """
-    cfg = default_config()
+    cfg = _shipped()
     raw = path.read_text(errors="replace")
     sections = segmenter_for_log(raw, cfg.ci).segment(raw)
     # Log order, not tree order: a segmenter files some lines under a synthetic
