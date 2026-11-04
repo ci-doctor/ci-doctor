@@ -260,14 +260,23 @@ def test_registry_remove_refuses_while_include_uses_it(cfg, monkeypatch, capsys,
     assert "fx" in _block(cfg)["registries"]
 
 
-def test_registry_remove_official_and_unknown_exit_1(cfg, monkeypatch, capsys, fx_registry):
-    """Registry remove official and unknown exit 1."""
-    fx = str(fx_registry)
-    _write(cfg, f"matchers:\n  registries:\n    official: {fx}\n")
-    code, _, err = _run(monkeypatch, capsys, "registry", "remove", "official")
-    assert code == 1
-    assert "built in" in err
-    assert _run(monkeypatch, capsys, "registry", "remove", "ghost")[0] == 1
+def test_registry_remove_of_an_official_override_falls_back_to_the_default(
+    cfg, monkeypatch, capsys, fx_registry
+):
+    """The file's own `official` goes; the shipped one is what is left."""
+    _write(cfg, f"ci: github\nmatchers:\n  registries:\n    official: {fx_registry}\n")
+    assert _run(monkeypatch, capsys, "registry", "remove", "official")[0] == 0
+    assert not _block(cfg)
+    _, out, _ = _run(monkeypatch, capsys, "registry", "list")
+    assert "official  https://matchers.cidoc.dev/" in out
+
+
+def test_registry_remove_of_a_name_not_in_the_file_exits_1(cfg, monkeypatch, capsys):
+    """Neither an unknown name nor the shipped `official` is the file's to remove."""
+    for name in ("ghost", "official"):
+        code, _, err = _run(monkeypatch, capsys, "registry", "remove", name)
+        assert code == 1
+        assert f"registry {name!r} is not in" in err
 
 
 def test_registry_list(cfg, monkeypatch, capsys, fx_registry):

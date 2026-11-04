@@ -299,12 +299,13 @@ def registry_remove(
     names: Annotated[list[str], typer.Argument(metavar="NAME...", help="Registries to drop.")],
     config: Path = _CONFIG,
 ) -> None:
-    """Remove registries from the config, unless `include` still uses them."""
+    """Remove registries from the config, unless `include` still uses them.
+
+    Removing an override of a shipped registry (`official`) falls back to its default.
+    """
     block = read_block(config)
     own, include = block.get("registries", {}), block.get("include", [])
     for name in names:
-        if name == "official":
-            raise SetupError("`official` is built in and can only be overridden, not removed")
         if name not in own:
             raise SetupError(f"registry {name!r} is not in {config}")
         if used := [r for r in include if Ref.parse(r).alias == name]:
