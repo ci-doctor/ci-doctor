@@ -122,22 +122,21 @@ exceptions. Pages nested one directory deep import from `../../lib/url`.
 
 ## 4. Generated content must not be hand-written
 
-Anything that exists in `ci_doctor/config/defaults.yml` is generated into
-`src/data/*.json` by `mise run docs:data`, and a test fails when the committed
-JSON drifts from the config:
+Data that lives in `ci_doctor/config/defaults.yml` is generated into
+`src/data/*.json` by `mise run docs:data` (`scripts/gen_docs_data.py`), and a test
+fails when the committed JSON drifts from the config:
 
 | File | Source | Used by |
 |---|---|---|
-| `src/data/matchers.json` | the 35 shipped matcher packs | `/concepts/matchers/` |
 | `src/data/phases.json` | the section-name → phase map | `/concepts/attribution/` |
 
-**Never edit those JSON files.** A hand-written table is stale by the next commit,
-which is the whole reason they are generated.
+**Never edit that JSON.** A hand-written table is stale by the next commit, which
+is the whole reason it is generated.
 
-The one thing that *cannot* be derived from config is what a matcher pack is
-**for**, so that prose lives in `NOTES` in `scripts/gen_docs_data.py`, keyed by
-matcher id. Add a pack without a note and the generator refuses to run — a blank
-cell on the site is not an acceptable outcome.
+ci-doctor ships no matchers, so this site has no matcher catalogue. It lives with
+the official registry at <https://matchers.cidoc.dev>; `/concepts/matchers/`
+explains matchers and registries and links there. Do not copy matcher names or
+counts into a page: they change in another repository.
 
 Regenerate after any change to `defaults.yml`:
 
