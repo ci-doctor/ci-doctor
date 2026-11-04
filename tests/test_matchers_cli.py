@@ -13,9 +13,8 @@ import pytest
 import yaml
 
 from ci_doctor import cli
-from ci_doctor.matchers import cli as mcli
-from ci_doctor.matchers import registry
-from ci_doctor.matchers.cli import _history_url
+from ci_doctor.matchers.cli import index
+from ci_doctor.matchers.cli.info import _history_url
 from tests import support
 
 
@@ -34,8 +33,8 @@ def _mock_http(monkeypatch, fx_registry):
             return httpx.Response(503)
         return httpx.Response(404)
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
-    monkeypatch.setattr(mcli, "session", lambda: registry.session(client))
+    real = httpx.Client  # every command opens its own client; each gets the mock transport
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real(**kw, transport=httpx.MockTransport(handler)))
 
 
 @pytest.fixture
@@ -355,7 +354,7 @@ def test_a_crash_in_a_matchers_command_exits_1(cfg, monkeypatch, capsys):
     def crash(*_args, **_kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(mcli, "write_index", crash)
+    monkeypatch.setattr(index, "write_index", crash)
     code, _, err = _run(monkeypatch, capsys, "index", "--check", ".")
     assert code == 1
     assert "boom" in err

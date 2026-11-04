@@ -128,9 +128,9 @@ const packages = [
                 role: "`matchers verify`: runs each matcher alone over its fixture logs, read the way `analyze` reads a log, and compares the output with the committed `.expected` files.",
             },
             {
-                path: "cli.py",
-                entry: "app",
-                role: "`ci-doctor matchers …`. Every failure, a crash included, exits 1, because these commands are a registry's CI check.",
+                path: "cli/",
+                entry: "cli.app",
+                role: "`ci-doctor matchers …`, one module per command, `registry/` for `matchers registry …`. Every failure, a crash included, exits 1, because these commands are a registry's CI check.",
             },
             {
                 path: "config_edit.py",

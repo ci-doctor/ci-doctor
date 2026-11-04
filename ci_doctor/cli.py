@@ -33,7 +33,7 @@ from ci_doctor.config.loader import default_config, load_config
 from ci_doctor.config.schema import Config
 from ci_doctor.core.models import Run
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cli import app as matchers_app
+from ci_doctor.matchers.cli.cli import app as matchers_app
 from ci_doctor.matchers.models import Ref
 from ci_doctor.matchers.registry import load as load_matchers
 from ci_doctor.pipeline import JobResult, analyze_log, analyze_run

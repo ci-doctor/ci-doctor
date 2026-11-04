@@ -34,7 +34,8 @@ ci_doctor/
   render/           terminal (rich), markdown
   matchers/         matcher registries: file formats (models), validate, index and
                     verify (the author's side), registry (resolve + load), config_edit
-                    and cli (`ci-doctor matchers …`)
+    cli/            `ci-doctor matchers …`: the group (cli.py), one module per command;
+                    registry/ holds `matchers registry …` the same way
     transports/     local, http: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
@@ -55,6 +56,7 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | Evidence selection | `core/{denoise,extract,budget}.py` | Config-driven where possible. |
 | An LLM backend | `llm/backends.py` | Lazy-import the SDK inside the client. |
 | A new command | `cli.py` (surface) + `pipeline.py` (work) | Anything a non-terminal caller would also want belongs in `pipeline.py`. |
+| A `matchers` subcommand | `matchers/cli/<command>.py` | `NAME` + `run()`, and one entry in its group's `cli.py`. A subgroup is a package with its own `cli.py`. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
 | A way to fetch a registry | `matchers/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
@@ -78,7 +80,7 @@ invariants go on the end. The first three, and #10, are load-bearing:
    analysis starts, always exit 0: the analyzer must never change a pipeline's outcome.
    `main()` maps `SetupError` (`ci_doctor/errors.py`) to 1 and every other `BaseException`
    to 0. Never raise `SetupError` from inside the analysis. The `matchers` commands never
-   analyze, so they turn any crash into a `SetupError` (`_SetupGroup` in `matchers/cli.py`):
+   analyze, so they turn any crash into a `SetupError` (`_SetupGroup` in `matchers/cli/cli.py`):
    a registry check that crashes must not go green.
 4. **Nothing reaches the public internet** by default — no telemetry, update checks, or
    runtime downloads of models/rules/schemas.
