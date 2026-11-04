@@ -31,7 +31,8 @@ FROM python:3.14-slim
 
 COPY --from=builder /opt/ci-doctor /opt/ci-doctor
 ENV PATH="/opt/ci-doctor/bin:$PATH" \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYDANTIC_AI_NO_BANNER=1
 
 # Root on purpose: it writes report.md into a mounted dir it doesn't own (GitLab, -v $PWD).
 WORKDIR /app
