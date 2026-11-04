@@ -12,12 +12,14 @@ import sys
 import threading
 import time
 import types
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import ClassVar
 
 import certifi
 import httpx
+import httpx2
 import pytest
 from pydantic import BaseModel
 from pydantic_ai.messages import ModelResponse, TextPart
@@ -391,6 +393,45 @@ def test_close_never_raises():
     )
     client.complete_structured("prompt", _StubReport)
     client.close()
+
+
+class _Httpx2Provider:
+    def __init__(self, *, http_client: "httpx2.AsyncClient | None" = None): ...
+
+
+class _EitherProvider:
+    def __init__(self, *, http_client: "httpx.AsyncClient | httpx2.AsyncClient | None" = None): ...
+
+
+class _LegacyProvider:
+    def __init__(self, *, http_client: "httpx.AsyncClient | None" = None): ...
+
+
+class _UnresolvableProvider:
+    def __init__(self, *, http_client: "not_imported.AsyncClient | None" = None): ...  # noqa: F821 - unresolvable on purpose
+
+
+@pytest.mark.parametrize(
+    ("provider_class", "expected"),
+    [
+        (_Httpx2Provider, httpx2.AsyncClient),  # anthropic
+        (_EitherProvider, httpx2.AsyncClient),  # openai & co: legacy still works, but warns
+        (_LegacyProvider, httpx.AsyncClient),  # groq, cohere
+        (_UnresolvableProvider, httpx.AsyncClient),
+    ],
+)
+def test_the_ca_bundle_client_is_the_kind_the_provider_takes(provider_class, expected):
+    """httpx2 wherever the provider's annotation accepts it, legacy httpx otherwise."""
+    assert type(backends._ca_bundle_client(provider_class, certifi.where())) is expected
+
+
+def test_the_openai_provider_takes_the_ca_bundle_client_without_a_deprecation_warning():
+    """pydantic-ai deprecates a legacy `httpx.AsyncClient` for OpenAI-compatible providers."""
+    pytest.importorskip("openai")
+    cfg = _llm(backend="openai", model="m", api_base="http://127.0.0.1:1/v1", ca_bundle=certifi.where())
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        make_client(cfg)
 
 
 def test_close_shuts_a_real_sdk_client_built_with_a_ca_bundle():
