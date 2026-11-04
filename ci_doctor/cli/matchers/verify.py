@@ -4,14 +4,14 @@ from pathlib import Path
 
 import typer
 
-from ci_doctor.matchers.cli._common import ROOT, done
+from ci_doctor.cli._output import done
 from ci_doctor.matchers.verify import verify
 
 NAME = "verify"
 
 
 def run(
-    root: Path = ROOT,
+    root: Path = typer.Argument(Path("."), help="The registry directory (the one holding index.yaml)."),
     update: bool = typer.Option(
         False, "--update", help="Write each fixture's .expected from the current output instead of comparing."
     ),

@@ -1,9 +1,7 @@
-"""The analysis pipeline, with no CLI in it.
+"""The analysis itself: `segment -> attribute -> evidence -> report`.
 
-`segment -> attribute -> evidence -> report`, over a live run or a log file on
-disk. It lives outside `cli.py` because the CLI is not the only caller that
-needs it: anything driving ci-doctor programmatically wants the same three
-functions without a typer command in the call stack.
+Over a live run or a log file on disk, behind `ci-doctor analyze` and anything
+else that drives ci-doctor programmatically.
 
 Not in `core/`: choosing an adapter and reading a run is I/O, and `core/` stays
 pure and provider-neutral (invariant #2). This is the layer that knows both.
@@ -21,7 +19,7 @@ from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
 from ci_doctor.llm.schema import Report
 from ci_doctor.providers.registry import make_ci_provider, make_segmenter, segmenter_for_log
 
-log = logging.getLogger("ci_doctor.pipeline")
+log = logging.getLogger("ci_doctor.service.analyze")
 
 
 class JobResult(NamedTuple):

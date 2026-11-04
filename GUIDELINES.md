@@ -24,18 +24,17 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 
 ```
 ci_doctor/
-  cli.py            typer entrypoint (exits 0 once analysis starts): options, delivery
-  pipeline.py       the analysis itself, with no CLI in it — segment, classify,
-                    evidence, report — over a live run or a log file
-  config/           pydantic schema + defaults.yml + layered loader
+  cli/              the command line, laid out like the command tree (§2.1). Parses,
+                    calls service/, prints; exits 0 once analysis starts
+  service/          what each command does, with no terminal in it: analyze (segment,
+                    classify, evidence, report), deliver (artifacts, MR note), setup
+  config/           pydantic schema + defaults.yml + layered loader + dump (yaml, diff)
   core/             provider-neutral: models, ports, attribution (pure), denoise,
                     extract, budget, redact, analyze
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
   matchers/         matcher registries: file formats (models), validate, index and
                     verify (the author's side), registry (resolve + load), config_edit
-    cli/            `ci-doctor matchers …`: the group (cli.py), one module per command;
-                    registry/ holds `matchers registry …` the same way
     transports/     local, http: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
@@ -55,14 +54,45 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | Blame/classification logic | `core/attribution.py` | Pure function. No I/O, network, or clock. |
 | Evidence selection | `core/{denoise,extract,budget}.py` | Config-driven where possible. |
 | An LLM backend | `llm/backends.py` | Lazy-import the SDK inside the client. |
-| A new command | `cli.py` (surface) + `pipeline.py` (work) | Anything a non-terminal caller would also want belongs in `pipeline.py`. |
-| A `matchers` subcommand | `matchers/cli/<command>.py` | `NAME` + `run()`, and one entry in its group's `cli.py`. A subgroup is a package with its own `cli.py`. Print through `_common` (`say`, `done`, `table`) so `--plain` works; read the config with `effective()`/`target()`, never a per-command `-f`. |
+| A command or subcommand | `cli/<group…>/<command>.py` (surface) + `service/` or the owning package (work) | See §2.1. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
 | A way to fetch a registry | `matchers/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
 | A tunable value | `config/schema.py` (scalar) or `defaults.yml` (data) | Prefer a config knob over a hardcoded pattern. |
 
 `core/` imports only `core.ports` abstractions. Adapters implement them.
+
+### 2.1 The command line
+
+`cli/` mirrors the command tree, the way a web framework's `pages/` mirrors its URLs:
+
+```
+cli/
+  __init__.py       `ci-doctor`: the root app, global options, main()
+  _context.py       the global -f files (config_files, target, editable)
+  _output.py        say / done / skipped / table, the pager, --plain and --no-color
+  analyze.py        `ci-doctor analyze`
+  config.py         `ci-doctor config`
+  matchers/
+    __init__.py     `ci-doctor matchers`: the group, and _SetupGroup
+    add.py …        `ci-doctor matchers add`, one module per command
+    registry/
+      __init__.py   `ci-doctor matchers registry`
+      ping.py …
+```
+
+- **A command is a module** with a `NAME` and a `run()`. **A group is a package**: its
+  `__init__.py` holds the typer app and registers its commands, one line each. Explicit,
+  not discovered: a scan of the folder would turn a typo into a missing command nobody
+  sees, and neither `ty` nor grep could follow it.
+- **No logic in `cli/`.** A command parses its options, calls `service/` (or the package
+  that owns the work, like `matchers/`) and prints. Anything an editor, an agent or a
+  future `mcp` command would also want belongs outside it. `cli/` imports `service/`,
+  never the reverse, and `service/` imports no typer or click; `tests/test_layout.py`
+  pins both.
+- **Options that mean the same thing everywhere are global**, on the root app: `-f`,
+  `--plain`, `--no-color`. Read them through `_context` and `_output`, never with a
+  per-command flag. Print through `_output` (`say`, `done`, `table`) so `--plain` works.
 
 ## 3. Invariants — do not break these
 
@@ -80,7 +110,7 @@ invariants go on the end. The first three, and #10, are load-bearing:
    analysis starts, always exit 0: the analyzer must never change a pipeline's outcome.
    `main()` maps `SetupError` (`ci_doctor/errors.py`) to 1 and every other `BaseException`
    to 0. Never raise `SetupError` from inside the analysis. The `matchers` commands never
-   analyze, so they turn any crash into a `SetupError` (`_SetupGroup` in `matchers/cli/cli.py`):
+   analyze, so they turn any crash into a `SetupError` (`_SetupGroup` in `cli/matchers/__init__.py`):
    a registry check that crashes must not go green.
 4. **Nothing reaches the public internet** by default — no telemetry, update checks, or
    runtime downloads of models/rules/schemas.

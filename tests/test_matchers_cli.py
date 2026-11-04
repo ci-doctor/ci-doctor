@@ -13,8 +13,8 @@ import pytest
 import yaml
 
 from ci_doctor import cli
-from ci_doctor.matchers.cli import index
-from ci_doctor.matchers.cli.info import _history_url
+from ci_doctor.cli.matchers import index
+from ci_doctor.cli.matchers.info import _history_url
 from tests import support
 
 
@@ -50,9 +50,9 @@ def _write(path, text):
 
 
 def _run(monkeypatch, capsys, *argv, config=None, plain=True):
-    """Run `ci-doctor [-f config] matchers [--plain] argv`; returns (exit code, stdout, stderr)."""
+    """Run `ci-doctor [-f config] [--plain] matchers argv`; returns (exit code, stdout, stderr)."""
     pre = ["-f", str(config)] if config else []
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", *pre, "matchers", *(["--plain"] if plain else []), *argv])
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", *pre, *(["--plain"] if plain else []), "matchers", *argv])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     out = capsys.readouterr()

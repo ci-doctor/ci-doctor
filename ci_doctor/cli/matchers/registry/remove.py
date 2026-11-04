@@ -4,8 +4,9 @@ from typing import Annotated
 
 import typer
 
+from ci_doctor.cli._context import target
+from ci_doctor.cli._output import done
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cli._common import done, target
 from ci_doctor.matchers.config_edit import edit_matchers, read_block
 from ci_doctor.matchers.models import Ref
 

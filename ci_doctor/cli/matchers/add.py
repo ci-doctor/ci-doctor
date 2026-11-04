@@ -4,9 +4,10 @@ from typing import Annotated
 
 import typer
 
-from ci_doctor.matchers.cli._common import done, effective, skipped, target, via
+from ci_doctor.cli._context import editable, target
+from ci_doctor.cli._output import done, skipped
 from ci_doctor.matchers.config_edit import edit_matchers, read_block
-from ci_doctor.matchers.registry import Resolved, check_ref, session
+from ci_doctor.matchers.registry import Resolved, check_ref, session, via
 
 NAME = "add"
 
@@ -17,7 +18,7 @@ def run(
     ],
 ) -> None:
     """Add matchers or bundles to `matchers.include`."""
-    cfg, config = effective(), target()
+    cfg, config = editable().matchers, target()
     current = list(read_block(config).get("include", []))
     seen = Resolved()
     new: list[str] = []

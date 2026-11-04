@@ -10,14 +10,14 @@ const packages = [
         blurb: "The wiring, and nothing else.",
         files: [
             {
-                path: "cli.py",
+                path: "cli/",
                 entry: "main()",
-                role: "Typer commands, config loading, logging, delivery, and the exit code: 1 for a `SetupError`, 0 for everything else, a crash included.",
+                role: "The command line, one module per command and one package per group (`cli/matchers/registry/ping.py` is `ci-doctor matchers registry ping`). Parses, calls `service/`, prints, and owns the exit code: 1 for a `SetupError`, 0 for everything else, a crash included.",
             },
             {
-                path: "pipeline.py",
+                path: "service/",
                 entry: "analyze_run()",
-                role: "The analysis itself, with no CLI in it: segment → assign phases → attribute → build bundle → report, over a live run or a log file.",
+                role: "What each command does, with no terminal in it: `analyze` (segment → assign phases → attribute → build bundle → report, over a live run or a log file), `deliver` (artifacts, MR note), `setup` (the dry run).",
             },
             {
                 path: "errors.py",
@@ -126,11 +126,6 @@ const packages = [
                 path: "verify.py",
                 entry: "verify()",
                 role: "`matchers verify`: runs each matcher alone over its fixture logs, read the way `analyze` reads a log, and compares the output with the committed `.expected` files.",
-            },
-            {
-                path: "cli/",
-                entry: "cli.app",
-                role: "`ci-doctor matchers …`, one module per command, `registry/` for `matchers registry …`. Every failure, a crash included, exits 1, because these commands are a registry's CI check.",
             },
             {
                 path: "config_edit.py",

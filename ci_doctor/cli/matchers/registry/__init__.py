@@ -2,7 +2,7 @@
 
 import typer
 
-from ci_doctor.matchers.cli.registry import add, list, ping, remove
+from ci_doctor.cli.matchers.registry import add, list, ping, remove
 
 app = typer.Typer(no_args_is_help=True, help="Manage the registries matchers come from.")
 for command in (add, remove, list, ping):

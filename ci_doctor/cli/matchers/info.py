@@ -5,15 +5,16 @@ from urllib.parse import urlsplit
 import typer
 from rich.text import Text
 
-from ci_doctor.matchers.cli._common import effective, say, table, via
-from ci_doctor.matchers.registry import Resolved, check_ref, fetch_matcher, redact, session
+from ci_doctor.cli._context import editable
+from ci_doctor.cli._output import say, table
+from ci_doctor.matchers.registry import Resolved, check_ref, fetch_matcher, redact, session, via
 
 NAME = "info"
 
 
 def run(ref: str = typer.Argument(..., metavar="ALIAS/NAME")) -> None:
     """Show one matcher or bundle: what it does, where it lives, what a bundle holds."""
-    cfg = effective()
+    cfg = editable().matchers
     seen = Resolved()
     with session() as http:
         parsed = check_ref(ref, cfg, http, seen)

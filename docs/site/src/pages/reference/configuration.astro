@@ -18,7 +18,7 @@ ci-doctor config --diff    # only what your file/env/flags change vs the default
 ci-doctor config --schema  # the JSON Schema, for editors and CI validation
 ci-doctor config --validate            # the setup dry run: config, registries, matchers; exit 1 on a problem
 ci-doctor -f base.yml -f ci.yml config # repeatable, the rightmost file wins
-# Output pages through $PAGER on a terminal; --plain prints raw (as does piping).`;
+# Output pages through $PAGER on a terminal; ci-doctor --plain config prints raw (as does piping).`;
 
 const schemaComment = `# yaml-language-server: $schema=https://github.com/ci-doctor/ci-doctor/releases/latest/download/ci-doctor.schema.json
 llm:

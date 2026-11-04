@@ -350,6 +350,22 @@ def _expand(
     return walked[key]
 
 
+def via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str, str]:
+    """Which top-level entry of `include` brings in each matcher.
+
+    Args:
+        cfg: The `matchers:` block (for its registries).
+        include: The refs to expand.
+        http: The run's HTTP client.
+
+    Returns:
+        `alias/name` -> `"direct"` or the bundle; empty when `include` is.
+    """
+    if not include:
+        return {}
+    return resolve(MatchersConfig(registries=cfg.registries, include=include), http).matchers
+
+
 def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[MatcherConfig]:
     """Resolve, fetch and validate every selected matcher, ids renamed to `alias/id`.
 

@@ -4,9 +4,10 @@ from typing import Annotated
 
 import typer
 
+from ci_doctor.cli._context import editable, target
+from ci_doctor.cli._output import done
 from ci_doctor.config.loader import anchor_registry
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cli._common import done, effective, target
 from ci_doctor.matchers.config_edit import edit_matchers
 from ci_doctor.matchers.registry import fetch_index, redact, registry_dir, session
 
@@ -19,7 +20,7 @@ def run(
     ],
 ) -> None:
     """Add or override registries, after checking each serves a valid index.yaml."""
-    cfg, config = effective(), target()
+    cfg, config = editable().matchers, target()
     new: dict[str, str] = {}
     for pair in pairs:
         name, eq, location = pair.partition("=")

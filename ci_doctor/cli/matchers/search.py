@@ -4,7 +4,8 @@ from collections.abc import Iterator
 
 import typer
 
-from ci_doctor.matchers.cli._common import effective, say, table
+from ci_doctor.cli._context import editable
+from ci_doctor.cli._output import say, table
 from ci_doctor.matchers.models import Index
 from ci_doctor.matchers.registry import Resolved, index_for, session
 
@@ -16,7 +17,7 @@ def run(
     registry: str | None = typer.Option(None, "--registry", help="Search only this registry."),
 ) -> None:
     """Search matcher and bundle names, descriptions and classifications."""
-    cfg = effective()
+    cfg = editable().matchers
     needle = term.lower()
     aliases = [registry] if registry else sorted(cfg.registries)
     seen = Resolved()

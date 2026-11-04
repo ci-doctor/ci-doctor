@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from ci_doctor import cli
+from ci_doctor.cli import _output
 from tests import support
 
 
@@ -101,9 +102,9 @@ def test_verbose_enables_debug_logging():
     """`--verbose` turns on DEBUG; without it the level returns to INFO."""
     import logging
 
-    cli._configure_logging(True)
+    _output.configure_logging(True)
     assert logging.getLogger("ci_doctor").level == logging.DEBUG
-    cli._configure_logging(False)  # default INFO when not verbose and no env override
+    _output.configure_logging(False)  # default INFO when not verbose and no env override
     assert logging.getLogger("ci_doctor").level == logging.INFO
 
 
@@ -112,7 +113,7 @@ def test_from_file_replay_smoke(provider, monkeypatch, capsys, registry_config):
     """Offline replay renders a report and writes both artifacts."""
     tmp_path = registry_config  # report.md/report.json land here, not in the repo
     log = _job_log(tmp_path, provider)
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "--no-color", log])
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--no-color", "analyze", log])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 0
@@ -185,7 +186,7 @@ def test_config_prints_the_effective_config(monkeypatch, capsys, tmp_path):
     """The bare command shows the user's layer merged onto the defaults."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".ci-doctor.yml").write_text("llm:\n  model: my-model\n")
-    out = _run(monkeypatch, capsys, "config", "--no-color")
+    out = _run(monkeypatch, capsys, "--no-color", "config")
     assert "my-model" in out  # the user layer
     assert "tail_lines" in out  # and the untouched defaults
 
@@ -194,7 +195,7 @@ def test_config_diff_shows_only_what_the_user_changed(monkeypatch, capsys, tmp_p
     """`--diff` shows the replaced default and the new value, nothing untouched."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".ci-doctor.yml").write_text("llm:\n  model: my-model\n")
-    out = _run(monkeypatch, capsys, "config", "--diff", "--no-color")
+    out = _run(monkeypatch, capsys, "--no-color", "config", "--diff")
     assert "-  model: null" in out
     assert "+  model: my-model" in out
     assert "tail_lines" not in out  # unchanged keys stay out of the diff
@@ -203,7 +204,7 @@ def test_config_diff_shows_only_what_the_user_changed(monkeypatch, capsys, tmp_p
 def test_config_diff_is_empty_on_stock_defaults(monkeypatch, capsys, tmp_path):
     """With no user config, `--diff` says so instead of printing an empty diff."""
     monkeypatch.chdir(tmp_path)
-    assert "no differences" in _run(monkeypatch, capsys, "config", "--diff", "--no-color")
+    assert "no differences" in _run(monkeypatch, capsys, "--no-color", "config", "--diff")
 
 
 def test_repeated_config_flags_apply_left_to_right(monkeypatch, capsys, tmp_path):
@@ -211,7 +212,7 @@ def test_repeated_config_flags_apply_left_to_right(monkeypatch, capsys, tmp_path
     monkeypatch.chdir(tmp_path)
     (tmp_path / "a.yml").write_text("llm:\n  model: from-a\n  temperature: 0.9\n")
     (tmp_path / "b.yml").write_text("llm:\n  model: from-b\n")
-    out = _run(monkeypatch, capsys, "-f", "a.yml", "-f", "b.yml", "config", "--no-color")
+    out = _run(monkeypatch, capsys, "--no-color", "-f", "a.yml", "-f", "b.yml", "config")
     assert "model: from-b" in out  # the rightmost file wins
     assert "temperature: 0.9" in out  # keys only the earlier file set survive
 
@@ -245,14 +246,14 @@ def test_analyze_reports_a_bad_config_as_a_config_error(monkeypatch, capsys, tmp
 
 
 def test_the_config_pager_ignores_manpager_and_keeps_colours(monkeypatch):
-    """pydoc prefers $MANPAGER; a `col -bx` one ate the escapes. Ours runs $PAGER with less -R."""
+    """Pydoc prefers $MANPAGER; a `col -bx` one ate the escapes. Ours runs $PAGER with less -R."""
     seen = {}
     monkeypatch.setenv("MANPAGER", "sh -c 'col -bx'")
     monkeypatch.setenv("PAGER", "less")
     monkeypatch.setenv("LESS", "FX")
-    monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kw: seen.update(cmd=cmd, **kw))
-    cli._Pager().show("\x1b[94mci\x1b[0m")
+    monkeypatch.setattr(_output.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(_output.subprocess, "run", lambda cmd, **kw: seen.update(cmd=cmd, **kw))
+    _output.LessPager().show("\x1b[94mci\x1b[0m")
     assert seen["cmd"] == ["less"]
     assert seen["env"]["LESS"] == "FX -R"
     assert seen["input"] == "\x1b[94mci\x1b[0m"

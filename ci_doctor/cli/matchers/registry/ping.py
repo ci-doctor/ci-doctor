@@ -6,8 +6,9 @@ from typing import Annotated
 import typer
 from rich.text import Text
 
+from ci_doctor.cli._context import editable
+from ci_doctor.cli._output import table
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cli._common import effective, table
 from ci_doctor.matchers.registry import Resolved, index_for, session, unknown_registry
 
 NAME = "ping"
@@ -19,7 +20,7 @@ def run(
     ] = None,
 ) -> None:
     """Fetch each registry's index and report reachability, latency and size."""
-    cfg = effective()
+    cfg = editable().matchers
     if unknown := [n for n in names or [] if n not in cfg.registries]:
         raise unknown_registry(unknown[0], cfg.registries)
     rows = []
