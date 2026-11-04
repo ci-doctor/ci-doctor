@@ -6,7 +6,7 @@ import typer
 from rich.syntax import Syntax
 
 from ci_doctor.cli._context import config_files
-from ci_doctor.cli._output import LessPager, configure_logging, console, no_color, plain
+from ci_doctor.cli._output import LessPager, console, no_color, plain
 from ci_doctor.config.dump import as_yaml, diff_lines, schema_json
 from ci_doctor.config.loader import default_config, load_config
 from ci_doctor.service.setup import validate as validate_setup
@@ -23,7 +23,6 @@ def run(
         False, "--validate", help="Load and validate the merged config, then report what failed."
     ),
     less: bool = typer.Option(False, "--less", help="Force the scrollable pager, even when piped."),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
 ) -> None:
     """Show the effective config after every layer is merged.
 
@@ -31,7 +30,6 @@ def run(
     layer you forgot was applied. Pages the output on a terminal; pipe it (or pass
     the global `--plain`) to get the raw text back.
     """
-    configure_logging(verbose)
     if validate:
         typer.echo(validate_setup(config_files()))
         return

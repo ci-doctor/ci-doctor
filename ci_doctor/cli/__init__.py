@@ -12,21 +12,18 @@ catches everything and exits 0. The one exception is a broken setup
 """
 
 import logging
-import sys
 from pathlib import Path
 
 import typer
-from rich.console import Console
 from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
-from rich.style import Style
-from rich.theme import Theme
 
 from ci_doctor import __version__
 from ci_doctor.cli import _output, analyze, config
 from ci_doctor.cli.matchers import app as matchers_app
 from ci_doctor.errors import SetupError
 
+log = logging.getLogger("ci_doctor.cli")
 app = typer.Typer(add_completion=False, help="Explain why a CI pipeline failed (read-only postmortem).")
 for command in (analyze, config):
     app.command(command.NAME)(command.run)
@@ -62,6 +59,7 @@ def _root(
     no_color: bool = typer.Option(
         False, "--no-color", help="Disable coloured output (also honours NO_COLOR)."
     ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging, for every command."),
     version: bool = typer.Option(
         False, "--version", callback=_version_callback, is_eager=True, help="Show version and exit."
     ),
@@ -70,17 +68,7 @@ def _root(
     ctx.obj = config_path or []  # the `-f` files, lowest precedence first
     ctx.meta[_output.PLAIN] = plain
     ctx.meta[_output.NO_COLOR] = no_color or plain
-
-
-_LEVEL_COLORS = Theme(
-    {
-        "logging.level.debug": Style(color="blue"),
-        "logging.level.info": Style(color="green"),
-        "logging.level.warning": Style(color="yellow"),
-        "logging.level.error": Style(color="red"),
-        "logging.level.critical": Style(color="red", bold=True),
-    }
-)
+    _output.configure_logging(verbose, colour=not (no_color or plain))
 
 
 def main() -> None:
@@ -92,13 +80,14 @@ def main() -> None:
     `SetupError` themselves, since they never analyze anything.
     """
     # NullHighlighter, not highlighter=None: rich falls back to ReprHighlighter on None.
-    # stderr, because stdout carries the report or the JSON meant to be piped onward.
+    # force: replace whatever handler a host process installed, so errors look the same.
     logging.basicConfig(
         level=logging.INFO,
         format="%(message)s",
+        force=True,
         handlers=[
             RichHandler(
-                console=Console(theme=_LEVEL_COLORS, stderr=True),
+                console=_output.LOG_CONSOLE,
                 show_time=False,
                 show_path=False,
                 markup=False,
@@ -110,12 +99,12 @@ def main() -> None:
     try:
         app()
     except SetupError as exc:
-        print(f"ci-doctor: {exc}", file=sys.stderr)
+        log.error(exc)
         raise SystemExit(1) from None
     except SystemExit as exc:
         # typer/click exit through SystemExit: 0 for success, non-zero for bad usage,
         # which is a broken setup like any other.
         raise SystemExit(0 if exc.code in (0, None) else 1) from None
     except BaseException as exc:  # noqa: BLE001 - analyzer must never alter pipeline outcome
-        print(f"ci-doctor: internal error, exiting 0 to preserve pipeline status: {exc}", file=sys.stderr)
+        log.error(f"internal error, exiting 0 to preserve pipeline status: {exc}")
         raise SystemExit(0) from None

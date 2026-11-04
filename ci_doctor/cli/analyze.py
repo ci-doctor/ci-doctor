@@ -9,7 +9,7 @@ from pathlib import Path
 import typer
 
 from ci_doctor.cli._context import config_files
-from ci_doctor.cli._output import configure_logging, no_color
+from ci_doctor.cli._output import no_color
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Run
 from ci_doctor.errors import SetupError
@@ -38,7 +38,6 @@ def run(
         "--format",
         help="stdout format. `json` prints the report instead of the rendered panels.",
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
 ) -> None:
     """Explain why a CI run failed.
 
@@ -51,9 +50,7 @@ def run(
         job_id: Restrict a live run to one job.
         output_format: What goes to stdout — the rendered panels, or the report
             as JSON for a script or a coding agent to read.
-        verbose: Enable debug logging.
     """
-    configure_logging(verbose)
     cfg = load_config(config_files())
     log.debug(f"ci={cfg.ci} scm={cfg.scm_vendor} target={target} job_id={job_id}")
     if target is None:

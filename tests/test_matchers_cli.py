@@ -96,7 +96,7 @@ def test_add_unknown_name_exits_1_with_a_hint_and_writes_nothing(cfg, monkeypatc
     """Add unknown name exits 1 with a hint and writes nothing."""
     code, _, err = _run(monkeypatch, capsys, "add", "official/pytset")
     assert code == 1
-    assert "did you mean official/pytest?" in err
+    assert "did you mean official/pytest?" in " ".join(err.split())  # rich wraps the log line
     assert not cfg.exists()
 
 

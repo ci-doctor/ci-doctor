@@ -4,6 +4,7 @@ import json
 import sys
 
 import pytest
+from rich.color import ColorSystem
 
 from ci_doctor import cli
 from ci_doctor.cli import _output
@@ -82,7 +83,7 @@ def test_an_empty_include_says_how_to_pick_matchers(monkeypatch, capsys, tmp_pat
     monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "123"])
     with pytest.raises(SystemExit):
         cli.main()
-    assert "ci-doctor matchers add official/<name>" in capsys.readouterr().err
+    assert "ci-doctor matchers add official/<name>" in " ".join(capsys.readouterr().err.split())  # rich wraps
 
 
 def test_a_setup_error_is_the_one_exit_one(monkeypatch, capsys):
@@ -257,3 +258,19 @@ def test_the_config_pager_ignores_manpager_and_keeps_colours(monkeypatch):
     assert seen["cmd"] == ["less"]
     assert seen["env"]["LESS"] == "FX -R"
     assert seen["input"] == "\x1b[94mci\x1b[0m"
+
+
+def test_a_setup_error_is_logged_at_error_level_without_colour_under_plain(monkeypatch, capsys, tmp_path):
+    """The failure reads like the other log lines, `ERROR` first, and `--plain` leaves it uncoloured."""
+    monkeypatch.chdir(tmp_path)
+    # A colour terminal, were it not for --plain: rich picks its colour system at construction.
+    monkeypatch.setattr(_output.LOG_CONSOLE, "_force_terminal", True)
+    monkeypatch.setattr(_output.LOG_CONSOLE, "_color_system", ColorSystem.STANDARD)
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--plain", "-v", "analyze", "123"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    err = capsys.readouterr().err
+    assert exc.value.code == 1
+    assert err.lstrip().startswith("DEBUG")  # -v is global
+    assert "ERROR    no matchers or bundles selected" in err
+    assert "\x1b[" not in err
