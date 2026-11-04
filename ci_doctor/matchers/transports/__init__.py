@@ -24,7 +24,8 @@ TRANSPORTS: dict[str, str] = {
     "http": "ci_doctor.matchers.transports.http:HttpTransport",
 }
 
-_USERINFO = re.compile(r"(?<=://)[^/@\s]+@")
+#: Possessive, so a long run with no `@` after it fails once instead of backtracking.
+_USERINFO = re.compile(r"://[^/@\s]++@")
 
 
 class Transport(ABC):
@@ -72,7 +73,7 @@ def redact(text: str) -> str:
     Returns:
         The message with every URL's userinfo replaced by `***`.
     """
-    return _USERINFO.sub("***@", text)
+    return _USERINFO.sub("://***@", text)
 
 
 def decode(rel: str, body: bytes) -> str:
