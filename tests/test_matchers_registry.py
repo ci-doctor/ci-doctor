@@ -164,7 +164,7 @@ def test_a_location_naming_the_index_file_is_refused(location):
 
 
 def test_an_unsupported_scheme_is_refused():
-    """Only paths, `file://` and `http(s)://` and `git+`."""
+    """Only paths, `file://` and `http(s)://`."""
     with pytest.raises(SetupError, match="unsupported scheme 'ftp'"):
         load(_cfg(["r/x"], r="ftp://reg.test/m/"))
 

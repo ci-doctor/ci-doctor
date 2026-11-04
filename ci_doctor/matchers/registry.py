@@ -60,7 +60,7 @@ def registry_dir(alias: str, value: str) -> str:
 
     Returns:
         The location its transport reads from: an `http(s)://` URL ending in `/`,
-        a `git+` location as written, or a local directory path.
+        or a local directory path.
 
     Raises:
         SetupError: On a location naming the index file, or one no transport accepts.

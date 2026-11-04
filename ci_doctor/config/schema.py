@@ -434,9 +434,8 @@ class MatchersConfig(_Strict):
         default_factory=dict,
         description=(
             "Registry alias -> its folder (the one holding index.yaml): a path (relative to the "
-            "config file), `file://`, `http://`, `https://`, `git+https://` or `git+ssh://` "
-            "(`@ref` and `#subdirectory=dir` optional). Merged onto the defaults, so `official` "
-            "stays unless you override it."
+            "config file), `file://`, `http://` or `https://`. Merged onto the defaults, so "
+            "`official` stays unless you override it."
         ),
     )
     include: list[Annotated[str, AfterValidator(_ref)]] = Field(

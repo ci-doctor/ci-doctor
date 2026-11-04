@@ -35,7 +35,7 @@ ci_doctor/
   matchers/         matcher registries: file formats (models), validate, index and
                     verify (the author's side), registry (resolve + load), config_edit
                     and cli (`ci-doctor matchers …`)
-    transports/     local, http, git: how a registry's files are read
+    transports/     local, http: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
     gitlab/         python-gitlab adapter + segmenter + reasons
@@ -156,8 +156,8 @@ parametrized over `support.PROVIDERS` then covers the format.
 ### 5.1 Add a matcher / language pack
 
 Pure data — no Python, and not in this repo. Matchers live in **registries**: the
-[official one](https://github.com/ci-doctor/matchers), or your own (a directory, an
-`https://` folder, or a `git+https://`/`git+ssh://` repository) listed under
+[official one](https://github.com/ci-doctor/matchers), or your own (a directory or an
+`https://` folder) listed under
 `matchers.registries`. A config selects them with `matchers.include` (`official/pytest`,
 `acme/mytool`); `defaults.yml` ships no matchers, only the `official` registry's address.
 In a registry, one file per matcher at `matchers/<ecosystem>/<id>/matcher.yaml`:
