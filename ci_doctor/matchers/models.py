@@ -1,16 +1,17 @@
-"""The registry's own file formats: a bundle, and the `index.yaml` that lists everything.
+"""The registry's own file formats: a matcher file, a bundle, and the `index.yaml` that lists everything.
 
-A matcher file is a :class:`~ci_doctor.config.schema.MatcherConfig`; only the
-shapes a registry adds live here. Every model is strict, so a key we don't know
-is an error rather than a silently ignored typo.
+A matcher file is a :class:`~ci_doctor.config.schema.MatcherConfig` with the few
+rules only a registry adds; the other shapes are the registry's own. Every model is
+strict, so a key we don't know is an error rather than a silently ignored typo.
 """
 
 import re
+from collections import Counter
 from typing import Annotated, Literal, NamedTuple
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, model_validator
 
-from ci_doctor.config.schema import Description, Tag
+from ci_doctor.config.schema import Description, MatcherConfig, Tag
 from ci_doctor.config.types import Strict
 
 #: A registry name: what users type in `alias/name`, and the matcher's directory name.
@@ -84,6 +85,23 @@ class Ref(NamedTuple):
         return f"{self.alias}/{self.name}"
 
 
+class RegistryMatcher(MatcherConfig):
+    """A matcher as a registry file holds it: stricter than one in a config.
+
+    The id is bare; ci-doctor makes it `alias/id` at load. The description and a
+    tag are required: the description is all the LLM learns about the tool, and the
+    first tag names the ecosystem directory the file sits in.
+    """
+
+    id: BareId = Field(description="Matcher name, bare (`pytest`); also its directory name.")
+    description: Description = Field(
+        description="What the tool is and what its failure means. Shown to the LLM; one line."
+    )
+    classification: list[Tag] = Field(
+        min_length=1, max_length=5, description="1-5 tags, the ecosystem first (`[python, test]`)."
+    )
+
+
 class Bundle(Strict):
     """A named list of matchers and bundles from the same registry: our `p/python`."""
 
@@ -103,7 +121,7 @@ class Bundle(Strict):
         Raises:
             ValueError: Naming the duplicates.
         """
-        if dupes := sorted({n for n in self.include if self.include.count(n) > 1}):
+        if dupes := sorted(n for n, count in Counter(self.include).items() if count > 1):
             raise ValueError(f"bundle {self.id!r} includes {dupes} more than once")
         return self
 

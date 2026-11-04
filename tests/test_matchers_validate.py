@@ -70,14 +70,16 @@ def test_a_description_must_be_safe_prompt_text(registry, description, why):
 
 def test_a_description_is_required_in_a_registry(registry):
     """Optional in a config, required in a registry: it is all the LLM learns about the tool."""
-    with pytest.raises(SetupError, match="description is required"):
+    with pytest.raises(SetupError, match=r"description\s+Field required"):
         load_matcher(_edit(registry, PYTEST, description=None))
 
 
 def test_a_tag_is_required_in_a_registry(registry):
     """The first tag names the ecosystem directory, so a registry matcher needs one."""
-    with pytest.raises(SetupError, match="classification needs at least one tag"):
+    with pytest.raises(SetupError, match=r"classification\s+Field required"):
         load_matcher(_edit(registry, PYTEST, classification=None))
+    with pytest.raises(SetupError, match=r"classification\s+List should have at least 1 item"):
+        load_matcher(_edit(registry, PYTEST, classification=[]))
 
 
 @pytest.mark.parametrize(
@@ -108,7 +110,7 @@ def test_the_bare_id_must_match_its_directory(registry):
 
 def test_a_slash_in_the_file_id_is_rejected_even_though_the_model_allows_it(registry):
     """`alias/id` is what ci-doctor makes of it at load; the file holds the bare name."""
-    with pytest.raises(SetupError, match="must match"):
+    with pytest.raises(SetupError, match=r"id\s+String should match pattern"):
         load_matcher(_edit(registry, PYTEST, id="acme/pytest"))
 
 

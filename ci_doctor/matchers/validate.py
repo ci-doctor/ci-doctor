@@ -5,11 +5,11 @@ One module for both callers, so the rules can't drift: `matchers index` and
 ci-doctor itself loads with ``author=False`` when it fetches a file, because a
 self-hosted registry may never have run our CI.
 
-Field-level rules (lengths, RE2 cost, ASCII descriptions) live on the models in
-`config/schema.py` and `matchers/models.py`. What lives here is what only makes
-sense for a file in a registry: the bare id (it becomes `alias/id` later, which
-the model's own id pattern must still accept), a required description and tag,
-and the id and ecosystem matching their directories.
+Every field rule (lengths, RE2 cost, ASCII descriptions, the bare id, a required
+description and tag) lives on the models in `config/schema.py` and
+`matchers/models.py`. What lives here is reading a file safely, and the one rule
+that needs to know where the file sits: its id and ecosystem matching their
+directories.
 """
 
 from pathlib import Path
@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 from ci_doctor.config.schema import MatcherConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.models import BARE_ID, Bundle
+from ci_doctor.matchers.models import Bundle, RegistryMatcher
 
 
 class _NoAliasLoader(yaml.SafeLoader):
@@ -119,31 +119,23 @@ def matcher_from(data: Any, where: str, *, dirs: tuple[str, str] | None = None) 
     Raises:
         SetupError: Naming `where` and everything wrong with it.
     """
-    if not isinstance(data, dict):
-        raise SetupError(f"{where}: a matcher file must be a mapping")
-    problems = []
-    mid = data.get("id")
-    if not isinstance(mid, str) or not BARE_ID.match(mid):
-        problems.append(f"id {mid!r} must match {BARE_ID.pattern}")
-    if not data.get("description"):
-        problems.append("description is required")
-    tags = data.get("classification")
-    if not tags:
-        problems.append("classification needs at least one tag, the ecosystem first")
-    if dirs is not None:
-        eco, name = dirs
-        if isinstance(mid, str) and mid != name:
-            problems.append(f"id {mid!r} must equal its directory name {name!r}")
-        if isinstance(tags, list) and tags and tags[0] != eco:
-            problems.append(
-                f"first classification tag {tags[0]!r} must equal its ecosystem directory {eco!r}"
-            )
-    if problems:
-        raise SetupError(f"{where}: " + "; ".join(problems))
     try:
-        return MatcherConfig.model_validate(data)
+        m = RegistryMatcher.model_validate(data)
     except ValidationError as err:
         raise SetupError(f"{where}: {err}") from None
+    if dirs is None:
+        return m
+    eco, name = dirs
+    problems = []
+    if m.id != name:
+        problems.append(f"id {m.id!r} must equal its directory name {name!r}")
+    if m.classification[0] != eco:
+        problems.append(
+            f"first classification tag {m.classification[0]!r} must equal its ecosystem directory {eco!r}"
+        )
+    if problems:
+        raise SetupError(f"{where}: " + "; ".join(problems))
+    return m
 
 
 def load_matcher(path: Path, *, author: bool = False) -> MatcherConfig:
