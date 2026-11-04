@@ -294,10 +294,13 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
             index_for(cfg, alias, http, out)
             if (location := out.locations[alias]).startswith("http://"):
                 log.warning(f"registry {alias!r} is fetched over plain http, unencrypted: {redact(location)}")
-        expanded: dict[str, tuple[list[str], int]] = {}
+        walked: dict[str, tuple[list[str], int]] = {}
         for ref in refs:
-            via = "direct" if ref.name in out.indexes[ref.alias].matchers else str(ref)
-            for key in _expand(ref, (), out, expanded, http)[0]:
+            keys, depth = _expand(ref, (), out, walked, http)
+            if depth > MAX_BUNDLE_DEPTH:
+                raise SetupError(f"bundle {ref} nests deeper than {MAX_BUNDLE_DEPTH}")
+            via = "direct" if depth == 0 else str(ref)
+            for key in keys:
                 out.matchers.setdefault(key, via)
     return out
 
@@ -306,19 +309,20 @@ def _expand(
     ref: Ref,
     stack: tuple[str, ...],
     out: Resolved,
-    expanded: dict[str, tuple[list[str], int]],
+    walked: dict[str, tuple[list[str], int]],
     http: httpx.Client,
 ) -> tuple[list[str], int]:
-    """The matchers one reference selects, recursing through bundles, each bundle walked once.
+    """The matchers one reference selects, recursing through bundles.
 
-    Memoized per bundle: in a diamond (two bundles sharing a third) the paths to the
-    shared bundle multiply with depth, so walking each one is exponential.
+    Each bundle is walked once (`walked`): in a diamond, two bundles sharing a
+    third, the paths to the shared one multiply with depth. A memoized bundle
+    reports its own depth, so the caller checks the total once at the top.
 
     Args:
         ref: The matcher or bundle to expand.
         stack: The bundles currently being expanded, outermost first.
-        out: The registries read so far; its indexes and locations are filled in.
-        expanded: Bundles already walked, by `alias/name`: their matchers and depth.
+        out: The registries read so far.
+        walked: Bundles already expanded, by `alias/name`: their matchers and depth.
         http: The run's HTTP client.
 
     Returns:
@@ -336,20 +340,14 @@ def _expand(
         raise _not_served(ref, index)
     if key in stack:
         raise SetupError(f"bundle cycle: {' -> '.join((*stack, key))}")
-    if key not in expanded:
-        if len(stack) >= MAX_BUNDLE_DEPTH:
-            raise SetupError(f"bundle {stack[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
+    if len(stack) >= MAX_BUNDLE_DEPTH:  # bounds the recursion; resolve() checks memoized depths
+        raise SetupError(f"bundle {stack[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
+    if key not in walked:
         bundle = bundle_from(*_fetch_entry(ref, out, http))
-        members: dict[str, None] = {}
-        depth = 0
-        for name in bundle.include:
-            sub, sub_depth = _expand(Ref(ref.alias, name), (*stack, key), out, expanded, http)
-            members.update(dict.fromkeys(sub))
-            depth = max(depth, sub_depth)
-        expanded[key] = (list(members), depth + 1)
-    if len(stack) + expanded[key][1] > MAX_BUNDLE_DEPTH:  # walked first from a shallower place
-        raise SetupError(f"bundle {(*stack, key)[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
-    return expanded[key]
+        subs = [_expand(Ref(ref.alias, name), (*stack, key), out, walked, http) for name in bundle.include]
+        members = dict.fromkeys(k for keys, _ in subs for k in keys)
+        walked[key] = (list(members), 1 + max((depth for _, depth in subs), default=0))
+    return walked[key]
 
 
 def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[MatcherConfig]:
