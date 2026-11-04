@@ -7,15 +7,13 @@ fixed by rerunning the command.
 """
 
 import hashlib
-import os
-import tempfile
 from pathlib import Path
 
 import yaml
 
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import BUNDLE_GLOB, INDEX, MATCHER_GLOB, MAX_BUNDLE_DEPTH, Bundle, Index
-from ci_doctor.matchers.validate import load_bundle, load_matcher
+from ci_doctor.matchers.validate import atomic_write, load_bundle, load_matcher
 
 
 class _IndexDumper(yaml.SafeDumper):
@@ -157,8 +155,5 @@ def write_index(root: Path, *, check: bool = False) -> int:
         if not target.is_file() or target.read_text(encoding="utf-8") != text:
             raise SetupError(f"{target} is out of date. Run `ci-doctor matchers index {root}`")
     else:
-        fd, tmp = tempfile.mkstemp(dir=root, prefix=".index.", suffix=".yaml")
-        with os.fdopen(fd, "w") as fh:
-            fh.write(text)
-        os.replace(tmp, target)
+        atomic_write(target, text)
     return len(index.matchers) + len(index.bundles)

@@ -1,6 +1,7 @@
 """`ci-doctor matchers index`: a deterministic index, `--check`, and the cross-file rules."""
 
 import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -98,3 +99,11 @@ def test_a_matcher_name_cannot_be_used_twice(registry):
     copy.write_text(copy.read_text().replace("[python, test]", "[js, test]"))
     with pytest.raises(SetupError, match="used twice"):
         build_index(registry)
+
+
+def test_rewriting_the_index_keeps_its_mode(registry):
+    """The committed index is 0644, not the temp file's 0600."""
+    index = registry / "index.yaml"
+    index.chmod(0o644)
+    write_index(registry)
+    assert stat.S_IMODE(index.stat().st_mode) == 0o644

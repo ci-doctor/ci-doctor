@@ -9,9 +9,13 @@ Every field rule (lengths, RE2 cost, ASCII descriptions, the bare id, a required
 description and tag) lives on the models in `config/schema.py` and
 `matchers/models.py`. What lives here is reading a file safely, and the one rule
 that needs to know where the file sits: its id and ecosystem matching their
-directories.
+directories. Writing one safely (`atomic_write`) is here too, for `index.yaml` and
+the user's config alike.
 """
 
+import os
+import stat
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +85,44 @@ def load_yaml(path: Path) -> Any:  # noqa: ANN401 - YAML is genuinely any shape 
     except (OSError, UnicodeDecodeError) as err:
         raise SetupError(f"{path}: {err}") from None
     return parse_yaml(text, str(path))
+
+
+def atomic_write(path: Path, text: str) -> None:
+    """Replace a file's contents in one step, leaving it the same file.
+
+    A temp file renamed over the target, so nothing ever sees half a file. The
+    rename lands on the real path, so a symlink (a dotfiles `.ci-doctor.yml`) stays
+    a symlink, and the file keeps its mode; a new one gets `0o666 & ~umask` like
+    any file the user's tools create, not `mkstemp`'s 0600.
+
+    Args:
+        path: The file; created if missing.
+        text: Its new contents, written as UTF-8.
+
+    Raises:
+        SetupError: If the file can't be written, e.g. its directory is missing.
+    """
+    real = path.resolve()
+    try:
+        mode = stat.S_IMODE(real.stat().st_mode)
+    except FileNotFoundError:
+        umask = os.umask(0)  # the only way to read it is to set it
+        os.umask(umask)
+        mode = 0o666 & ~umask
+    try:
+        fd, tmp = tempfile.mkstemp(dir=real.parent, prefix=f".{real.name}.")
+    except OSError as err:
+        raise SetupError(f"{path}: cannot write: {err.strerror or err}") from None
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, real)
+    except BaseException as err:
+        Path(tmp).unlink(missing_ok=True)
+        if isinstance(err, OSError):
+            raise SetupError(f"{path}: cannot write: {err.strerror or err}") from None
+        raise
 
 
 def contained(root: Path, rel: str) -> Path:

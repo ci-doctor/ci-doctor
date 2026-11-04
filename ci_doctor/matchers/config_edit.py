@@ -9,9 +9,7 @@ the user's config.
 """
 
 import copy
-import os
 import re
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,6 +18,7 @@ from pydantic import ValidationError
 
 from ci_doctor.config.schema import Config
 from ci_doctor.errors import SetupError
+from ci_doctor.matchers.validate import atomic_write
 
 _KEY_LINE = re.compile(r"^matchers\s*:")
 _TOP_LEVEL = re.compile(r"^[^\s#]")
@@ -40,9 +39,9 @@ def _read(path: Path) -> tuple[str, dict]:
     if not path.exists():
         return "", {}
     try:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         data = yaml.safe_load(text) or {}
-    except (OSError, yaml.YAMLError) as err:
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as err:
         raise SetupError(f"{path}: cannot read config: {err}") from None
     if not isinstance(data, dict):
         raise SetupError(f"{path}: expected a YAML mapping at the top level")
@@ -110,11 +109,4 @@ def edit_matchers(path: Path, mutate: Callable[[dict], None]) -> None:
     except (yaml.YAMLError, ValidationError) as err:
         raise SetupError(f"{path}: refusing to write an invalid config: {err}") from None
 
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".ci-doctor.", suffix=".yml")
-    try:
-        with os.fdopen(fd, "w") as fh:
-            fh.write(new_text)
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+    atomic_write(path, new_text)

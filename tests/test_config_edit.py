@@ -1,5 +1,8 @@
 """`edit_matchers` rewrites the `matchers:` block and nothing else."""
 
+import os
+import stat
+
 import pytest
 import yaml
 
@@ -84,3 +87,40 @@ def test_a_non_mapping_file_is_refused(tmp_path):
     path.write_text("- a\n- b\n")
     with pytest.raises(SetupError, match="mapping"):
         edit_matchers(path, _add("a/b"))
+
+
+def test_an_edit_keeps_the_files_mode(tmp_path):
+    """The temp file is 0600; the config must not end up that way."""
+    path = tmp_path / "c.yml"
+    path.write_text("ci: github\n")
+    path.chmod(0o644)
+    edit_matchers(path, _add("a/b"))
+    assert stat.S_IMODE(path.stat().st_mode) == 0o644
+
+
+def test_a_new_file_gets_the_umask_default_mode(tmp_path):
+    """A created config is readable like any file the user's tools create."""
+    old = os.umask(0o022)
+    try:
+        edit_matchers(tmp_path / "new.yml", _add("a/b"))
+    finally:
+        os.umask(old)
+    assert stat.S_IMODE((tmp_path / "new.yml").stat().st_mode) == 0o644
+
+
+def test_an_edit_through_a_symlink_writes_its_target(tmp_path):
+    """A symlinked `.ci-doctor.yml` (dotfiles repo) stays a symlink."""
+    target = tmp_path / "dotfiles" / "ci-doctor.yml"
+    target.parent.mkdir()
+    target.write_text("ci: github\n")
+    link = tmp_path / ".ci-doctor.yml"
+    link.symlink_to(target)
+    edit_matchers(link, _add("a/b"))
+    assert link.is_symlink()
+    assert "a/b" in target.read_text()
+
+
+def test_writing_into_a_missing_directory_is_a_setup_error(tmp_path):
+    """No traceback, no stray temp file."""
+    with pytest.raises(SetupError, match="cannot write"):
+        edit_matchers(tmp_path / "nodir" / "c.yml", _add("a/b"))
