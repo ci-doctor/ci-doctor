@@ -8,6 +8,7 @@ import pytest
 
 from ci_doctor import cli
 from ci_doctor.errors import SetupError
+from ci_doctor.matchers.index import write_index
 from ci_doctor.matchers.validate import load_matcher
 from ci_doctor.matchers.verify import EXEMPT, matcher_output, read_fixture, verify
 from tests import support
@@ -241,3 +242,10 @@ def test_a_fixture_reads_in_log_order_not_section_order(tmp_path):
         "##[error]Process completed with exit code 1.",
         "Post job cleanup.",
     ]
+
+
+@pytest.mark.parametrize("command", [verify, write_index])
+def test_a_directory_with_no_matchers_is_not_a_registry(tmp_path, command):
+    """A typo'd path must not pass as "0 matchers verified"."""
+    with pytest.raises(SetupError, match="no matchers"):
+        command(tmp_path)

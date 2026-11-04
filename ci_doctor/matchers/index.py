@@ -12,8 +12,8 @@ from pathlib import Path
 import yaml
 
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.models import BUNDLE_GLOB, INDEX, MATCHER_GLOB, MAX_BUNDLE_DEPTH, Bundle, Index
-from ci_doctor.matchers.validate import atomic_write, load_bundle, load_matcher
+from ci_doctor.matchers.models import BUNDLE_GLOB, INDEX, MAX_BUNDLE_DEPTH, Bundle, Index
+from ci_doctor.matchers.validate import atomic_write, load_bundle, load_matcher, matcher_files
 
 
 class _IndexDumper(yaml.SafeDumper):
@@ -95,14 +95,13 @@ def build_index(root: Path) -> tuple[str, Index]:
     Raises:
         SetupError: Listing every file or cross-file rule that fails.
     """
-    if not root.is_dir():
-        raise SetupError(f"{root} is not a directory")
+    paths = matcher_files(root)
     problems: list[str] = []
     matchers: dict[str, dict] = {}
     bundles: dict[str, Bundle] = {}
     bundle_entries: dict[str, dict] = {}
 
-    for path in sorted(root.glob(MATCHER_GLOB)):
+    for path in paths:
         try:
             m = load_matcher(path, author=True)
         except SetupError as err:

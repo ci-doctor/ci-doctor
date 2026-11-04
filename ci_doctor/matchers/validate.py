@@ -24,7 +24,7 @@ from pydantic import ValidationError
 
 from ci_doctor.config.schema import MatcherConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.models import Bundle, RegistryMatcher
+from ci_doctor.matchers.models import MATCHER_GLOB, Bundle, RegistryMatcher
 
 
 class _NoAliasLoader(yaml.SafeLoader):
@@ -85,6 +85,26 @@ def load_yaml(path: Path) -> Any:  # noqa: ANN401 - YAML is genuinely any shape 
     except (OSError, UnicodeDecodeError) as err:
         raise SetupError(f"{path}: {err}") from None
     return parse_yaml(text, str(path))
+
+
+def matcher_files(root: Path) -> list[Path]:
+    """Every `matcher.yaml` in a registry directory, sorted.
+
+    Args:
+        root: The registry directory.
+
+    Returns:
+        The files; never empty.
+
+    Raises:
+        SetupError: If `root` is not a directory or holds no matchers, so a wrong
+            path fails instead of passing as "0 matchers verified".
+    """
+    if not root.is_dir():
+        raise SetupError(f"{root} is not a directory")
+    if not (paths := sorted(root.glob(MATCHER_GLOB))):
+        raise SetupError(f"{root}: no matchers found (expected {MATCHER_GLOB})")
+    return paths
 
 
 def atomic_write(path: Path, text: str) -> None:
