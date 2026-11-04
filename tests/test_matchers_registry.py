@@ -12,6 +12,7 @@ import yaml
 
 from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
+from ci_doctor.matchers import registry
 from ci_doctor.matchers.registry import FILE_CAP, INDEX_CAP, load, resolve
 
 _MATCHER = {
@@ -317,3 +318,28 @@ def test_a_matcher_whose_id_disagrees_with_its_index_name_is_refused(tmp_path):
     reg = _registry(tmp_path, {"x": {"id": "y", **_MATCHER}})
     with pytest.raises(SetupError, match="does not match its index name 'x'"):
         load(_cfg(["r/x"], r=reg))
+
+
+def test_nesting_is_still_bounded_when_the_inner_bundle_was_expanded_first(tmp_path):
+    """b2 alone nests 5 deep; reached again through b1 it is 6, memo or not."""
+    bundles = {f"b{i}": [f"b{i + 1}"] for i in range(1, 6)} | {"b6": ["x"]}
+    with pytest.raises(SetupError, match="nests deeper than 5"):
+        resolve(_cfg(["r/b2", "r/b1"], r=_registry(tmp_path, ["x"], bundles=bundles)))
+
+
+def test_diamond_bundles_are_expanded_once_each(tmp_path, monkeypatch):
+    """Five levels of four bundles, each including all four below: linear, not 4**5."""
+    bundles = {f"l{i}_{j}": [f"l{i + 1}_{k}" for k in range(4)] for i in range(4) for j in range(4)}
+    bundles |= {f"l4_{j}": ["x", "y"] for j in range(4)}
+    cfg = _cfg(["r/l0_0", "r/x"], r=_registry(tmp_path, ["x", "y"], bundles=bundles))
+    calls = 0
+    real = registry._expand
+
+    def counting(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(registry, "_expand", counting)
+    assert resolve(cfg).matchers == {"r/x": "r/l0_0", "r/y": "r/l0_0"}
+    assert calls < 100

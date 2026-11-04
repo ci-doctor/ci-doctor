@@ -22,7 +22,7 @@ from pydantic import ValidationError
 
 from ci_doctor.config.schema import MatcherConfig, MatchersConfig, unqualified
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
+from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Index, Ref
 from ci_doctor.matchers.transports import redact, transport_for
 from ci_doctor.matchers.validate import bundle_from, matcher_from, parse_yaml
 
@@ -294,24 +294,36 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
             index_for(cfg, alias, http, out)
             if (location := out.locations[alias]).startswith("http://"):
                 log.warning(f"registry {alias!r} is fetched over plain http, unencrypted: {redact(location)}")
-        bundles: dict[str, Bundle] = {}
+        expanded: dict[str, tuple[list[str], int]] = {}
         for ref in refs:
-            _expand(ref, "direct", (), out, bundles, http)
+            via = "direct" if ref.name in out.indexes[ref.alias].matchers else str(ref)
+            for key in _expand(ref, (), out, expanded, http)[0]:
+                out.matchers.setdefault(key, via)
     return out
 
 
 def _expand(
-    ref: Ref, via: str, stack: tuple[str, ...], out: Resolved, bundles: dict[str, Bundle], http: httpx.Client
-) -> None:
-    """Add one reference to `out.matchers`, recursing through bundles.
+    ref: Ref,
+    stack: tuple[str, ...],
+    out: Resolved,
+    expanded: dict[str, tuple[list[str], int]],
+    http: httpx.Client,
+) -> tuple[list[str], int]:
+    """The matchers one reference selects, recursing through bundles, each bundle walked once.
+
+    Memoized per bundle: in a diamond (two bundles sharing a third) the paths to the
+    shared bundle multiply with depth, so walking each one is exponential.
 
     Args:
-        ref: The matcher or bundle to add.
-        via: `"direct"`, or the top-level bundle being expanded.
+        ref: The matcher or bundle to expand.
         stack: The bundles currently being expanded, outermost first.
-        out: The expansion so far; its indexes and locations are filled in.
-        bundles: Bundle files already fetched, by `alias/name`.
+        out: The registries read so far; its indexes and locations are filled in.
+        expanded: Bundles already walked, by `alias/name`: their matchers and depth.
         http: The run's HTTP client.
+
+    Returns:
+        Its `alias/name` matchers in include order, deduplicated, and how deep its
+        bundles nest (0 for a matcher).
 
     Raises:
         SetupError: On an unknown name, a cycle, nesting over the limit, or a
@@ -319,18 +331,25 @@ def _expand(
     """
     index, key = out.indexes[ref.alias], str(ref)
     if ref.name in index.matchers:
-        out.matchers.setdefault(key, via)
-        return
+        return [key], 0
     if ref.name not in index.bundles:
         raise _not_served(ref, index)
     if key in stack:
         raise SetupError(f"bundle cycle: {' -> '.join((*stack, key))}")
-    if len(stack) >= MAX_BUNDLE_DEPTH:
-        raise SetupError(f"bundle {stack[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
-    if key not in bundles:
-        bundles[key] = bundle_from(*_fetch_entry(ref, out, http))
-    for name in bundles[key].include:
-        _expand(Ref(ref.alias, name), key if via == "direct" else via, (*stack, key), out, bundles, http)
+    if key not in expanded:
+        if len(stack) >= MAX_BUNDLE_DEPTH:
+            raise SetupError(f"bundle {stack[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
+        bundle = bundle_from(*_fetch_entry(ref, out, http))
+        members: dict[str, None] = {}
+        depth = 0
+        for name in bundle.include:
+            sub, sub_depth = _expand(Ref(ref.alias, name), (*stack, key), out, expanded, http)
+            members.update(dict.fromkeys(sub))
+            depth = max(depth, sub_depth)
+        expanded[key] = (list(members), depth + 1)
+    if len(stack) + expanded[key][1] > MAX_BUNDLE_DEPTH:  # walked first from a shallower place
+        raise SetupError(f"bundle {(*stack, key)[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
+    return expanded[key]
 
 
 def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[MatcherConfig]:
