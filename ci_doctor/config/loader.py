@@ -13,11 +13,13 @@ from copy import deepcopy
 from importlib import resources
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
 from ci_doctor.config.schema import Config
 from ci_doctor.errors import SetupError
+from ci_doctor.matchers.transports import SCP_STYLE
 
 log = logging.getLogger(__name__)
 
@@ -130,6 +132,31 @@ def _env_overlay(environ: Mapping[str, str]) -> dict:
     return out
 
 
+def anchor_registry(value: Any, base: Path) -> Any:  # noqa: ANN401 - unvalidated config
+    """Resolve a relative registry path against the directory of the file that names it.
+
+    `local: ./reg` in `sub/.ci-doctor.yml` means `sub/reg`, wherever the command runs.
+    Only a config file has a directory; a location from the env stays relative to the cwd.
+
+    Args:
+        value: A `matchers.registries` value as written, not yet validated.
+        base: The config file's directory.
+
+    Returns:
+        `base / value` for a relative path; anything else (a URL, `git+`, scp-style,
+        an absolute path, a non-string) unchanged.
+    """
+    if (
+        not isinstance(value, str)
+        or not base.parts
+        or urlsplit(value).scheme
+        or SCP_STYLE.match(value)
+        or Path(value).is_absolute()
+    ):
+        return value
+    return str(base / value)
+
+
 def load_config(
     repo_config: str | Path | Iterable[str | Path] | None = None,
     overrides: dict | None = None,
@@ -165,7 +192,12 @@ def load_config(
     for path in paths:
         if not path.is_file():
             raise FileNotFoundError(f"config file not found: {path}")
-        merged = _deep_merge(merged, _load_yaml(path.read_text()))
+        layer = _load_yaml(path.read_text())
+        registries = (layer.get("matchers") or {}).get("registries")
+        if isinstance(registries, dict):  # anything else fails validation below
+            for alias, value in registries.items():
+                registries[alias] = anchor_registry(value, path.parent)
+        merged = _deep_merge(merged, layer)
 
     merged = _deep_merge(merged, _env_overlay(os.environ if environ is None else environ))
     if overrides:

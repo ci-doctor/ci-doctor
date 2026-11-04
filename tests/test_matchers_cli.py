@@ -5,6 +5,7 @@ the built-in `official` registry (an https URL) is served from the same files
 through `httpx.MockTransport`.
 """
 
+import shutil
 import sys
 
 import httpx
@@ -358,3 +359,27 @@ def test_a_crash_in_a_matchers_command_exits_1(cfg, monkeypatch, capsys):
     code, _, err = _run(monkeypatch, capsys, "index", "--check", ".")
     assert code == 1
     assert "boom" in err
+
+
+def test_a_relative_registry_path_is_relative_to_its_config_file(cfg, monkeypatch, capsys, fx_registry):
+    """`-f sub/.ci-doctor.yml` with `./reg` means `sub/reg`, wherever the command runs."""
+    sub = cfg.parent / "sub"
+    shutil.copytree(fx_registry, sub / "reg")
+    config = sub / ".ci-doctor.yml"
+    code, _, err = _run(monkeypatch, capsys, "registry", "add", "fx=./reg", "-f", str(config))
+    assert code == 0, err
+    assert _block(config)["registries"] == {"fx": "./reg"}
+    _write(config, "matchers:\n  registries:\n    fx: ./reg\n  include: [fx/pytest]\n")
+    code, out, err = _run(monkeypatch, capsys, "list", "-f", str(config))
+    assert code == 0, err
+    assert "fx/pytest  via direct" in out
+
+
+def test_a_relative_registry_path_from_the_env_is_relative_to_the_cwd(cfg, monkeypatch, capsys, fx_registry):
+    """An env var has no file to be relative to."""
+    shutil.copytree(fx_registry, cfg.parent / "reg")
+    monkeypatch.setenv("CI_DOCTOR_MATCHERS__REGISTRIES", "{fx: ./reg}")
+    monkeypatch.setenv("CI_DOCTOR_MATCHERS__INCLUDE", "[fx/pytest]")
+    code, out, err = _run(monkeypatch, capsys, "list", "-f", str(cfg.parent / "sub" / "missing.yml"))
+    assert code == 0, err
+    assert "fx/pytest  via direct" in out

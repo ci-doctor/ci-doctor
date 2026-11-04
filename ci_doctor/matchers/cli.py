@@ -17,7 +17,7 @@ import httpx
 import typer
 from typer.core import TyperGroup
 
-from ci_doctor.config.loader import load_or_fail
+from ci_doctor.config.loader import anchor_registry, load_or_fail
 from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.config_edit import edit_matchers, read_block
@@ -285,7 +285,7 @@ def registry_add(
         new[name] = location
     with session() as http:
         for name, location in new.items():
-            fetch_index(name, registry_dir(name, location), http)
+            fetch_index(name, registry_dir(name, anchor_registry(location, config.parent)), http)
     edit_matchers(config, lambda m: m.setdefault("registries", {}).update(new))
     for name, location in new.items():
         old = cfg.registries.get(name)
