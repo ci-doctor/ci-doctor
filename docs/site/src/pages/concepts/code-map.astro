@@ -11,8 +11,18 @@ const packages = [
         files: [
             {
                 path: "cli.py",
-                entry: "_process()",
-                role: "The only place the pieces are joined: Typer commands, config loading, logging, and the `exit 0` guarantee. Segment → assign phases → attribute → build bundle → report.",
+                entry: "main()",
+                role: "Typer commands, config loading, logging, delivery, and the exit code: 1 for a `SetupError`, 0 for everything else, a crash included.",
+            },
+            {
+                path: "pipeline.py",
+                entry: "analyze_run()",
+                role: "The analysis itself, with no CLI in it: segment → assign phases → attribute → build bundle → report, over a live run or a log file.",
+            },
+            {
+                path: "errors.py",
+                entry: "SetupError",
+                role: "The one error allowed to change the exit code. Raised only before analysis starts: a bad config, an empty include, a registry that cannot be read.",
             },
         ],
     },
@@ -28,12 +38,12 @@ const packages = [
             {
                 path: "loader.py",
                 entry: "load_config()",
-                role: "Applies the five layers in order and owns the merge-by-id rule that lets your matcher packs add to the shipped ones instead of replacing them.",
+                role: "Applies the five layers in order, and resolves a relative registry path against the directory of the config file that names it.",
             },
             {
                 path: "defaults.yml",
                 entry: "—",
-                role: "The data-heavy baseline: phase map, the 35 matcher packs, noise patterns. Data, not code — which is why the docs can generate tables from it.",
+                role: "The data-heavy baseline: phase map, noise patterns, and the address of the `official` registry. No matchers. Data, not code — which is why the docs can generate the phase table from it.",
             },
         ],
     },
@@ -85,6 +95,52 @@ const packages = [
                 path: "redact.py",
                 entry: "redact()",
                 role: "The secret scrubber. Run on the prompt and again on the finished report.",
+            },
+        ],
+    },
+    {
+        dir: "matchers/",
+        blurb: "Where matchers come from: registries, read on every run and validated like untrusted input.",
+        files: [
+            {
+                path: "registry.py",
+                entry: "load()",
+                role: "Resolves `matchers.include` against each registry's index, expands bundles, fetches every selected matcher, validates it again and renames it `alias/id`. Any failure is a `SetupError`.",
+            },
+            {
+                path: "models.py",
+                entry: "Index, Bundle",
+                role: "A registry's file formats: a matcher file, a bundle, and the `index.yaml` that lists both, with the path and size rules every entry must pass.",
+            },
+            {
+                path: "validate.py",
+                entry: "matcher_from()",
+                role: "Reads a registry file safely (no YAML aliases, paths contained in the registry) and applies the rules a registry adds on top of the schema. Shared by load time and the author's checks, so they cannot drift.",
+            },
+            {
+                path: "index.py",
+                entry: "write_index()",
+                role: "`matchers index`: validates every matcher and bundle (unique names, known includes, no cycles) and writes a deterministic `index.yaml`.",
+            },
+            {
+                path: "verify.py",
+                entry: "verify()",
+                role: "`matchers verify`: runs each matcher alone over its fixture logs, read the way `analyze` reads a log, and compares the output with the committed `.expected` files.",
+            },
+            {
+                path: "cli.py",
+                entry: "app",
+                role: "`ci-doctor matchers …`. Every failure, a crash included, exits 1, because these commands are a registry's CI check.",
+            },
+            {
+                path: "config_edit.py",
+                entry: "edit_matchers()",
+                role: "Rewrites only the `matchers:` block of a config file, leaving the rest of it and its comments alone.",
+            },
+            {
+                path: "transports/",
+                entry: "transport_for()",
+                role: "How a registry's files are read, picked by the location's shape: `local` (a path or `file://`), `http` (bounded redirects and sizes), `git` (a shallow checkout per run, `git+https://` or `git+ssh://`).",
             },
         ],
     },
@@ -222,11 +278,9 @@ const layering = `schema defaults  <  defaults.yml  <  repo .ci-doctor.yml  <  C
     </p>
     <Code code={layering} lang="text" theme="github-dark" />
     <p>
-        Mappings deep-merge, lists and scalars replace. The one exception is a
-        list whose entries all carry an <code>id</code> — today only <code
-            >extraction.matchers</code
-        > — which merges per id, so your packs add to the shipped ones instead of
-        wiping them. See
+        Mappings deep-merge, lists and scalars replace: a registry you add sits
+        beside <code>official</code>, and your <code>matchers.include</code>
+        replaces the empty default. See
         <a href={url("/reference/configuration/")}>Configuration</a> for the
         full reference.
     </p>

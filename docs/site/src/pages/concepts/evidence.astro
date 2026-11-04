@@ -51,9 +51,10 @@ error: could not compile \`ledger\``;
         <strong>Role</strong> decides who survives when the evidence exceeds the
         budget: a <code>tool</code>'s window outranks a <code>wrapper</code>'s, which
         outranks the <code>fallback</code>. <code>npm ERR!</code> always trails the
-        compiler errors that caused it, so it must lose to <code>tsc</code>. The full
-        catalogue — every shipped pack, what each one catches, and how to add your
-        own — is on <a href="https://matchers.cidoc.dev">Matchers</a>.
+        compiler errors that caused it, so it must lose to <code>tsc</code>. ci-doctor
+        ships no matchers: where they come from, and how a run selects them, is on
+        <a href={url("/concepts/matchers/")}>Matchers</a>; the official catalogue is
+        at <a href="https://matchers.cidoc.dev">matchers.cidoc.dev</a>.
     </p>
 
     <h2>Budget</h2>

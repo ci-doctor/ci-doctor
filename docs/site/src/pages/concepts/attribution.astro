@@ -3,8 +3,9 @@ import Base from "../../layouts/Base.astro";
 import { url } from "../../lib/url";
 import phaseMap from "../../data/phases.json";
 
-// Generated from ci_doctor/config/defaults.yml by `mise run docs:data`; a test
-// fails if it drifts from what ships. Never edit the JSON by hand.
+// The phase map, generated from ci_doctor/config/defaults.yml by
+// `mise run docs:data` (scripts/gen_docs_data.py); tests/test_docs_data.py fails
+// if it drifts from what ships. Never edit the JSON by hand.
 const byProvider = [...new Set(phaseMap.map((p) => p.provider))].map(
     (provider) => ({
         provider,
