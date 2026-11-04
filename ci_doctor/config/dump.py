@@ -5,14 +5,14 @@ import json
 
 import yaml
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 
 
 def as_yaml(cfg: Config) -> str:
     """Dump a validated config back to YAML.
 
     Args:
-        cfg: A :class:`~ci_doctor.config.schema.Config`.
+        cfg: A :class:`~ci_doctor.config.schemas.Config`.
 
     Returns:
         YAML text in schema field order, so two dumps diff cleanly.

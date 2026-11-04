@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, get_args
 
 from pydantic import BaseModel
 
-from ci_doctor.config.schema import LLMConfig
+from ci_doctor.config.schemas.llm import LLMConfig
 from ci_doctor.core.ports import LLMClient
 
 log = logging.getLogger("ci_doctor.llm")

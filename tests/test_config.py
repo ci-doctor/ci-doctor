@@ -8,7 +8,8 @@ import pytest
 from pydantic import ValidationError
 
 from ci_doctor.config.loader import _deep_merge, default_config, load_config
-from ci_doctor.config.schema import SCHEMA_ID, Config, MatcherConfig
+from ci_doctor.config.schemas import SCHEMA_ID, Config
+from ci_doctor.config.schemas.matcher import MatcherConfig
 from ci_doctor.errors import SetupError
 
 

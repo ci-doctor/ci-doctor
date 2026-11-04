@@ -7,7 +7,7 @@ what every caller gets: `report.md` and `report.json` written, and the note.
 import json
 from pathlib import Path
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import Run
 from ci_doctor.providers.registry import make_scm_provider
 from ci_doctor.service.analyze import JobResult

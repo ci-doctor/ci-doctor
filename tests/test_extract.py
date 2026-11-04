@@ -2,7 +2,7 @@
 
 from typing import get_args
 
-from ci_doctor.config.schema import MatcherConfig, Role
+from ci_doctor.config.schemas.matcher import MatcherConfig, Role
 from ci_doctor.core.budget import estimate_tokens
 from ci_doctor.core.extract import ROLE_RANK, extract, fired
 

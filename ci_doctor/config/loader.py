@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 
 import yaml
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.errors import SetupError
 
 log = logging.getLogger(__name__)

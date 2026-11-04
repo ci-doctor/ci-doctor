@@ -5,7 +5,7 @@ from pathlib import Path
 import click
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 
 _DEFAULT_CONFIG = Path(".ci-doctor.yml")
 

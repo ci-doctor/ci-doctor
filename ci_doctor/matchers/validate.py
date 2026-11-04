@@ -6,7 +6,7 @@ ci-doctor itself loads with ``author=False`` when it fetches a file, because a
 self-hosted registry may never have run our CI.
 
 Every field rule (lengths, RE2 cost, ASCII descriptions, the bare id, a required
-description and tag) lives on the models in `config/schema.py` and
+description and tag) lives on the models in `config/schemas/matchers.py` and
 `matchers/models.py`. What lives here is reading a file safely, and the one rule
 that needs to know where the file sits: its id and ecosystem matching their
 directories. Writing one safely (`atomic_write`) is here too, for `index.yaml` and
@@ -22,7 +22,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from ci_doctor.config.schema import MatcherConfig
+from ci_doctor.config.schemas.matcher import MatcherConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import MATCHER_GLOB, Bundle, RegistryMatcher
 

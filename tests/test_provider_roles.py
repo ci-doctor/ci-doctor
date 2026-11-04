@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import SYNTHETIC_SECTIONS
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.providers.github.provider import GitHubProvider

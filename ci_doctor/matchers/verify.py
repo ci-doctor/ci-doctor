@@ -16,7 +16,7 @@ from functools import cache
 from pathlib import Path
 
 from ci_doctor.config.loader import default_config
-from ci_doctor.config.schema import MatcherConfig
+from ci_doctor.config.schemas.matcher import MatcherConfig
 from ci_doctor.core.denoise import denoise
 from ci_doctor.core.extract import extract, fired
 from ci_doctor.core.models import walk_sections

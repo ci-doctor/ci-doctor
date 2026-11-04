@@ -11,7 +11,7 @@ import httpx
 import pytest
 import yaml
 
-from ci_doctor.config.schema import MatchersConfig
+from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers import registry
 from ci_doctor.matchers.registry import FILE_CAP, INDEX_CAP, load, resolve

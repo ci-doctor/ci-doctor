@@ -9,7 +9,8 @@ already-segmented job plus its Attribution.
 import logging
 from dataclasses import dataclass, field
 
-from ci_doctor.config.schema import Config, MatcherConfig
+from ci_doctor.config.schemas import Config
+from ci_doctor.config.schemas.matcher import MatcherConfig
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.budget import estimate_tokens, fit
 from ci_doctor.core.denoise import denoise

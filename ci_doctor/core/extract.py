@@ -7,7 +7,7 @@ selected windows is marked with an explicit elision count — never a silent cut
 
 from dataclasses import dataclass
 
-from ci_doctor.config.schema import MatcherConfig
+from ci_doctor.config.schemas.matcher import MatcherConfig
 from ci_doctor.core.budget import estimate_tokens
 from ci_doctor.core.regex import pattern_set
 

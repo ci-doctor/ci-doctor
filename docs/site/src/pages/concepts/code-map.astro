@@ -31,9 +31,9 @@ const packages = [
         blurb: "What is tunable, and how the layers combine.",
         files: [
             {
-                path: "schema.py",
+                path: "schemas/",
                 entry: "Config",
-                role: 'The pydantic model. Source of truth for the published JSON Schema and for every scalar default. `extra="forbid"` — an unknown key in a config file is an error, not a shrug.',
+                role: 'The pydantic model, one module per top-level key (`schemas/llm.py` is `llm:`). Source of truth for the published JSON Schema and for every scalar default. `extra="forbid"` — an unknown key in a config file is an error, not a shrug.',
             },
             {
                 path: "loader.py",

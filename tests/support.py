@@ -21,7 +21,8 @@ from pathlib import Path
 
 import yaml
 
-from ci_doctor.config.schema import MatcherConfig, MatchersConfig
+from ci_doctor.config.schemas.matcher import MatcherConfig
+from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.core.models import Section
 from ci_doctor.matchers.index import write_index
 from ci_doctor.matchers.registry import load

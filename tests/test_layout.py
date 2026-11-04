@@ -33,3 +33,19 @@ def test_nothing_outside_cli_imports_it():
 def test_service_has_no_terminal_in_it():
     """A service is what an editor or an agent calls too: no typer, no click."""
     assert _offenders((PACKAGE / "service").rglob("*.py"), ("typer", "click")) == {}
+
+
+def test_each_config_key_has_its_own_schema_module():
+    """`config/schemas/` mirrors `.ci-doctor.yml`: the model for `llm:` lives in `schemas/llm.py`."""
+    from pydantic import BaseModel
+
+    from ci_doctor.config.schemas import Config
+
+    misplaced = {
+        name: field.annotation.__module__
+        for name, field in Config.model_fields.items()
+        if isinstance(field.annotation, type)
+        and issubclass(field.annotation, BaseModel)
+        and field.annotation.__module__ != f"ci_doctor.config.schemas.{name}"
+    }
+    assert misplaced == {}

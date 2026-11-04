@@ -12,7 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import NamedTuple
 
-from ci_doctor.config.schema import Config, MatcherConfig
+from ci_doctor.config.schemas import Config
+from ci_doctor.config.schemas.matcher import MatcherConfig
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
