@@ -21,7 +21,7 @@ def run(
     needle = term.lower()
     aliases = [registry] if registry else sorted(cfg.registries)
     seen = Resolved()
-    with session() as http:
+    with session(cfg) as http:
         rows = [row for alias in aliases for row in _hits(alias, index_for(cfg, alias, http, seen), needle)]
     if not rows:
         say(f"no matchers match {term!r}", "yellow")

@@ -27,7 +27,7 @@ def run(
         if not eq or not name or not location:
             raise SetupError(f"{pair!r} is not NAME=LOCATION")
         new[name] = location
-    with session() as http:
+    with session(cfg) as http:
         for name, location in new.items():
             fetch_index(name, registry_dir(name, anchor_registry(location, config.parent)), http)
     edit_matchers(config, lambda m: m.setdefault("registries", {}).update(new))

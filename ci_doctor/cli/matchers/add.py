@@ -22,7 +22,7 @@ def run(
     current = list(read_block(config).get("include", []))
     seen = Resolved()
     new: list[str] = []
-    with session() as http:
+    with session(cfg) as http:
         parsed = [check_ref(r, cfg, http, seen) for r in refs]
         brought_by = via(cfg, current, http)
     for ref in map(str, parsed):

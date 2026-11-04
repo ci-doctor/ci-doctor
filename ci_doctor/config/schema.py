@@ -412,6 +412,18 @@ class MatchersConfig(_Strict):
             "Replaces the default list. Browse https://matchers.cidoc.dev"
         ),
     )
+    timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=300,
+        description="Seconds to wait on each registry request (connect, and each read) before failing the setup.",
+    )
+    fetch_workers: int = Field(
+        default=8,
+        ge=1,
+        le=32,
+        description="Registry files fetched at once. Lower it for a registry that rate-limits; 1 fetches in order.",
+    )
 
 
 class DenoiseConfig(_Strict):

@@ -4,6 +4,7 @@ Every case is offline: local registries are directories under tmp_path or the
 shared `fx_registry`, and `http(s)://` goes through `httpx.MockTransport`.
 """
 
+import contextlib
 import logging
 
 import httpx
@@ -361,3 +362,13 @@ def test_each_bundle_and_matcher_file_is_fetched_once(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "fetch_file", counting)
     assert [m.id for m in load(cfg)] == ["r/x", "r/y"]  # include order survives the parallel fetch
     assert len(seen) == len(set(seen)) == 6  # index, 3 bundles, 2 matchers
+
+
+def test_the_fetch_settings_come_from_the_config(monkeypatch):
+    """`matchers.timeout_seconds` and `fetch_workers` reach the HTTP client."""
+    seen = {}
+    monkeypatch.setattr(registry.httpx, "Client", lambda **kw: seen.update(kw) or contextlib.nullcontext())
+    with registry.session(MatchersConfig(timeout_seconds=3, fetch_workers=16)):
+        pass
+    assert seen["timeout"] == 3
+    assert seen["limits"].max_connections == 16

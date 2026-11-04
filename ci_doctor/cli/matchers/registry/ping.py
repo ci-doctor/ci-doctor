@@ -24,7 +24,7 @@ def run(
     if unknown := [n for n in names or [] if n not in cfg.registries]:
         raise unknown_registry(unknown[0], cfg.registries)
     rows = []
-    with session() as http:
+    with session(cfg) as http:
         for alias in names or sorted(cfg.registries):
             start = time.perf_counter()
             try:

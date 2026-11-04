@@ -30,11 +30,8 @@ from ci_doctor.matchers.validate import bundle_from, matcher_from, parse_yaml
 
 log = logging.getLogger("ci_doctor.matchers")
 
-TIMEOUT = 10.0
 INDEX_CAP = 1024 * 1024
 FILE_CAP = 64 * 1024
-#: Matcher files fetched at once; under httpx's default pool of 10 connections.
-FETCH_WORKERS = 8
 EMPTY_INCLUDE = (
     "no matchers or bundles selected. Run `ci-doctor matchers add official/<name>` "
     "or browse https://matchers.cidoc.dev"
@@ -122,10 +119,11 @@ def fetch_index(alias: str, location: str, client: httpx.Client) -> Index:
 
 
 @contextlib.contextmanager
-def session(client: httpx.Client | None = None) -> Iterator[httpx.Client]:
+def session(cfg: MatchersConfig, client: httpx.Client | None = None) -> Iterator[httpx.Client]:
     """The HTTP client for one run: the caller's, or a fresh one closed afterwards.
 
     Args:
+        cfg: The `matchers:` block, for its timeout and how many fetches run at once.
         client: A client to reuse (tests pass one over `httpx.MockTransport`).
 
     Yields:
@@ -134,7 +132,9 @@ def session(client: httpx.Client | None = None) -> Iterator[httpx.Client]:
     if client is not None:
         yield client
         return
-    with httpx.Client(timeout=TIMEOUT) as fresh:
+    # One connection per worker, so a parallel fetch never queues for the pool.
+    limits = httpx.Limits(max_connections=max(cfg.fetch_workers, 10))
+    with httpx.Client(timeout=cfg.timeout_seconds, limits=limits) as fresh:
         yield fresh
 
 
@@ -293,12 +293,12 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
         raise SetupError(EMPTY_INCLUDE)
     refs = [Ref.parse(r) for r in cfg.include]
     out = Resolved()
-    with session(client) as http:
+    with session(cfg, client) as http:
         for alias in dict.fromkeys(r.alias for r in refs):
             index_for(cfg, alias, http, out)
             if (location := out.locations[alias]).startswith("http://"):
                 log.warning(f"registry {alias!r} is fetched over plain http, unencrypted: {redact(location)}")
-        bundles = _prefetch_bundles(refs, out, http)
+        bundles = _prefetch_bundles(refs, out, http, cfg.fetch_workers)
         walked: dict[str, tuple[list[str], int]] = {}
         for ref in refs:
             keys, depth = _expand(ref, (), out, walked, bundles, http)
@@ -310,7 +310,7 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
     return out
 
 
-def _prefetch_bundles(refs: list[Ref], out: Resolved, http: httpx.Client) -> dict[str, Bundle]:
+def _prefetch_bundles(refs: list[Ref], out: Resolved, http: httpx.Client, workers: int) -> dict[str, Bundle]:
     """Fetch every bundle `refs` reach, one nesting level at a time, in parallel.
 
     Walking them one by one costs a round trip per bundle (13 for `official/all`);
@@ -321,6 +321,7 @@ def _prefetch_bundles(refs: list[Ref], out: Resolved, http: httpx.Client) -> dic
         refs: The top-level `matchers.include` entries.
         out: The registries read so far, indexes included.
         http: The run's HTTP client.
+        workers: How many files to fetch at once.
 
     Returns:
         Each bundle reached, by `alias/name`.
@@ -330,7 +331,7 @@ def _prefetch_bundles(refs: list[Ref], out: Resolved, http: httpx.Client) -> dic
     """
     fetched: dict[str, Bundle] = {}
     level = refs
-    with ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="ci-doctor-fetch") as pool:
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ci-doctor-fetch") as pool:
         for _ in range(MAX_BUNDLE_DEPTH):
             todo = [
                 r
@@ -402,7 +403,7 @@ def via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str
     """Which top-level entry of `include` brings in each matcher.
 
     Args:
-        cfg: The `matchers:` block (for its registries).
+        cfg: The `matchers:` block (its registries and fetch settings).
         include: The refs to expand.
         http: The run's HTTP client.
 
@@ -411,7 +412,7 @@ def via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str
     """
     if not include:
         return {}
-    return resolve(MatchersConfig(registries=cfg.registries, include=include), http).matchers
+    return resolve(cfg.model_copy(update={"include": include}), http).matchers
 
 
 def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[MatcherConfig]:
@@ -429,12 +430,12 @@ def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[Matche
             can't be fetched or fails a load-time rule.
     """
     start = time.perf_counter()
-    with session(client) as http:
+    with session(cfg, client) as http:
         resolved = resolve(cfg, http)
         keys = list(resolved.matchers)
         # One round trip per matcher: in sequence, `official/all` waited ~5s on 38 of them.
         # map() keeps include order, and re-raises the first failure in that order.
-        with ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="ci-doctor-fetch") as pool:
+        with ThreadPoolExecutor(max_workers=cfg.fetch_workers, thread_name_prefix="ci-doctor-fetch") as pool:
             fetched = list(pool.map(lambda key: fetch_matcher(Ref.parse(key), resolved, http), keys))
     log.debug(
         f"loaded {len(keys)} matchers from {len(resolved.indexes)} registries in {time.perf_counter() - start:.1f}s"

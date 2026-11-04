@@ -14,7 +14,7 @@ def run() -> None:
     if not cfg.include:
         say("nothing included. Run `ci-doctor matchers add <registry>/<name>`.", "yellow")
         return
-    with session() as http:
+    with session(cfg) as http:
         resolved = resolve(cfg, http)
     rows = []
     for key, via in resolved.matchers.items():

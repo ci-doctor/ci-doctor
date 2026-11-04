@@ -16,7 +16,7 @@ def run(ref: str = typer.Argument(..., metavar="ALIAS/NAME")) -> None:
     """Show one matcher or bundle: what it does, where it lives, what a bundle holds."""
     cfg = editable().matchers
     seen = Resolved()
-    with session() as http:
+    with session(cfg) as http:
         parsed = check_ref(ref, cfg, http, seen)
         served, location = seen.indexes[parsed.alias], seen.locations[parsed.alias]
         is_matcher = parsed.name in served.matchers

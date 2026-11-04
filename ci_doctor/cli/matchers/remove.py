@@ -20,7 +20,7 @@ def run(
     cfg, config = editable().matchers, target()
     current = list(read_block(config).get("include", []))
     if missing := [r for r in refs if r not in current]:
-        with session() as http:
+        with session(cfg) as http:
             brought_by = via(cfg, current, http)
         for ref in missing:
             if (bundle := brought_by.get(ref, "direct")) != "direct":

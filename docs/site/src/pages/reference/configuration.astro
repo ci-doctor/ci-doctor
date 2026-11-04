@@ -84,6 +84,8 @@ matchers:
     # pinned: https://raw.githubusercontent.com/acme/matchers/<tag-or-sha>/
   include: []                    # alias/name of a matcher or bundle; empty exits 1
   # include: [official/python, acme/mytool]
+  timeout_seconds: 10            # per registry request
+  fetch_workers: 8               # registry files fetched at once; 1 fetches in order
 
 extraction:
   tail_lines: 120                # lines kept from the end of the blamed section
@@ -330,6 +332,18 @@ redaction:
                 ><td><code>matchers.include</code></td><td><code>[]</code></td><td
                     >Matchers and bundles to load, each <code>alias/name</code>.
                     Nothing is selected by default, and an empty list exits 1.</td
+                ></tr
+            >
+            <tr
+                ><td><code>matchers.timeout_seconds</code></td><td><code>10</code></td><td
+                    >Seconds to wait on each registry request before failing the
+                    setup. Raise it for a slow mirror.</td
+                ></tr
+            >
+            <tr
+                ><td><code>matchers.fetch_workers</code></td><td><code>8</code></td><td
+                    >Registry files fetched at once, 1–32. Lower it for a registry
+                    that rate-limits.</td
                 ></tr
             >
         </tbody>
