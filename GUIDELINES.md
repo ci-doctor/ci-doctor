@@ -72,7 +72,9 @@ invariants go on the end. The first three, and #10, are load-bearing:
    resolution, CLI usage, a registry failing `matchers index --check` / `verify`). Once
    analysis starts, always exit 0: the analyzer must never change a pipeline's outcome.
    `main()` maps `SetupError` (`ci_doctor/errors.py`) to 1 and every other `BaseException`
-   to 0. Never raise `SetupError` from inside the analysis.
+   to 0. Never raise `SetupError` from inside the analysis. The `matchers` commands never
+   analyze, so they turn any crash into a `SetupError` (`_SetupGroup` in `matchers/cli.py`):
+   a registry check that crashes must not go green.
 4. **Nothing reaches the public internet** by default — no telemetry, update checks, or
    runtime downloads of models/rules/schemas.
 5. **Never emit unredacted log content.** Redaction runs on the prompt *and* the report.

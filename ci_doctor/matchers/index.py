@@ -154,7 +154,7 @@ def write_index(root: Path, *, check: bool = False) -> int:
     text, index = build_index(root)
     target = root / INDEX
     if check:
-        if not target.is_file() or target.read_text() != text:
+        if not target.is_file() or target.read_text(encoding="utf-8") != text:
             raise SetupError(f"{target} is out of date. Run `ci-doctor matchers index {root}`")
     else:
         fd, tmp = tempfile.mkstemp(dir=root, prefix=".index.", suffix=".yaml")

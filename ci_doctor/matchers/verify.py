@@ -46,7 +46,7 @@ def read_fixture(path: Path) -> list[str]:
         Every content line in log order, framing stripped and denoised.
     """
     cfg = _shipped()
-    raw = path.read_text(errors="replace")
+    raw = path.read_text(encoding="utf-8", errors="replace")
     sections = segmenter_for_log(raw, cfg.ci).segment(raw)
     # Log order, not tree order: a segmenter files some lines under a synthetic
     # trailer that walks before later steps, which would skew before/after and `end`.
@@ -85,7 +85,7 @@ def _exempt(root: Path) -> set[str]:
     path = root / EXEMPT
     if not path.is_file():
         return set()
-    lines = (line.strip() for line in path.read_text().splitlines())
+    lines = (line.strip() for line in path.read_text(encoding="utf-8").splitlines())
     return {line for line in lines if line and not line.startswith("#")}
 
 
@@ -111,11 +111,11 @@ def _check_matcher(root: Path, path: Path, *, exempt: bool, update: bool) -> Ite
         got = matcher_output(read_fixture(log), matcher)
         expected_path = log.with_suffix(".expected")
         if update:
-            expected_path.write_text(got)
+            expected_path.write_text(got, encoding="utf-8")
         elif not expected_path.is_file():
             yield f"{where}: no {expected_path.name}; run `ci-doctor matchers verify --update`"
             continue
-        want = expected_path.read_text()
+        want = expected_path.read_text(encoding="utf-8")
         if want:
             positive += 1
         else:

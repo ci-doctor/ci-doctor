@@ -373,7 +373,8 @@ def main() -> None:
 
     Invariant #3: a broken setup (a `SetupError`, or bad CLI usage) exits 1, so it
     is seen; everything else, a crash included, exits 0, so the analyzer can never
-    turn a passing pipeline red.
+    turn a passing pipeline red. The `matchers` commands raise every crash as a
+    `SetupError` themselves, since they never analyze anything.
     """
     # NullHighlighter, not highlighter=None: rich falls back to ReprHighlighter on None.
     # stderr, because stdout carries the report or the JSON meant to be piped onward.

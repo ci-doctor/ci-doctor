@@ -77,8 +77,8 @@ def load_yaml(path: Path) -> Any:  # noqa: ANN401 - YAML is genuinely any shape 
         SetupError: If the file can't be read or isn't valid YAML.
     """
     try:
-        text = path.read_text()
-    except OSError as err:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as err:
         raise SetupError(f"{path}: {err}") from None
     return parse_yaml(text, str(path))
 

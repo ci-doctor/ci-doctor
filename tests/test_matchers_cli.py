@@ -15,6 +15,7 @@ from ci_doctor import cli
 from ci_doctor.matchers import cli as mcli
 from ci_doctor.matchers import registry
 from ci_doctor.matchers.cli import _history_url
+from tests import support
 
 
 @pytest.fixture(autouse=True)
@@ -315,3 +316,36 @@ def test_matchers_commands_see_the_env_layer_like_analyze(cfg, monkeypatch, caps
     code, out, _ = _run(monkeypatch, capsys, "search", "pytest", "--registry", "acme")
     assert code == 0
     assert "acme/pytest" in out
+
+
+# --- exit codes ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("argv", [["index", "--check"], ["verify"]])
+def test_a_non_utf8_matcher_file_fails_the_registry_check(cfg, monkeypatch, capsys, argv):
+    """A latin-1 byte is a broken registry, exit 1, whatever the locale's encoding."""
+    root = support.write_registry(cfg.parent / "reg", support.PY_MATCHERS)
+    path = next(root.glob("matchers/*/*/matcher.yaml"))
+    path.write_bytes(path.read_bytes().replace(b"description: ", b"description: caf\xe9 ", 1))
+    code, _, err = _run(monkeypatch, capsys, *argv, str(root))
+    assert code == 1
+    assert "matcher.yaml" in err
+    assert "internal error, exiting 0" not in err
+
+
+def test_writing_into_a_missing_directory_exits_1(cfg, monkeypatch, capsys, fx_registry):
+    """The config's directory not existing is a setup problem, not a crash to hide."""
+    code, _, _ = _run(monkeypatch, capsys, "registry", "add", f"fx={fx_registry}", "-f", "nodir/c.yml")
+    assert code == 1
+
+
+def test_a_crash_in_a_matchers_command_exits_1(cfg, monkeypatch, capsys):
+    """Invariant #3's exit 0 is for analysis: a crashing registry check must not go green."""
+
+    def crash(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(mcli, "write_index", crash)
+    code, _, err = _run(monkeypatch, capsys, "index", "--check", ".")
+    assert code == 1
+    assert "boom" in err
