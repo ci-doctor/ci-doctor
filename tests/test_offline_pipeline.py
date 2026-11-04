@@ -33,3 +33,20 @@ def test_full_offline_pipeline_no_network(provider, fx_registry):
     assert report.failure_phase == "script"
     assert "### Root cause" in md
     assert '"failure_phase": "script"' in js
+
+
+@pytest.mark.parametrize("provider", support.PROVIDERS)
+def test_a_crlf_log_keeps_its_evidence(provider, fx_registry):
+    r"""A log saved on Windows (`\r\n`) must not collapse every line to empty."""
+    log = support.script_log(provider, support.FAIL).replace("\n", "\r\n")
+    job = Job(id="1", name="build", status="failed", failure_reason=FailureReason.SCRIPT_FAILURE, log=log)
+    cfg = load_config(environ={})
+
+    job.sections = support.segment(provider, log)
+    assign_phases(job.sections, cfg.phases)
+    attr = attribute(job, job.sections)
+    bundle = build_bundle(job, attr, job.sections, cfg, support.registry_matchers(fx_registry))
+
+    assert attr.phase == "script"
+    assert "E   assert 1 == 2" in bundle.blamed_lines
+    assert not any("\r" in line for line in bundle.blamed_lines)

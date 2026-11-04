@@ -106,7 +106,7 @@ class GitHubSegmenter(LogSegmenter):
             lines.pop()
 
         for physical in lines:
-            line = _TS.sub("", physical)
+            line = _TS.sub("", physical.removesuffix("\r"))  # CRLF; a lone \r is a progress rewrite
             if group := _GROUP.match(line):
                 parse.open_group(group.group(1).strip())
             elif _ENDGROUP.match(line):
