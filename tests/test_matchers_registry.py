@@ -285,7 +285,9 @@ def test_an_alias_bomb_index_is_refused(tmp_path):
         load(_cfg(["r/x"], r=str(root)))
 
 
-@pytest.mark.parametrize("path", ["../outside.yaml", "/etc/passwd.yaml", "https://evil.test/x.yaml"])
+@pytest.mark.parametrize(
+    "path", ["../outside.yaml", "/etc/passwd.yaml", "https://evil.test/x.yaml", "%2e%2e/%2e%2e/x.yaml"]
+)
 def test_an_index_path_cannot_leave_the_registry(tmp_path, path):
     """A hostile index can't make ci-doctor read `/etc` or fetch another host."""
     doc = {"schema": 1, "matchers": {"x": {"path": path, "sha256": _SHA, "description": "d"}}}

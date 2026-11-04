@@ -148,7 +148,17 @@ def test_a_symlink_cannot_lead_outside_the_registry(registry, tmp_path):
 
 @pytest.mark.parametrize(
     "path",
-    ["/etc/passwd.yaml", "../other/index.yaml", "a/../../b.yaml", "a\\b.yaml", "https://x/y.yaml", "a/b.yml"],
+    [
+        "/etc/passwd.yaml",
+        "../other/index.yaml",
+        "a/../../b.yaml",
+        "a\\b.yaml",
+        "https://x/y.yaml",
+        "a/b.yml",
+        "%2e%2e/%2e%2e/x.yaml",
+        "a/x.yaml?.yaml",
+        "a/x.yaml#.yaml",
+    ],
 )
 def test_an_index_path_must_stay_relative(path):
     """A hostile index cannot point at an absolute path, a parent, or another host."""

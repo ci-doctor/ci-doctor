@@ -38,12 +38,13 @@ def check_relative_path(path: str) -> str:
 
     Raises:
         ValueError: On an absolute path, a `..` segment, a backslash, a scheme,
-            or a file that is not `.yaml`.
+            a `%`, `?` or `#`, or a file that is not `.yaml`.
     """
+    # `%`, `?` and `#` because the path is also a URL: urljoin and httpx send
+    # `%2e%2e/` as written, and a server that decodes then normalises serves `../`.
     if (
         path.startswith("/")
-        or "\\" in path
-        or ":" in path
+        or any(c in path for c in "\\:%?#")
         or ".." in path.split("/")
         or not path.endswith(".yaml")
     ):
