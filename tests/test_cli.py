@@ -242,3 +242,17 @@ def test_analyze_reports_a_bad_config_as_a_config_error(monkeypatch, capsys, tmp
     assert exc.value.code == 1
     assert "invalid config" in err
     assert "internal error" not in err
+
+
+def test_the_config_pager_ignores_manpager_and_keeps_colours(monkeypatch):
+    """pydoc prefers $MANPAGER; a `col -bx` one ate the escapes. Ours runs $PAGER with less -R."""
+    seen = {}
+    monkeypatch.setenv("MANPAGER", "sh -c 'col -bx'")
+    monkeypatch.setenv("PAGER", "less")
+    monkeypatch.setenv("LESS", "FX")
+    monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kw: seen.update(cmd=cmd, **kw))
+    cli._Pager().show("\x1b[94mci\x1b[0m")
+    assert seen["cmd"] == ["less"]
+    assert seen["env"]["LESS"] == "FX -R"
+    assert seen["input"] == "\x1b[94mci\x1b[0m"

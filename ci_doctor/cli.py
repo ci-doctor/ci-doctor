@@ -15,6 +15,9 @@ import difflib
 import json
 import logging
 import os
+import shlex
+import shutil
+import subprocess
 import sys
 from enum import StrEnum
 from pathlib import Path
@@ -24,6 +27,7 @@ import yaml
 from rich.console import Console
 from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
+from rich.pager import Pager
 from rich.style import Style
 from rich.syntax import Syntax
 from rich.theme import Theme
@@ -183,10 +187,30 @@ def config(
         typer.echo(text)
         return
 
-    os.environ.setdefault("PAGER", "less -R")  # bare `less` prints the colour escapes literally
     console = Console(soft_wrap=True, no_color=no_color)  # soft_wrap: never fold long regexes
-    with console.pager(styles=not no_color):
+    with console.pager(_Pager(), styles=not no_color):
         console.print(Syntax(text, lexer, theme="ansi_dark", background_color="default"))
+
+
+class _Pager(Pager):
+    """`$PAGER`, else `less`, with less told to pass the colour escapes through.
+
+    Not rich's own pager: it defers to pydoc, which prefers `$MANPAGER`, and a
+    MANPAGER like `col -bx | bat` strips the escape bytes and prints the rest.
+    """
+
+    def show(self, content: str) -> None:
+        """Page `content`, or print it when the pager isn't installed.
+
+        Args:
+            content: The rendered text, escapes included.
+        """
+        cmd = shlex.split(os.environ.get("PAGER") or "less")
+        if not cmd or not shutil.which(cmd[0]):
+            sys.stdout.write(content)
+            return
+        env = {**os.environ, "LESS": f"{os.environ.get('LESS', '')} -R".strip()}
+        subprocess.run(cmd, input=content, text=True, env=env, check=False)  # noqa: S603 - the user's own $PAGER
 
 
 def _validate(paths: list[Path]) -> None:
