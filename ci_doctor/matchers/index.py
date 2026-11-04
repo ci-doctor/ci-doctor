@@ -57,11 +57,25 @@ def _bundle_problems(bundles: dict[str, Bundle], matchers: set[str]) -> list[str
     Returns:
         One message per problem.
     """
-    problems = []
-    for b in bundles.values():
-        if unknown := sorted(n for n in b.include if n not in bundles and n not in matchers):
-            problems.append(f"bundle {b.id!r} includes unknown names {unknown}")
+    problems = [
+        f"bundle {b.id!r} includes unknown names {unknown}"
+        for b in bundles.values()
+        if (unknown := sorted(n for n in b.include if n not in bundles and n not in matchers))
+    ]
+    return problems + _nesting_problems(bundles)
 
+
+def _nesting_problems(bundles: dict[str, Bundle]) -> list[str]:
+    """Cycles and over-deep nesting across a registry's bundles.
+
+    Args:
+        bundles: Every bundle by name.
+
+    Returns:
+        One message per bundle nested over `MAX_BUNDLE_DEPTH`, or the first cycle
+        found (depth is meaningless past it, so the walk stops there).
+    """
+    problems = []
     depth: dict[str, int] = {}
 
     def walk(name: str, stack: tuple[str, ...]) -> int:

@@ -126,7 +126,7 @@ def atomic_write(path: Path, text: str) -> None:
     try:
         mode = stat.S_IMODE(real.stat().st_mode)
     except FileNotFoundError:
-        umask = os.umask(0)  # the only way to read it is to set it
+        umask = os.umask(0o077)  # the only way to read it is to set it; probe with a safe value
         os.umask(umask)
         mode = 0o666 & ~umask
     try:

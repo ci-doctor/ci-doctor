@@ -103,36 +103,71 @@ def _check_matcher(root: Path, path: Path, *, exempt: bool, update: bool) -> Ite
     matcher = load_matcher(path, author=True)
     positive = negative = 0
     for log in sorted((path.parent / "fixtures").glob("*.log")):
-        where = log.relative_to(root)
-        if log.stat().st_size > MAX_FIXTURE_BYTES:
-            yield f"{where}: {log.stat().st_size} bytes, over {MAX_FIXTURE_BYTES}"
-            continue
-        got = matcher_output(read_fixture(log), matcher)
-        expected_path = log.with_suffix(".expected")
-        if update:
-            expected_path.write_text(got, encoding="utf-8")
-        elif not expected_path.is_file():
-            yield f"{where}: no {expected_path.name}; run `ci-doctor matchers verify --update`"
-            continue
-        want = expected_path.read_text(encoding="utf-8")
-        if want:
+        problem, is_positive = _check_fixture(root, log, matcher, update=update)
+        if is_positive is True:
             positive += 1
-        else:
+        elif is_positive is False:
             negative += 1
-        if got != want:
-            diff = difflib.unified_diff(
-                want.splitlines(), got.splitlines(), str(expected_path.name), "actual", lineterm=""
-            )
-            yield f"{where}: output differs from {expected_path.name}\n" + "\n".join(diff)
+        if problem:
+            yield problem
+    yield from _count_problems(matcher.id, positive, negative, exempt=exempt)
 
+
+def _check_fixture(
+    root: Path, log: Path, matcher: MatcherConfig, *, update: bool
+) -> tuple[str | None, bool | None]:
+    """Run one fixture and compare it with its `.expected` file.
+
+    Args:
+        root: The registry directory, for readable paths in messages.
+        log: The fixture's `.log` file.
+        matcher: The matcher under test.
+        update: Write the `.expected` file instead of comparing.
+
+    Returns:
+        The failure message, or None; and whether the fixture counts as positive
+        (True), negative (False) or not at all (None: oversized or missing its
+        `.expected`).
+    """
+    where = log.relative_to(root)
+    size = log.stat().st_size
+    if size > MAX_FIXTURE_BYTES:
+        return f"{where}: {size} bytes, over {MAX_FIXTURE_BYTES}", None
+    got = matcher_output(read_fixture(log), matcher)
+    expected_path = log.with_suffix(".expected")
+    if update:
+        expected_path.write_text(got, encoding="utf-8")
+    elif not expected_path.is_file():
+        return f"{where}: no {expected_path.name}; run `ci-doctor matchers verify --update`", None
+    want = expected_path.read_text(encoding="utf-8")
+    if got == want:
+        return None, bool(want)
+    diff = difflib.unified_diff(
+        want.splitlines(), got.splitlines(), str(expected_path.name), "actual", lineterm=""
+    )
+    return f"{where}: output differs from {expected_path.name}\n" + "\n".join(diff), bool(want)
+
+
+def _count_problems(matcher_id: str, positive: int, negative: int, *, exempt: bool) -> Iterator[str]:
+    """The fixture-count rule for one matcher.
+
+    Args:
+        matcher_id: For messages.
+        positive: Fixtures it fires on.
+        negative: Fixtures it must stay silent on.
+        exempt: Whether it is listed in `verify-exempt.txt`.
+
+    Yields:
+        One message when the counts break the rule.
+    """
     if exempt:
         if positive >= MIN_POSITIVE and negative >= MIN_NEGATIVE:
-            yield f"{matcher.id}: meets {MIN_POSITIVE} + {MIN_NEGATIVE} fixtures, remove it from {EXEMPT}"
+            yield f"{matcher_id}: meets {MIN_POSITIVE} + {MIN_NEGATIVE} fixtures, remove it from {EXEMPT}"
         elif positive < 1:
-            yield f"{matcher.id}: needs at least 1 positive fixture (exempt from the full minimum)"
+            yield f"{matcher_id}: needs at least 1 positive fixture (exempt from the full minimum)"
     elif positive < MIN_POSITIVE or negative < MIN_NEGATIVE:
         yield (
-            f"{matcher.id}: has {positive} positive and {negative} negative fixtures, "
+            f"{matcher_id}: has {positive} positive and {negative} negative fixtures, "
             f"needs at least {MIN_POSITIVE} and {MIN_NEGATIVE}"
         )
 

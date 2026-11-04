@@ -8,6 +8,7 @@ the file as it was.
 """
 
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlsplit
@@ -22,7 +23,7 @@ from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.config_edit import edit_matchers, read_block
 from ci_doctor.matchers.index import write_index
-from ci_doctor.matchers.models import INDEX, Ref
+from ci_doctor.matchers.models import INDEX, Index, Ref
 from ci_doctor.matchers.registry import (
     Resolved,
     check_ref,
@@ -205,15 +206,30 @@ def search(
     hits = 0
     with session() as http:
         for alias in aliases:
-            served = index_for(cfg, alias, http, seen)
-            for kind, entries in (("matcher", served.matchers), ("bundle", served.bundles)):
-                for name, e in entries.items():
-                    if needle in " ".join([name, e.description, *e.classification]).lower():
-                        tags = f" [{', '.join(e.classification)}]" if e.classification else ""
-                        typer.echo(f"{alias}/{name}  ({kind}){tags}  {e.description}")
-                        hits += 1
+            for line in _search_index(alias, index_for(cfg, alias, http, seen), needle):
+                typer.echo(line)
+                hits += 1
     if not hits:
         typer.echo(f"no matchers match {term!r}")
+
+
+def _search_index(alias: str, served: Index, needle: str) -> Iterator[str]:
+    """The `search` output lines for one registry's index.
+
+    Args:
+        alias: The registry's alias, prefixed to each name.
+        served: Its index.
+        needle: The lowercased search term.
+
+    Yields:
+        One line per matcher or bundle whose name, description or classification
+        contains `needle`.
+    """
+    for kind, entries in (("matcher", served.matchers), ("bundle", served.bundles)):
+        for name, e in entries.items():
+            if needle in " ".join([name, e.description, *e.classification]).lower():
+                tags = f" [{', '.join(e.classification)}]" if e.classification else ""
+                yield f"{alias}/{name}  ({kind}){tags}  {e.description}"
 
 
 def _history_url(location: str, path: str) -> str | None:
