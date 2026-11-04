@@ -31,10 +31,8 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
-      # Every extra that can coexist (litellm conflicts with openai), so provider tests run.
-      - run: >-
-          uv sync --locked --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle
-          --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
+      # Every extra, so provider tests run.
+      - run: uv sync --locked --all-extras
       - run: uv run --locked pytest -q --cov
       # One leg is enough for Sonar.
       - name: Coverage report for Sonar

@@ -171,15 +171,6 @@ def test_deterministic_report_leaves_script_category_to_the_model(provider, outp
     assert report.category == "unknown"
 
 
-def test_litellm_backend_needs_no_api_base():
-    """Litellm is ready on `model` alone — it routes by model name, not endpoint."""
-    job, attr, bundle, cfg = _pipeline(
-        _SIMPLE_LOG, overrides={"llm": {"backend": "litellm", "model": "bedrock/anthropic.claude-v2"}}
-    )
-    report = produce_report(job, attr, bundle, cfg, client=FakeClient([_GOOD]))
-    assert report.summary == "unit tests failed on assert"
-
-
 def test_degraded_fallback_on_llm_error():
     """A failed LLM call still yields a correct report, and says it degraded."""
     job, attr, bundle, cfg = _pipeline(_SIMPLE_LOG, overrides=_LLM_ON)
