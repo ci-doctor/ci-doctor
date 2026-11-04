@@ -476,6 +476,7 @@ name = "ci-doctorr"
 version = "0.0.1a11"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "google-re2" },
     { name = "httpx" },
     { name = "pydantic" },
@@ -534,6 +535,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.0" },
     { name = "google-re2", specifier = ">=1.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.40,<1.104" },
@@ -554,7 +556,7 @@ requires-dist = [
     { name = "python-gitlab", specifier = ">=8.4.0" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "requests", specifier = ">=2.32" },
-    { name = "typer", specifier = ">=0.12" },
+    { name = "typer", specifier = ">=0.12,<0.27" },
 ]
 provides-extras = ["openai", "anthropic", "bedrock", "bedrock-mantle", "google", "groq", "mistral", "cohere", "xai", "huggingface", "litellm"]
 
