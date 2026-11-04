@@ -59,7 +59,7 @@ def test_main_always_exits_zero_on_error(monkeypatch):
 @pytest.mark.parametrize(
     "argv",
     [
-        ["analyze", "-f", "/no/such/config.yml", "123"],  # a config that isn't there
+        ["-f", "/no/such/config.yml", "analyze", "123"],  # a config that isn't there
         ["analyze", "no/such/job.log"],  # a log that isn't there
         ["analyze"],  # nothing to do
         ["analyze", "--no-such-flag"],  # bad usage
@@ -211,7 +211,7 @@ def test_repeated_config_flags_apply_left_to_right(monkeypatch, capsys, tmp_path
     monkeypatch.chdir(tmp_path)
     (tmp_path / "a.yml").write_text("llm:\n  model: from-a\n  temperature: 0.9\n")
     (tmp_path / "b.yml").write_text("llm:\n  model: from-b\n")
-    out = _run(monkeypatch, capsys, "config", "-f", "a.yml", "-f", "b.yml", "--no-color")
+    out = _run(monkeypatch, capsys, "-f", "a.yml", "-f", "b.yml", "config", "--no-color")
     assert "model: from-b" in out  # the rightmost file wins
     assert "temperature: 0.9" in out  # keys only the earlier file set survive
 
@@ -219,7 +219,7 @@ def test_repeated_config_flags_apply_left_to_right(monkeypatch, capsys, tmp_path
 def test_config_validate_reports_ok_and_failure(monkeypatch, capsys, registry_config):
     """`--validate` is the dry run: a bad key exits 1 naming it; a good setup counts its matchers."""
     (registry_config / "bad.yml").write_text("llm:\n  nope: 1\n")
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "config", "--validate", "-f", "bad.yml"])
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "-f", "bad.yml", "config", "--validate"])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 1
@@ -235,7 +235,7 @@ def test_analyze_reports_a_bad_config_as_a_config_error(monkeypatch, capsys, tmp
     monkeypatch.chdir(tmp_path)
     (tmp_path / "bad.yml").write_text("denoise:\n  noise_patterns: ['(?=x)']\n")
     (tmp_path / "job.log").write_text("boom\n")
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "job.log", "-f", "bad.yml"])
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "-f", "bad.yml", "analyze", "job.log"])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     err = capsys.readouterr().err

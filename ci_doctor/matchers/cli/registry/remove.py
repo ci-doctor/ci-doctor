@@ -1,12 +1,11 @@
 """`ci-doctor matchers registry remove`."""
 
-from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cli._common import CONFIG
+from ci_doctor.matchers.cli._common import done, target
 from ci_doctor.matchers.config_edit import edit_matchers, read_block
 from ci_doctor.matchers.models import Ref
 
@@ -15,12 +14,12 @@ NAME = "remove"
 
 def run(
     names: Annotated[list[str], typer.Argument(metavar="NAME...", help="Registries to drop.")],
-    config: Path = CONFIG,
 ) -> None:
     """Remove registries from the config, unless `include` still uses them.
 
     Removing an override of a shipped registry (`official`) falls back to its default.
     """
+    config = target()
     block = read_block(config)
     own, include = block.get("registries", {}), block.get("include", [])
     for name in names:
@@ -37,4 +36,4 @@ def run(
 
     edit_matchers(config, drop)
     for name in dict.fromkeys(names):
-        typer.echo(f"removed {name}")
+        done(f"removed {name}")

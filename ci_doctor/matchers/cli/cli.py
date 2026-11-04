@@ -13,6 +13,7 @@ from typer.core import TyperGroup
 
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.cli import add, index, info, list, remove, search, verify
+from ci_doctor.matchers.cli._common import PLAIN
 from ci_doctor.matchers.cli.registry.cli import app as registry_app
 
 
@@ -35,6 +36,19 @@ class _SetupGroup(TyperGroup):
 
 
 app = typer.Typer(cls=_SetupGroup, no_args_is_help=True, help="Browse, select and build matchers.")
+
+
+@app.callback()
+def _group(
+    ctx: typer.Context,
+    plain: bool = typer.Option(
+        False, "--plain", help="One bare line per row, for scripts: no tables, no colour."
+    ),
+) -> None:
+    """Browse, select and build matchers."""
+    ctx.meta[PLAIN] = plain
+
+
 for command in (index, verify, add, remove, list, search, info):
     app.command(command.NAME)(command.run)
 app.add_typer(registry_app, name="registry")

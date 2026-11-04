@@ -82,28 +82,28 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def _root(
+    ctx: typer.Context,
+    config_path: list[Path] = typer.Option(
+        None,
+        "--config",
+        "-f",
+        help="Path to a .ci-doctor.yml, for every command. Repeatable — later files override earlier ones.",
+    ),
     version: bool = typer.Option(
         False, "--version", callback=_version_callback, is_eager=True, help="Show version and exit."
     ),
 ) -> None:
     """Explain why a CI pipeline failed (read-only postmortem)."""
-
-
-_CONFIG_OPTION = typer.Option(
-    None,
-    "--config",
-    "-f",
-    help="Path to a .ci-doctor.yml. Repeatable — later files override earlier ones.",
-)
+    ctx.obj = config_path or []  # the `-f` files, lowest precedence first; read by every command
 
 
 @app.command()
 def analyze(
+    ctx: typer.Context,
     target: str = typer.Argument(
         None, help="Pipeline/run id, or the path to a raw job log to replay offline."
     ),
     job_id: str = typer.Option(None, "--job-id", help="Analyze a single job id."),
-    config_path: list[Path] = _CONFIG_OPTION,
     output_format: OutputFormat = typer.Option(
         OutputFormat.TERMINAL,
         "--format",
@@ -119,16 +119,16 @@ def analyze(
     evidence, report, render. Never changes the run's outcome.
 
     Args:
+        ctx: Carries the global `-f` files.
         target: A pipeline/run id, or a path to a raw job log.
         job_id: Restrict a live run to one job.
-        config_path: Explicit `.ci-doctor.yml` files, lowest precedence first.
         output_format: What goes to stdout — the rendered panels, or the report
             as JSON for a script or a coding agent to read.
         no_color: Disable coloured terminal output.
         verbose: Enable debug logging.
     """
     _configure_logging(verbose)
-    cfg = load_config(config_path)
+    cfg = load_config(ctx.obj)
     log.debug(f"ci={cfg.ci} scm={cfg.scm_vendor} target={target} job_id={job_id}")
     if target is None:
         raise SetupError("nothing to do: pass a pipeline id, or the path to a log to replay.")
@@ -150,7 +150,7 @@ def analyze(
 
 @app.command()
 def config(
-    config_path: list[Path] = _CONFIG_OPTION,
+    ctx: typer.Context,
     diff: bool = typer.Option(
         False, "--diff", help="Show only what your config changes against the shipped defaults."
     ),
@@ -171,14 +171,14 @@ def config(
     """
     _configure_logging(verbose)
     if validate:
-        _validate(config_path)
+        _validate(ctx.obj)
         return
     if schema:
         text, lexer = _schema_json(), "json"
     elif not diff:
-        text, lexer = _as_yaml(load_config(config_path)), "yaml"
+        text, lexer = _as_yaml(load_config(ctx.obj)), "yaml"
     else:
-        lines = _diff_lines(_as_yaml(default_config()), _as_yaml(load_config(config_path)))
+        lines = _diff_lines(_as_yaml(default_config()), _as_yaml(load_config(ctx.obj)))
         text, lexer = "\n".join(lines) or "no differences: running on the shipped defaults.", "diff"
 
     if plain or (not less and not sys.stdout.isatty()):
@@ -415,6 +415,7 @@ def main() -> None:
             )
         ],
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # one INFO line per registry file fetched
     try:
         app()
     except SetupError as exc:

@@ -56,7 +56,7 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | Evidence selection | `core/{denoise,extract,budget}.py` | Config-driven where possible. |
 | An LLM backend | `llm/backends.py` | Lazy-import the SDK inside the client. |
 | A new command | `cli.py` (surface) + `pipeline.py` (work) | Anything a non-terminal caller would also want belongs in `pipeline.py`. |
-| A `matchers` subcommand | `matchers/cli/<command>.py` | `NAME` + `run()`, and one entry in its group's `cli.py`. A subgroup is a package with its own `cli.py`. |
+| A `matchers` subcommand | `matchers/cli/<command>.py` | `NAME` + `run()`, and one entry in its group's `cli.py`. A subgroup is a package with its own `cli.py`. Print through `_common` (`say`, `done`, `table`) so `--plain` works; read the config with `effective()`/`target()`, never a per-command `-f`. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
 | A way to fetch a registry | `matchers/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |

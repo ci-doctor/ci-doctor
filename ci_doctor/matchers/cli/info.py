@@ -1,37 +1,45 @@
 """`ci-doctor matchers info`."""
 
-from pathlib import Path
 from urllib.parse import urlsplit
 
 import typer
+from rich.text import Text
 
-from ci_doctor.matchers.cli._common import CONFIG, effective, via
+from ci_doctor.matchers.cli._common import effective, say, table, via
 from ci_doctor.matchers.registry import Resolved, check_ref, fetch_matcher, redact, session
 
 NAME = "info"
 
 
-def run(ref: str = typer.Argument(..., metavar="ALIAS/NAME"), config: Path = CONFIG) -> None:
+def run(ref: str = typer.Argument(..., metavar="ALIAS/NAME")) -> None:
     """Show one matcher or bundle: what it does, where it lives, what a bundle holds."""
-    cfg = effective(config)
+    cfg = effective()
     seen = Resolved()
     with session() as http:
         parsed = check_ref(ref, cfg, http, seen)
         served, location = seen.indexes[parsed.alias], seen.locations[parsed.alias]
         is_matcher = parsed.name in served.matchers
         entry = served.matchers[parsed.name] if is_matcher else served.bundles[parsed.name]
-        typer.echo(f"{ref} ({'matcher' if is_matcher else 'bundle'})")
-        typer.echo(f"description: {entry.description}")
+        fields = [("description", entry.description)]
         if is_matcher:
-            typer.echo(f"classification: {', '.join(entry.classification)}")
-            typer.echo(f"role: {fetch_matcher(parsed, seen, http).role}")
-        typer.echo(f"registry: {redact(location)}")
-        typer.echo(f"path: {entry.path}")
+            fields += [
+                ("classification", ", ".join(entry.classification)),
+                ("role", fetch_matcher(parsed, seen, http).role),
+            ]
+        fields += [("registry", redact(location)), ("path", entry.path)]
         if url := _history_url(location, entry.path):
-            typer.echo(f"history: {url}")
-        if not is_matcher:
-            members = via(cfg, [ref], http)
-            typer.echo("matchers:\n" + "\n".join(f"  {m}" for m in members))
+            fields.append(("history", url))
+        members = [] if is_matcher else list(via(cfg, [ref], http))
+    say(f"{ref} ({'matcher' if is_matcher else 'bundle'})", "bold")
+    table(
+        ["Field", "Value"],
+        [(Text(k, "dim"), v) for k, v in fields],
+        lambda key, value: f"{key}: {value}",
+        header=False,
+    )
+    if members:
+        say("matchers:", "bold")
+        table(["Matcher"], [(m,) for m in members], lambda m: f"  {m}", header=False)
 
 
 def _history_url(location: str, path: str) -> str | None:

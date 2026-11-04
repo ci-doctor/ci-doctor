@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from ci_doctor.matchers.cli._common import ROOT
+from ci_doctor.matchers.cli._common import ROOT, done
 from ci_doctor.matchers.index import write_index
 from ci_doctor.matchers.models import INDEX
 
@@ -17,4 +17,4 @@ def run(
 ) -> None:
     """Validate every matcher and bundle, then write index.yaml."""
     n = write_index(root, check=check)
-    typer.echo(f"{root / INDEX}: {'current' if check else 'written'}, {n} entries")
+    done(f"{root / INDEX}: {'current' if check else 'written'}, {n} entries")

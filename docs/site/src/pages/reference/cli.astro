@@ -3,7 +3,11 @@ import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
 import { url } from "../../lib/url";
 
-const cli = `ci-doctor analyze [OPTIONS] [TARGET]
+const cli = `ci-doctor [-f PATH]... analyze [OPTIONS] [TARGET]
+
+Global options (before the command, for every command):
+  -f, --config PATH      Path to a .ci-doctor.yml. Repeatable — later files
+                         override earlier ones.
 
 Arguments:
   TARGET                 Pipeline/run id, or the path to a raw job log to replay
@@ -11,8 +15,6 @@ Arguments:
 
 Options:
   --job-id TEXT          Analyze a single job id.
-  -f, --config PATH      Path to a .ci-doctor.yml. Repeatable — later files
-                         override earlier ones.
   --format [terminal|json]
                          stdout format. \`json\` prints the report instead of the
                          rendered panels. [default: terminal]
@@ -45,13 +47,15 @@ ci-doctor matchers registry remove NAME...        # refused while include still 
 ci-doctor matchers registry list
 ci-doctor matchers registry ping [NAME...]        # reachability, latency, matcher and bundle count
 
-# Every command above takes -f/--config PATH (default .ci-doctor.yml, created if missing).`;
+# The global ci-doctor -f PATH picks the config; the commands that edit it write the
+# last -f (default .ci-doctor.yml, created if missing).
+# Output is a table by default; ci-doctor matchers --plain ... prints one bare line per row.`;
 
 const matchersAuthor = `ci-doctor matchers index [ROOT] [--check]    # validate, then write ROOT/index.yaml
 ci-doctor matchers verify [ROOT] [--update]  # run each matcher over its fixtures`;
 
 const deterministic = `# Deterministic report, no model required:
-ci-doctor analyze --config .ci-doctor.yml "$CI_PIPELINE_ID"
+ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
 #   with llm.enabled: false (or llm.model/api_base unset)
 
 # It prints the verdict, writes report.md + report.json, and (if configured

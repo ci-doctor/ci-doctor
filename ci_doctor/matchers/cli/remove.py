@@ -1,12 +1,11 @@
 """`ci-doctor matchers remove`."""
 
-from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cli._common import CONFIG, effective, via
+from ci_doctor.matchers.cli._common import done, effective, target, via
 from ci_doctor.matchers.config_edit import edit_matchers, read_block
 from ci_doctor.matchers.registry import session
 
@@ -15,10 +14,9 @@ NAME = "remove"
 
 def run(
     refs: Annotated[list[str], typer.Argument(metavar="ALIAS/NAME...", help="Entries to drop from include.")],
-    config: Path = CONFIG,
 ) -> None:
     """Remove matchers or bundles from `matchers.include`."""
-    cfg = effective(config)
+    cfg, config = effective(), target()
     current = list(read_block(config).get("include", []))
     if missing := [r for r in refs if r not in current]:
         with session() as http:
@@ -32,4 +30,4 @@ def run(
     kept = [r for r in current if r not in refs]
     edit_matchers(config, lambda m: m.__setitem__("include", kept))
     for ref in dict.fromkeys(refs):
-        typer.echo(f"removed {ref}")
+        done(f"removed {ref}")

@@ -1,13 +1,13 @@
 """`ci-doctor matchers registry ping`."""
 
 import time
-from pathlib import Path
 from typing import Annotated
 
 import typer
+from rich.text import Text
 
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cli._common import CONFIG, effective
+from ci_doctor.matchers.cli._common import effective, table
 from ci_doctor.matchers.registry import Resolved, index_for, session, unknown_registry
 
 NAME = "ping"
@@ -17,25 +17,37 @@ def run(
     names: Annotated[
         list[str] | None, typer.Argument(metavar="[NAME...]", help="Registries to check; all when omitted.")
     ] = None,
-    config: Path = CONFIG,
 ) -> None:
     """Fetch each registry's index and report reachability, latency and size."""
-    cfg = effective(config)
+    cfg = effective()
     if unknown := [n for n in names or [] if n not in cfg.registries]:
         raise unknown_registry(unknown[0], cfg.registries)
-    down = 0
+    rows = []
     with session() as http:
         for alias in names or sorted(cfg.registries):
             start = time.perf_counter()
             try:
                 served = index_for(cfg, alias, http, Resolved())
             except SetupError as err:
-                down += 1
-                typer.echo(f"{alias}: FAILED {err}")
+                rows.append((alias, Text("FAILED", "bold red"), "", "", "", Text(str(err), "red")))
                 continue
             ms = (time.perf_counter() - start) * 1000
-            typer.echo(
-                f"{alias}: ok, {ms:.0f} ms, {len(served.matchers)} matchers, {len(served.bundles)} bundles"
+            rows.append(
+                (
+                    alias,
+                    Text("ok", "green"),
+                    f"{ms:.0f} ms",
+                    str(len(served.matchers)),
+                    str(len(served.bundles)),
+                    "",
+                )
             )
-    if down:
+    table(["Registry", "Status", "Latency", "Matchers", "Bundles", "Error"], rows, _line)
+    if down := sum(1 for row in rows if row[-1]):
         raise SetupError(f"{down} registr{'y' if down == 1 else 'ies'} unreachable or invalid")
+
+
+def _line(alias: str, status: str, latency: str, matchers: str, bundles: str, error: str) -> str:
+    if error:
+        return f"{alias}: {status} {error}"
+    return f"{alias}: {status}, {latency}, {matchers} matchers, {bundles} bundles"
