@@ -345,3 +345,19 @@ def test_diamond_bundles_are_expanded_once_each(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "_expand", counting)
     assert resolve(cfg).matchers == {"r/x": "r/l0_0", "r/y": "r/l0_0"}
     assert calls < 100
+
+
+def test_each_bundle_and_matcher_file_is_fetched_once(tmp_path, monkeypatch):
+    """Bundles are prefetched a level at a time and matchers in parallel; nothing is read twice."""
+    bundles = {"top": ["mid", "x"], "mid": ["leaf", "y"], "leaf": ["x", "y"]}
+    cfg = _cfg(["r/top"], r=_registry(tmp_path, ["x", "y"], bundles=bundles))
+    seen = []
+    real = registry.fetch_file
+
+    def counting(alias, location, rel, **kwargs):
+        seen.append(rel)
+        return real(alias, location, rel, **kwargs)
+
+    monkeypatch.setattr(registry, "fetch_file", counting)
+    assert [m.id for m in load(cfg)] == ["r/x", "r/y"]  # include order survives the parallel fetch
+    assert len(seen) == len(set(seen)) == 6  # index, 3 bundles, 2 matchers

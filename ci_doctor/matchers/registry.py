@@ -13,7 +13,9 @@ The author's side, building `index.yaml`, is `index.py`.
 import contextlib
 import difflib
 import logging
+import time
 from collections.abc import Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,7 +24,7 @@ from pydantic import ValidationError
 
 from ci_doctor.config.schema import MatcherConfig, MatchersConfig, unqualified
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Index, Ref
+from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
 from ci_doctor.matchers.transports import redact, transport_for
 from ci_doctor.matchers.validate import bundle_from, matcher_from, parse_yaml
 
@@ -31,6 +33,8 @@ log = logging.getLogger("ci_doctor.matchers")
 TIMEOUT = 10.0
 INDEX_CAP = 1024 * 1024
 FILE_CAP = 64 * 1024
+#: Matcher files fetched at once; under httpx's default pool of 10 connections.
+FETCH_WORKERS = 8
 EMPTY_INCLUDE = (
     "no matchers or bundles selected. Run `ci-doctor matchers add official/<name>` "
     "or browse https://matchers.cidoc.dev"
@@ -294,9 +298,10 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
             index_for(cfg, alias, http, out)
             if (location := out.locations[alias]).startswith("http://"):
                 log.warning(f"registry {alias!r} is fetched over plain http, unencrypted: {redact(location)}")
+        bundles = _prefetch_bundles(refs, out, http)
         walked: dict[str, tuple[list[str], int]] = {}
         for ref in refs:
-            keys, depth = _expand(ref, (), out, walked, http)
+            keys, depth = _expand(ref, (), out, walked, bundles, http)
             if depth > MAX_BUNDLE_DEPTH:
                 raise SetupError(f"bundle {ref} nests deeper than {MAX_BUNDLE_DEPTH}")
             via = "direct" if depth == 0 else str(ref)
@@ -305,11 +310,50 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
     return out
 
 
+def _prefetch_bundles(refs: list[Ref], out: Resolved, http: httpx.Client) -> dict[str, Bundle]:
+    """Fetch every bundle `refs` reach, one nesting level at a time, in parallel.
+
+    Walking them one by one costs a round trip per bundle (13 for `official/all`);
+    this costs one per level. Only fetches and parses: names, cycles and depth are
+    `_expand`'s to report, and a bundle missed here (too deep) it fetches itself.
+
+    Args:
+        refs: The top-level `matchers.include` entries.
+        out: The registries read so far, indexes included.
+        http: The run's HTTP client.
+
+    Returns:
+        Each bundle reached, by `alias/name`.
+
+    Raises:
+        SetupError: If a bundle file fails to fetch or validate.
+    """
+    fetched: dict[str, Bundle] = {}
+    level = refs
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="ci-doctor-fetch") as pool:
+        for _ in range(MAX_BUNDLE_DEPTH):
+            todo = [
+                r
+                for r in dict.fromkeys(level)
+                if r.name in out.indexes[r.alias].bundles and str(r) not in fetched
+            ]
+            if not todo:
+                break
+            fetched |= zip(
+                map(str, todo),
+                pool.map(lambda r: bundle_from(*_fetch_entry(r, out, http)), todo),
+                strict=True,
+            )
+            level = [Ref(r.alias, name) for r in todo for name in fetched[str(r)].include]
+    return fetched
+
+
 def _expand(
     ref: Ref,
     stack: tuple[str, ...],
     out: Resolved,
     walked: dict[str, tuple[list[str], int]],
+    bundles: dict[str, Bundle],
     http: httpx.Client,
 ) -> tuple[list[str], int]:
     """The matchers one reference selects, recursing through bundles.
@@ -323,6 +367,7 @@ def _expand(
         stack: The bundles currently being expanded, outermost first.
         out: The registries read so far.
         walked: Bundles already expanded, by `alias/name`: their matchers and depth.
+        bundles: Bundle files already fetched, by `alias/name`.
         http: The run's HTTP client.
 
     Returns:
@@ -343,8 +388,11 @@ def _expand(
     if len(stack) >= MAX_BUNDLE_DEPTH:  # bounds the recursion; resolve() checks memoized depths
         raise SetupError(f"bundle {stack[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
     if key not in walked:
-        bundle = bundle_from(*_fetch_entry(ref, out, http))
-        subs = [_expand(Ref(ref.alias, name), (*stack, key), out, walked, http) for name in bundle.include]
+        bundle = bundles[key] if key in bundles else bundle_from(*_fetch_entry(ref, out, http))
+        subs = [
+            _expand(Ref(ref.alias, name), (*stack, key), out, walked, bundles, http)
+            for name in bundle.include
+        ]
         members = dict.fromkeys(k for keys, _ in subs for k in keys)
         walked[key] = (list(members), 1 + max((depth for _, depth in subs), default=0))
     return walked[key]
@@ -380,11 +428,17 @@ def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[Matche
         SetupError: On anything :func:`resolve` rejects, or a matcher file that
             can't be fetched or fails a load-time rule.
     """
+    start = time.perf_counter()
     with session(client) as http:
         resolved = resolve(cfg, http)
-        # model_copy skips validation: the bare id was checked on fetch, and `alias/id`
-        # is what makes the same bare id from two registries two distinct matchers.
-        return [
-            fetch_matcher(Ref.parse(key), resolved, http).model_copy(update={"id": key})
-            for key in resolved.matchers
-        ]
+        keys = list(resolved.matchers)
+        # One round trip per matcher: in sequence, `official/all` waited ~5s on 38 of them.
+        # map() keeps include order, and re-raises the first failure in that order.
+        with ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="ci-doctor-fetch") as pool:
+            fetched = list(pool.map(lambda key: fetch_matcher(Ref.parse(key), resolved, http), keys))
+    log.debug(
+        f"loaded {len(keys)} matchers from {len(resolved.indexes)} registries in {time.perf_counter() - start:.1f}s"
+    )
+    # model_copy skips validation: the bare id was checked on fetch, and `alias/id`
+    # is what makes the same bare id from two registries two distinct matchers.
+    return [m.model_copy(update={"id": key}) for key, m in zip(keys, fetched, strict=True)]

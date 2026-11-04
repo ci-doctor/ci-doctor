@@ -10,6 +10,7 @@ Global options (before the command, for every command):
                          override earlier ones.
   --plain                Bare text for scripts: no tables, no colour, no pager.
   --no-color             Disable coloured output (also honours NO_COLOR).
+  -v, --verbose          Enable debug logging.
 
 Arguments:
   TARGET                 Pipeline/run id, or the path to a raw job log to replay
@@ -20,7 +21,6 @@ Options:
   --format [terminal|json]
                          stdout format. \`json\` prints the report instead of the
                          rendered panels. [default: terminal]
-  -v, --verbose          Enable debug logging.
   --help                 Show this message and exit.`;
 
 const jsonOut = `# Everything a script or a coding agent needs, on stdout:
@@ -62,7 +62,7 @@ ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
 # It prints the verdict, writes report.md + report.json, and (if configured
 # and confidence >= medium) posts/updates one idempotent MR/PR note.`;
 
-const verbose = `ci-doctor analyze -v failing-job.log
+const verbose = `ci-doctor -v analyze failing-job.log
 
 ci-doctor [DEBUG] provider=gitlab target=failing-job.log ...
 ci-doctor [DEBUG] job failing-job: 6 top-level sections
