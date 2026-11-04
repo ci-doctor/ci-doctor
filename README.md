@@ -63,9 +63,10 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
    ladder with a `WARNING:`-is-never-fatal rule.
 4. **Denoise / extract / budget** the blamed section into a small, high-signal evidence slice
    (ANSI/CR/dedup denoising, anchored windows, token budgeting — every truncation is visible).
-   Shipped matcher packs cover pytest/jest/go/maven/gradle/bazel, Rust, .NET, Ruby, PHP,
-   node + npm/pnpm/yarn/bun, Playwright/Cypress, tsc/eslint/mypy, Docker and Terraform;
-   add your own under `extraction.matchers` — they merge onto the shipped packs by id.
+   Matcher packs come from registries, selected with `matchers.include`: the official one
+   (https://matchers.cidoc.dev) covers pytest/jest/go/maven/gradle/bazel, Rust, .NET,
+   Ruby, PHP, node + npm/pnpm/yarn/bun, Playwright/Cypress, tsc/eslint/mypy, Docker and
+   Terraform; add your own registry under `matchers.registries`.
 5. **LLM (optional)** explains the cause *within* the already-decided phase, returning a
    validated JSON report. Disabled or unreachable → deterministic report instead.
 6. **Render / deliver** to the terminal, `report.md`/`report.json`, and an idempotent MR/PR note.

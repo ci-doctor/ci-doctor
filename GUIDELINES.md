@@ -32,6 +32,10 @@ ci_doctor/
                     extract, budget, redact, analyze
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
+  matchers/         matcher registries: file formats (models), validate, index and
+                    verify (the author's side), registry (resolve + load), config_edit
+                    and cli (`ci-doctor matchers …`)
+    transports/     local, http, git: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
     gitlab/         python-gitlab adapter + segmenter + reasons
@@ -52,7 +56,8 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | An LLM backend | `llm/backends.py` | Lazy-import the SDK inside the client. |
 | A new command | `cli.py` (surface) + `pipeline.py` (work) | Anything a non-terminal caller would also want belongs in `pipeline.py`. |
 | Output format | `render/` | Implements the `Renderer` port. |
-| A matcher / language pack | `config/defaults.yml` | **Data, not code.** See §5.1. |
+| A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
+| A way to fetch a registry | `matchers/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
 | A tunable value | `config/schema.py` (scalar) or `defaults.yml` (data) | Prefer a config knob over a hardcoded pattern. |
 
 `core/` imports only `core.ports` abstractions. Adapters implement them.
@@ -150,25 +155,31 @@ parametrized over `support.PROVIDERS` then covers the format.
 
 ### 5.1 Add a matcher / language pack
 
-Pure data — no Python. In `config/defaults.yml` under `extraction.matchers`:
+Pure data — no Python, and not in this repo. Matchers live in **registries**: the
+[official one](https://github.com/ci-doctor/matchers), or your own (a directory, an
+`https://` folder, or a `git+https://`/`git+ssh://` repository) listed under
+`matchers.registries`. A config selects them with `matchers.include` (`official/pytest`,
+`acme/mytool`); `defaults.yml` ships no matchers, only the `official` registry's address.
+In a registry, one file per matcher at `matchers/<ecosystem>/<id>/matcher.yaml`:
 
 ```yaml
-- id: mytool
-  role: tool                          # tool | wrapper | fallback
-  classification: [python, test]      # ecosystem first; metadata only
-  description: >-
-    Acme's build CLI. `MYTOOL ERROR <file>:<line>` is a config error in that file, not a code bug.
-  pattern: '^MYTOOL ERROR'            # or start:/end: for a block — exactly one form
-  exclude: ['^MYTOOL ERROR: retrying'] # anchor lines to reject; RE2 has no lookaround
-  before: 2
-  after: 10
+id: mytool
+role: tool                          # tool | wrapper | fallback
+classification: [python, test]      # ecosystem first (its directory); metadata only
+description: >-
+  Acme's build CLI. `MYTOOL ERROR <file>:<line>` is a config error in that file, not a code bug.
+pattern: '^MYTOOL ERROR'            # or start:/end: for a block — exactly one form
+exclude: ['^MYTOOL ERROR: retrying'] # anchor lines to reject; RE2 has no lookaround
+before: 2
+after: 10
 ```
 
-Then **add fixtures for it in the
-[matchers registry](https://github.com/ci-doctor/matchers)** and run
-`ci-doctor matchers verify`, or the pack proves nothing — a matcher that never matches
-fails silently, because the tail window still returns something. `verify` asks for at
-least 3 positive and 2 negative fixture logs per matcher.
+Then **add fixtures for it** next to the file (`fixtures/*.log`), run
+`ci-doctor matchers verify --update`, review the `.expected` files, and
+`ci-doctor matchers index` to regenerate `index.yaml`. Without fixtures the pack proves
+nothing — a matcher that never matches fails silently, because the tail window still
+returns something. `verify` asks for at least 3 positive and 2 negative fixture logs per
+matcher.
 
 Anchor on the **cause**, not on a trailing summary line: a summary-only anchor windows
 *past* the detail above it. And anchor on something only *your tool* prints — see the
@@ -199,34 +210,27 @@ bug`), not only which lines the window keeps. One line of 20-250 printable ASCII
 characters, with no phrase that reads as an instruction to the model; the prompt frames it
 as context, and the log wins where the two disagree.
 
-Config **lists replace, mappings deep-merge** — except lists whose entries all carry an
-`id`, which merge per id (`_merge_by_id` in `config/loader.py`). So a user pack with a new
-id is *added* to the shipped ones, and one reusing a shipped id *overrides* that pack and
-logs a warning naming it. The override is field by field: `role: wrapper` on the shipped
-`pytest` pack keeps its `start`/`end`, because blanking them would leave a matcher that
-can never fire. To switch a block pack to a `pattern`, null its `start` and `end` — a
-matcher has exactly one form.
+A loaded matcher's id is `alias/id`, so the same bare id from two registries is two
+matchers. To change a shipped pack, copy it into your own registry and include that
+instead; there is no field-by-field override.
 
 Every field you add to `config/schema.py` needs a `description=` — it becomes the text in
 the published `ci-doctor.schema.json`, and `test_json_schema_documents_every_field` fails
 without it.
 
-The docs site's matcher catalogue is **generated** from `defaults.yml`: each pack's
-`description`, `role` and `classification`, grouped by the first tag (a new ecosystem
-needs a `GROUPS` heading in `scripts/gen_docs_data.py`). After adding or retuning a pack,
-run `mise run docs:data`; `test_docs_data_is_current` fails if the committed JSON drifts.
+The matcher catalogue is the official registry's site, https://matchers.cidoc.dev.
 
 ### 5.2 Where a pattern goes: the classifier or the catalogue
 
 There are two places a "this looks like a failure" regex could land, and they answer
 different questions at different stages:
 
-| | `_ERROR_RE` in `core/attribution.py` | `extraction.matchers` in `defaults.yml` |
+| | `_ERROR_RE` in `core/attribution.py` | a matcher in a registry |
 |---|---|---|
 | Question | did anything in this **section** fail? | which **lines** are the evidence? |
 | Output | one boolean per line | a windowed excerpt, ranked |
 | Runs | before extraction, and only on rule 6 (last resort) | after the phase is already decided |
-| Tunable | no — `attribute()` takes no `Config`, by design (invariant #7) | yes, per repo, merged by id |
+| Tunable | no — `attribute()` takes no `Config`, by design (invariant #7) | yes, per repo, via `matchers.include` |
 
 So the classifier's list stays **runner-level**: the runner's own error annotations
 (`##[error]`, `ERROR:`, `FATAL`) and a non-zero exit. A `pytest`/`npm`/`go` signature
@@ -235,7 +239,7 @@ added there would be a second copy of the catalogue, hardcoded where no
 makes its runner say so. `test_the_classifier_does_not_carry_a_second_matcher_catalogue`
 pins that.
 
-New language pack → `defaults.yml`, always. Touch `_ERROR_RE` only when a **runner**
+New language pack → a registry, always. Touch `_ERROR_RE` only when a **runner**
 has a failure marker we cannot see.
 
 ### 5.3 The failure category
@@ -327,9 +331,10 @@ Real bugs, kept here so they don't recur:
   `##[error]Process completed with exit code N.` (GitHub), so a pack anchored on a bare
   `^ERROR: .*failed` looks covered by every fixture in the registry while proving nothing.
   `bazel` shipped that way and opened a high-ranked window on 40 of 41 logs.
-  `test_no_pack_fires_on_the_runners_own_trailer` pins it; only `generic_error` (the
-  fallback) and `oom` (the trailer's `exit code 137` is the *only* OOM signal GitLab
-  gives) are exempt.
+  Nothing in this repo pins it now that matchers live in registries: give a pack a
+  negative fixture that ends in the runner's trailer, so `matchers verify` fails if it
+  fires there. Only a fallback (`generic_error`) and `oom` (the trailer's `exit code 137`
+  is the *only* OOM signal GitLab gives) may match it.
 - **A pack can also be "covered" by the wrong tool.** `jest`'s `^FAIL ` matched
   `go test`'s `FAIL example.com/pkg 0.038s`, and `maven_gradle` only ever fired on
   gradle's half of its own pattern — both looked green for months. When adding a pack,
