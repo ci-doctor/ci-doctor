@@ -17,8 +17,8 @@ const inspect = `ci-doctor config           # the effective config, every layer 
 ci-doctor config --diff    # only what your file/env/flags change vs the defaults
 ci-doctor config --schema  # the JSON Schema, for editors and CI validation
 ci-doctor config --validate            # the setup dry run: config, registries, matchers; exit 1 on a problem
-ci-doctor config -f base.yml -f ci.yml # repeatable, the rightmost file wins
-# Output pages through $PAGER on a terminal; --plain prints raw (as does piping).`;
+ci-doctor -f base.yml -f ci.yml config # repeatable, the rightmost file wins
+# Output pages through $PAGER on a terminal; ci-doctor --plain config prints raw (as does piping).`;
 
 const schemaComment = `# yaml-language-server: $schema=https://github.com/ci-doctor/ci-doctor/releases/latest/download/ci-doctor.schema.json
 llm:
@@ -81,9 +81,11 @@ matchers:
   registries:                    # alias -> registry folder (the one holding index.yaml)
     official: https://matchers.cidoc.dev/   # shipped; override it, or add your own:
     # acme: ./ci/matchers                   # a path, relative to this file
-    # pinned: git+https://github.com/ci-doctor/matchers.git@<tag-or-sha>#subdirectory=<dir>
+    # pinned: https://raw.githubusercontent.com/acme/matchers/<tag-or-sha>/
   include: []                    # alias/name of a matcher or bundle; empty exits 1
   # include: [official/python, acme/mytool]
+  timeout_seconds: 10            # per registry request
+  fetch_workers: 8               # registry files fetched at once; 1 fetches in order
 
 extraction:
   tail_lines: 120                # lines kept from the end of the blamed section
@@ -131,8 +133,8 @@ redaction:
         replaces the one before it. A relative registry path resolves against the
         directory of the config file that names it; one set in an environment
         variable resolves against the working directory. Point at specific files with <code
-            >-f path/to/.ci-doctor.yml</code
-        >, repeated as often as you like — each one overrides the last.
+            >ci-doctor -f path/to/.ci-doctor.yml</code
+        >, before the command, repeated as often as you like — each one overrides the last.
     </p>
 
     <h2>Inspecting the result</h2>
@@ -332,6 +334,18 @@ redaction:
                     Nothing is selected by default, and an empty list exits 1.</td
                 ></tr
             >
+            <tr
+                ><td><code>matchers.timeout_seconds</code></td><td><code>10</code></td><td
+                    >Seconds to wait on each registry request before failing the
+                    setup. Raise it for a slow mirror.</td
+                ></tr
+            >
+            <tr
+                ><td><code>matchers.fetch_workers</code></td><td><code>8</code></td><td
+                    >Registry files fetched at once, 1–32. Lower it for a registry
+                    that rate-limits.</td
+                ></tr
+            >
         </tbody>
     </table>
     <table>
@@ -348,29 +362,13 @@ redaction:
                     warning)</td
                 ><td><code>https://matchers.cidoc.dev/</code></td></tr
             >
-            <tr
-                ><td><code>git+https://</code>, with an optional <code>@ref</code>
-                    and <code>#subdirectory=dir</code></td
-                ><td
-                    ><code
-                        >git+https://github.com/acme/matchers.git@v1.2.0#subdirectory=registry</code
-                    ></td
-                ></tr
-            >
-            <tr
-                ><td><code>git+ssh://</code>, same options</td><td
-                    ><code>git+ssh://git@github.com/acme/matchers.git@main</code></td
-                ></tr
-            >
         </tbody>
     </table>
     <p>
         Every run reads the registries as they are now: there is no cache, no
-        lock file and no version field. To pin one, point it at a fixed revision —
-        a tag or commit SHA after <code>@</code> in a <code>git+</code> location,
-        or a raw URL that contains one. A <code>git+</code> registry needs
-        <code>git</code> on <code>PATH</code> and authenticates however git already
-        does (SSH agent, credential helper). Edit both keys by hand or with
+        lock file and no version field. To pin one, point it at a URL that
+        contains a fixed revision, such as a raw URL with a tag or commit SHA in
+        it. Edit both keys by hand or with
         <a href={url("/reference/cli/")}><code>ci-doctor matchers</code></a>, and
         check the result with <code>ci-doctor config --validate</code>.
     </p>

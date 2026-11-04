@@ -10,14 +10,14 @@ const packages = [
         blurb: "The wiring, and nothing else.",
         files: [
             {
-                path: "cli.py",
+                path: "cli/",
                 entry: "main()",
-                role: "Typer commands, config loading, logging, delivery, and the exit code: 1 for a `SetupError`, 0 for everything else, a crash included.",
+                role: "The command line, one module per command and one package per group (`cli/matchers/registry/ping.py` is `ci-doctor matchers registry ping`). Parses, calls `service/`, prints, and owns the exit code: 1 for a `SetupError`, 0 for everything else, a crash included.",
             },
             {
-                path: "pipeline.py",
+                path: "service/",
                 entry: "analyze_run()",
-                role: "The analysis itself, with no CLI in it: segment → assign phases → attribute → build bundle → report, over a live run or a log file.",
+                role: "What each command does, with no terminal in it: `analyze` (segment → assign phases → attribute → build bundle → report, over a live run or a log file), `deliver` (artifacts, MR note), `setup` (the dry run).",
             },
             {
                 path: "errors.py",
@@ -31,9 +31,9 @@ const packages = [
         blurb: "What is tunable, and how the layers combine.",
         files: [
             {
-                path: "schema.py",
+                path: "schemas/",
                 entry: "Config",
-                role: 'The pydantic model. Source of truth for the published JSON Schema and for every scalar default. `extra="forbid"` — an unknown key in a config file is an error, not a shrug.',
+                role: 'The pydantic model, one module per top-level key (`schemas/llm.py` is `llm:`). Source of truth for the published JSON Schema and for every scalar default. `extra="forbid"` — an unknown key in a config file is an error, not a shrug.',
             },
             {
                 path: "loader.py",
@@ -128,11 +128,6 @@ const packages = [
                 role: "`matchers verify`: runs each matcher alone over its fixture logs, read the way `analyze` reads a log, and compares the output with the committed `.expected` files.",
             },
             {
-                path: "cli.py",
-                entry: "app",
-                role: "`ci-doctor matchers …`. Every failure, a crash included, exits 1, because these commands are a registry's CI check.",
-            },
-            {
                 path: "config_edit.py",
                 entry: "edit_matchers()",
                 role: "Rewrites only the `matchers:` block of a config file, leaving the rest of it and its comments alone.",
@@ -140,7 +135,7 @@ const packages = [
             {
                 path: "transports/",
                 entry: "transport_for()",
-                role: "How a registry's files are read, picked by the location's shape: `local` (a path or `file://`), `http` (bounded redirects and sizes), `git` (a shallow checkout per run, `git+https://` or `git+ssh://`).",
+                role: "How a registry's files are read, picked by the location's shape: `local` (a path or `file://`) or `http` (bounded redirects and sizes).",
             },
         ],
     },

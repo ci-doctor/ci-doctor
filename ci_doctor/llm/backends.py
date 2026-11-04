@@ -31,11 +31,11 @@ import os
 import ssl
 import threading
 from collections.abc import Callable, Iterator, Mapping
-from typing import TYPE_CHECKING, Any, TypeVar, get_args
+from typing import TYPE_CHECKING, Any, TypeVar, get_args, get_type_hints
 
 from pydantic import BaseModel
 
-from ci_doctor.config.schema import LLMConfig
+from ci_doctor.config.schemas.llm import LLMConfig
 from ci_doctor.core.ports import LLMClient
 
 log = logging.getLogger("ci_doctor.llm")
@@ -70,10 +70,36 @@ def _provider_kwargs(provider_class: type, cfg: LLMConfig, environ: Mapping[str,
     if "base_url" in params and cfg.api_base:
         kwargs["base_url"] = cfg.api_base
     if "http_client" in params and cfg.ca_bundle:
-        import httpx
-
-        kwargs["http_client"] = httpx.AsyncClient(verify=ssl.create_default_context(cafile=cfg.ca_bundle))
+        kwargs["http_client"] = _ca_bundle_client(provider_class, cfg.ca_bundle)
     return kwargs
+
+
+def _ca_bundle_client(provider_class: type, cafile: str) -> object:
+    """An async HTTP client trusting `cafile`, of the kind the provider takes.
+
+    pydantic-ai is moving to `httpx2`: most providers take either client (and warn on the
+    legacy one), a few take only `httpx2` (anthropic) or only legacy `httpx` (groq, cohere).
+    So read the provider's own annotation, and prefer `httpx2` wherever it is accepted.
+    """
+    verify = ssl.create_default_context(cafile=cafile)
+    try:
+        hint = get_type_hints(provider_class.__init__).get("http_client")
+    except NameError:  # an annotation naming a module the provider imports only for typing
+        hint = None
+    if _mentions(hint, "httpx2"):
+        import httpx2
+
+        return httpx2.AsyncClient(verify=verify)
+    import httpx
+
+    return httpx.AsyncClient(verify=verify)
+
+
+def _mentions(hint: object, module: str) -> bool:
+    """Whether a type hint, unions and Optional unpacked, includes a class from `module`."""
+    if args := get_args(hint):
+        return any(_mentions(a, module) for a in args)
+    return getattr(hint, "__module__", "").split(".")[0] == module
 
 
 @contextlib.contextmanager

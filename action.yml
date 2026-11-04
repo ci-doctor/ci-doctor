@@ -106,10 +106,11 @@ runs:
         set +e
         set -uo pipefail
 
+        global=()
+        [[ -n "$CONFIG" ]] && global+=(--config "$CONFIG")
         args=("$RUN_ID")
         [[ -n "$JOB_ID" ]] && args+=(--job-id "$JOB_ID")
-        [[ -n "$CONFIG" ]] && args+=(--config "$CONFIG")
-        ci-doctor analyze "${args[@]}"
+        ci-doctor "${global[@]}" analyze "${args[@]}"
         status=$?
 
         # Surface the verdict so callers can branch on it (e.g. only retry when the

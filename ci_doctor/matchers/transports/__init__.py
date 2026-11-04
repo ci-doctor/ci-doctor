@@ -22,12 +22,10 @@ from ci_doctor.errors import SetupError
 TRANSPORTS: dict[str, str] = {
     "local": "ci_doctor.matchers.transports.local:LocalTransport",
     "http": "ci_doctor.matchers.transports.http:HttpTransport",
-    "git": "ci_doctor.matchers.transports.git:GitTransport",
 }
 
-#: `user@host:path`, which git reads as ssh. Picked as git only to be refused with a hint.
-SCP_STYLE = re.compile(r"^[\w.-]+@[\w.-]+:(?!//)")
-_USERINFO = re.compile(r"(?<=://)[^/@\s]+@")
+#: Possessive, so a long run with no `@` after it fails once instead of backtracking.
+_USERINFO = re.compile(r"://[^/@\s]++@")
 
 
 class Transport(ABC):
@@ -75,7 +73,7 @@ def redact(text: str) -> str:
     Returns:
         The message with every URL's userinfo replaced by `***`.
     """
-    return _USERINFO.sub("***@", text)
+    return _USERINFO.sub("://***@", text)
 
 
 def decode(rel: str, body: bytes) -> str:
@@ -109,16 +107,12 @@ def _kind(location: str) -> str:
     Raises:
         SetupError: On a scheme no transport serves.
     """
-    if location.startswith("git+") or SCP_STYLE.match(location):
-        return "git"
     scheme = urlsplit(location).scheme
     if scheme in ("http", "https"):
         return "http"
     if scheme == "file" or len(scheme) <= 1:  # one letter is a Windows drive, not a scheme
         return "local"
-    raise SetupError(
-        f"unsupported scheme {scheme!r}: use a path, file://, http(s)://, git+https:// or git+ssh://"
-    )
+    raise SetupError(f"unsupported scheme {scheme!r}: use a path, file:// or http(s)://")
 
 
 def transport_for(location: str) -> Transport:

@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.validate import atomic_write
 

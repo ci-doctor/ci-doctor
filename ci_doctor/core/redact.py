@@ -15,7 +15,7 @@ import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
-from ci_doctor.config.schema import RedactionConfig
+from ci_doctor.config.schemas.redaction import RedactionConfig
 from ci_doctor.core.regex import Regex, compile_user
 
 if TYPE_CHECKING:

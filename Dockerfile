@@ -29,12 +29,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:3.14-slim
 
-# git+https:// and git+ssh:// matcher registries shell out to git.
-RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client && rm -rf /var/lib/apt/lists/*
-
 COPY --from=builder /opt/ci-doctor /opt/ci-doctor
 ENV PATH="/opt/ci-doctor/bin:$PATH" \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYDANTIC_AI_NO_BANNER=1
 
 # Root on purpose: it writes report.md into a mounted dir it doesn't own (GitLab, -v $PWD).
 WORKDIR /app

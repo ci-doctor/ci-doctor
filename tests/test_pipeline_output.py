@@ -11,11 +11,11 @@ import io
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Job, Run
-from ci_doctor.pipeline import _ordered, process_job
 from ci_doctor.providers.registry import segmenter_for
 from ci_doctor.render.markdown import render_pipeline_markdown
 from ci_doctor.render.pipeline import triage
 from ci_doctor.render.terminal import render_pipeline
+from ci_doctor.service.analyze import _ordered, process_job
 from tests import support
 
 

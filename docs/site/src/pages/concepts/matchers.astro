@@ -23,7 +23,7 @@ const config = `matchers:
 
 const pinned = `matchers:
   registries:
-    acme: git+https://github.com/acme/matchers.git@v1.4.0   # a tag or a commit SHA`;
+    acme: https://raw.githubusercontent.com/acme/matchers/v1.4.0/   # a tag or a commit SHA`;
 ---
 
 <Base
@@ -82,9 +82,7 @@ const pinned = `matchers:
             <tr><td><code>before</code>, <code>after</code></td><td>0–100 lines.</td></tr>
             <tr
                 ><td><code>description</code></td><td
-                    >Required. One line of 20–250 printable ASCII characters, with
-                    no URL and nothing that reads like an instruction to the
-                    model.</td
+                    >Required. One line of 20–250 printable ASCII characters.</td
                 ></tr
             >
             <tr
@@ -140,9 +138,7 @@ const pinned = `matchers:
     <Code code={config} lang="yaml" theme="github-dark" />
     <p>
         A location is a path (relative to the config file that names it),
-        <code>file://</code>, <code>https://</code>, or a git repository as
-        <code>git+https://</code> or <code>git+ssh://</code>, with an optional
-        <code>@ref</code> and <code>#subdirectory=dir</code>. The full list is on
+        <code>file://</code> or <code>https://</code>. The full list is on
         <a href={url("/reference/configuration/")}>Configuration</a>.
     </p>
     <p>
@@ -150,8 +146,7 @@ const pinned = `matchers:
         expands the bundles, and fetches and validates each selected matcher. Every
         read is bounded: an index of at most 1 MiB and 2,000 entries, a file of at
         most 64 KiB, paths that cannot leave the registry, an <code>https</code>
-        redirect that cannot drop to <code>http</code>, and a git checkout of at
-        most 100 MiB within 60 seconds. Anything wrong, including an empty
+        and a redirect that cannot drop to <code>http</code>. Anything wrong, including an empty
         <code>include</code>, an unknown alias or name, or an unreachable registry,
         is a broken setup: the job exits 1, naming the registry and the cause.
         <code>ci-doctor config --validate</code> runs the same steps as a dry run.
@@ -162,9 +157,8 @@ const pinned = `matchers:
         There is no cache, no lock file and no version field: every run reads each
         registry as it is now. That keeps a fix to a matcher one push away from
         every pipeline, and it means a registry change reaches your next run
-        unreviewed. To hold a registry still, point at a fixed revision: a tag or
-        commit SHA after <code>@</code> in a <code>git+</code> location, or a raw
-        file URL that contains one.
+        unreviewed. To hold a registry still, point at a URL that contains a fixed
+        revision, such as a raw file URL with a tag or commit SHA in it.
     </p>
     <Code code={pinned} lang="yaml" theme="github-dark" />
     <p>

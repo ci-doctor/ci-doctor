@@ -7,7 +7,7 @@ the `JobResult`s the pipeline already returns — no new schema, no LLM. The
 terminal and markdown renderers turn the same facts into their own shapes.
 """
 
-from ci_doctor.pipeline import JobResult
+from ci_doctor.service.analyze import JobResult
 
 
 def triage(results: list[JobResult]) -> tuple[int, int, int]:

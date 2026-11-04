@@ -1,0 +1,21 @@
+"""`ci-doctor matchers verify`."""
+
+from pathlib import Path
+
+import typer
+
+from ci_doctor.cli._output import done
+from ci_doctor.matchers.verify import verify
+
+NAME = "verify"
+
+
+def run(
+    root: Path = typer.Argument(Path("."), help="The registry directory (the one holding index.yaml)."),
+    update: bool = typer.Option(
+        False, "--update", help="Write each fixture's .expected from the current output instead of comparing."
+    ),
+) -> None:
+    """Run every matcher over its fixtures and compare with the committed .expected files."""
+    n = verify(root, update=update)
+    done(f"{n} matchers verified" + (" (.expected files written; review the diff)" if update else ""))

@@ -1,6 +1,6 @@
 """Denoising: cuts volume hard while the causal line always survives."""
 
-from ci_doctor.config.schema import DenoiseConfig
+from ci_doctor.config.schemas.denoise import DenoiseConfig
 from ci_doctor.core.denoise import denoise, strip_ansi
 
 

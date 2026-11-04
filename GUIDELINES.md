@@ -24,18 +24,19 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 
 ```
 ci_doctor/
-  cli.py            typer entrypoint (exits 0 once analysis starts): options, delivery
-  pipeline.py       the analysis itself, with no CLI in it — segment, classify,
-                    evidence, report — over a live run or a log file
-  config/           pydantic schema + defaults.yml + layered loader
+  cli/              the command line, laid out like the command tree (§2.1). Parses,
+                    calls service/, prints; exits 0 once analysis starts
+  service/          what each command does, with no terminal in it: analyze (segment,
+                    classify, evidence, report), deliver (artifacts, MR note), setup
+  config/           schemas/ (the pydantic model, §2.2) + defaults.yml + layered loader
+                    + dump (yaml, diff)
   core/             provider-neutral: models, ports, attribution (pure), denoise,
                     extract, budget, redact, analyze
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
   matchers/         matcher registries: file formats (models), validate, index and
                     verify (the author's side), registry (resolve + load), config_edit
-                    and cli (`ci-doctor matchers …`)
-    transports/     local, http, git: how a registry's files are read
+    transports/     local, http: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
     gitlab/         python-gitlab adapter + segmenter + reasons
@@ -54,13 +55,57 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | Blame/classification logic | `core/attribution.py` | Pure function. No I/O, network, or clock. |
 | Evidence selection | `core/{denoise,extract,budget}.py` | Config-driven where possible. |
 | An LLM backend | `llm/backends.py` | Lazy-import the SDK inside the client. |
-| A new command | `cli.py` (surface) + `pipeline.py` (work) | Anything a non-terminal caller would also want belongs in `pipeline.py`. |
+| A command or subcommand | `cli/<group…>/<command>.py` (surface) + `service/` or the owning package (work) | See §2.1. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
 | A way to fetch a registry | `matchers/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
-| A tunable value | `config/schema.py` (scalar) or `defaults.yml` (data) | Prefer a config knob over a hardcoded pattern. |
+| A tunable value | `config/schemas/<key>.py` (scalar) or `defaults.yml` (data) | Prefer a config knob over a hardcoded pattern. |
 
 `core/` imports only `core.ports` abstractions. Adapters implement them.
+
+### 2.1 The command line
+
+`cli/` mirrors the command tree, the way a web framework's `pages/` mirrors its URLs:
+
+```
+cli/
+  __init__.py       `ci-doctor`: the root app, global options, main()
+  _context.py       the global -f files (config_files, target, editable)
+  _output.py        say / done / skipped / table, the pager, --plain and --no-color
+  analyze.py        `ci-doctor analyze`
+  config.py         `ci-doctor config`
+  matchers/
+    __init__.py     `ci-doctor matchers`: the group, and _SetupGroup
+    add.py …        `ci-doctor matchers add`, one module per command
+    registry/
+      __init__.py   `ci-doctor matchers registry`
+      ping.py …
+```
+
+- **A command is a module** with a `NAME` and a `run()`. **A group is a package**: its
+  `__init__.py` holds the typer app and registers its commands, one line each. Explicit,
+  not discovered: a scan of the folder would turn a typo into a missing command nobody
+  sees, and neither `ty` nor grep could follow it.
+- **No logic in `cli/`.** A command parses its options, calls `service/` (or the package
+  that owns the work, like `matchers/`) and prints. Anything an editor, an agent or a
+  future `mcp` command would also want belongs outside it. `cli/` imports `service/`,
+  never the reverse, and `service/` imports no typer or click; `tests/test_layout.py`
+  pins both.
+- **Options that mean the same thing everywhere are global**, on the root app: `-f`,
+  `--plain`, `--no-color`. Read them through `_context` and `_output`, never with a
+  per-command flag. Print through `_output` (`say`, `done`, `table`) so `--plain` works.
+
+### 2.2 The config schema
+
+`config/schemas/` mirrors `.ci-doctor.yml` the way `cli/` mirrors the commands: one
+module per top-level key (`llm.py` is `llm:`, `matchers.py` is `matchers:`), with that
+key's sub-blocks beside it. The package itself, `__init__.py`, is the whole document:
+`Config`. Two files are not keys: `matcher.py` is one registry matcher file, the thing
+`matchers:` selects, and the underscored modules hold what several keys share (`Strict`,
+the `Re2` field). A new top-level key is a new module plus one field on `Config`
+(`test_each_config_key_has_its_own_schema_module` pins it); the
+published JSON Schema is built from these models, so a move must leave
+`ci-doctor config --schema` byte-identical.
 
 ## 3. Invariants — do not break these
 
@@ -78,7 +123,7 @@ invariants go on the end. The first three, and #10, are load-bearing:
    analysis starts, always exit 0: the analyzer must never change a pipeline's outcome.
    `main()` maps `SetupError` (`ci_doctor/errors.py`) to 1 and every other `BaseException`
    to 0. Never raise `SetupError` from inside the analysis. The `matchers` commands never
-   analyze, so they turn any crash into a `SetupError` (`_SetupGroup` in `matchers/cli.py`):
+   analyze, so they turn any crash into a `SetupError` (`_SetupGroup` in `cli/matchers/__init__.py`):
    a registry check that crashes must not go green.
 4. **Nothing reaches the public internet** by default — no telemetry, update checks, or
    runtime downloads of models/rules/schemas.
@@ -156,8 +201,8 @@ parametrized over `support.PROVIDERS` then covers the format.
 ### 5.1 Add a matcher / language pack
 
 Pure data — no Python, and not in this repo. Matchers live in **registries**: the
-[official one](https://github.com/ci-doctor/matchers), or your own (a directory, an
-`https://` folder, or a `git+https://`/`git+ssh://` repository) listed under
+[official one](https://github.com/ci-doctor/matchers), or your own (a directory or an
+`https://` folder) listed under
 `matchers.registries`. A config selects them with `matchers.include` (`official/pytest`,
 `acme/mytool`); `defaults.yml` ships no matchers, only the `official` registry's address.
 In a registry, one file per matcher at `matchers/<ecosystem>/<id>/matcher.yaml`:
@@ -207,14 +252,13 @@ and keep the highest role among them.
 window reached the excerpt. It knows jest, not your in-house deploy CLI, so say what the
 tool is and what its failure *means* (`E-LOCK: another deploy holds the lock, not a code
 bug`), not only which lines the window keeps. One line of 20-250 printable ASCII
-characters, with no phrase that reads as an instruction to the model; the prompt frames it
-as context, and the log wins where the two disagree.
+characters; the prompt frames it as context, and the log wins where the two disagree.
 
 A loaded matcher's id is `alias/id`, so the same bare id from two registries is two
 matchers. To change a shipped pack, copy it into your own registry and include that
 instead; there is no field-by-field override.
 
-Every field you add to `config/schema.py` needs a `description=` — it becomes the text in
+Every field you add to `config/schemas/` needs a `description=` — it becomes the text in
 the published `ci-doctor.schema.json`, and `test_json_schema_documents_every_field` fails
 without it.
 

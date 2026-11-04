@@ -1,6 +1,6 @@
 """Secret scrubbing: known shapes, env literals, and the disable switch."""
 
-from ci_doctor.config.schema import RedactionConfig
+from ci_doctor.config.schemas.redaction import RedactionConfig
 from ci_doctor.core.redact import redact_text
 
 

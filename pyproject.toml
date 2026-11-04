@@ -8,16 +8,17 @@ requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "typer>=0.12,<0.27",  # 0.27 vendors click and drops the API matchers/cli.py subclasses
-    "click>=8.0",  # imported directly by matchers/cli.py (_SetupGroup)
+    "typer>=0.12,<0.27",  # 0.27 vendors click and drops the API cli/matchers/__init__.py subclasses
+    "click>=8.0",  # imported directly by cli/ (_SetupGroup, the click context)
     "pydantic>=2.5",
     "pyyaml>=6",
     "python-gitlab>=8.4.0",
     "pydantic-ai-slim>=2.40",  # core Agent only; a model SDK comes from a backend extra below
     "pygithub>=2.9.1",
     "requests>=2.32",  # imported directly to fetch GitHub's job-log redirect
-    "httpx>=0.27",  # imported directly for the openai backend's ca_bundle client
+    "httpx>=0.27",  # registry fetches, and the ca_bundle client of providers not yet on httpx2
     "google-re2>=1.1",  # RE2: linear-time matching for user/pack regexes — the ReDoS guard
+    "httpx2>=2.7",
 ]
 classifiers = [
     "License :: OSI Approved :: MIT License",
@@ -105,7 +106,7 @@ convention = "google"
 # ANN off for tests: a test function returns None and says so by being a test.
 # `support.py` and `conftest.py` are annotated anyway — they are shared code.
 "tests/**" = ["S101", "S603", "ANN"]  # assert is the test; subprocess there is fixture setup
-"ci_doctor/cli.py" = ["B008"]  # typer declares options as call-valued defaults, by design
+"ci_doctor/cli/**" = ["B008"]  # typer declares options as call-valued defaults, by design
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
