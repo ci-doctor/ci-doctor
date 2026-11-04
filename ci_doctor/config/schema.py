@@ -184,15 +184,6 @@ MAX_PATTERN_CHARS = 500
 MAX_PROGRAM_SIZE = 1000
 DESCRIPTION_CHARS = (20, 250)
 
-#: Phrases that try to instruct the model, or forge a chat role. A tripwire for lazy
-#: prompt injection, not a defence: the prompt still frames descriptions as data.
-_TRIPWIRE = re.compile(
-    r"\b(ignore|disregard|forget)\b.*\b(instruction|prompt|previous|above)"
-    r"|\b(system|assistant|user)\s*:"
-    r"|<\||https?://",
-    re.IGNORECASE,
-)
-
 
 def _matcher_re2(pattern: str, info: ValidationInfo) -> str:
     """Bound what one matcher regex may cost on every log line.
@@ -251,18 +242,15 @@ def _description(text: str, info: ValidationInfo) -> str:
         The text on one line.
 
     Raises:
-        ValueError: On a length outside the range, a non-printable-ASCII character,
-            or a tripwire phrase.
+        ValueError: On a length outside the range, or a non-printable-ASCII character.
     """
     owner = info.data.get("id")
     text = " ".join(text.split())
     low, high = DESCRIPTION_CHARS
     if not low <= len(text) <= high:
         raise ValueError(f"{owner!r}: description is {len(text)} characters, outside {low}-{high}")
-    if bad := sorted({c for c in text if not " " <= c <= "~"}):
-        raise ValueError(f"{owner!r}: description must be printable ASCII, found {bad!r}")
-    if hit := _TRIPWIRE.search(text):
-        raise ValueError(f"{owner!r}: description contains {hit.group(0)!r}, which reads as prompt injection")
+    if not (text.isascii() and text.isprintable()):
+        raise ValueError(f"{owner!r}: description must be printable ASCII, got {text!a}")
     return text
 
 
@@ -348,27 +336,6 @@ class ExtractionConfig(_Strict):
     tail_lines: int = Field(
         default=120, description="Lines kept from the end of the blamed section as a fallback."
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _matchers_moved(cls, data: object) -> object:
-        """Turn the old inline matcher list into a migration hint, not a bare "extra key".
-
-        Args:
-            data: The raw `extraction:` mapping.
-
-        Returns:
-            The mapping, unchanged.
-
-        Raises:
-            ValueError: If it still carries `matchers`.
-        """
-        if isinstance(data, dict) and "matchers" in data:
-            raise ValueError(
-                "matchers now come from registries. See `matchers.include`, and put custom "
-                "matchers in your own registry: https://matchers.cidoc.dev"
-            )
-        return data
 
 
 #: A registry name: what users type after the `/` in `alias/name`, and the matcher's

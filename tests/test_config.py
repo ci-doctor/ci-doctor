@@ -136,13 +136,6 @@ def test_a_trailing_newline_does_not_pass_as_an_alias_or_reference(matchers):
         Config(matchers=matchers)
 
 
-def test_inline_matchers_fail_with_the_migration_hint(tmp_path):
-    """An old `extraction.matchers` list is not a typo to the user; say where matchers went."""
-    body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n"
-    with pytest.raises(SetupError, match="matchers now come from registries"):
-        load_config(repo_config=_write(tmp_path, body), environ={})
-
-
 def test_default_config_ignores_the_repo_file(tmp_path, monkeypatch):
     """`default_config()` is the diff baseline, so it must ignore user layers."""
     monkeypatch.chdir(tmp_path)

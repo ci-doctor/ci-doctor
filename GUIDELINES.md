@@ -207,8 +207,7 @@ and keep the highest role among them.
 window reached the excerpt. It knows jest, not your in-house deploy CLI, so say what the
 tool is and what its failure *means* (`E-LOCK: another deploy holds the lock, not a code
 bug`), not only which lines the window keeps. One line of 20-250 printable ASCII
-characters, with no phrase that reads as an instruction to the model; the prompt frames it
-as context, and the log wins where the two disagree.
+characters; the prompt frames it as context, and the log wins where the two disagree.
 
 A loaded matcher's id is `alias/id`, so the same bare id from two registries is two
 matchers. To change a shipped pack, copy it into your own registry and include that
