@@ -429,8 +429,45 @@ def test_the_ca_bundle_client_is_the_kind_the_provider_takes(provider_class, exp
     assert type(backends._ca_bundle_client(provider_class, certifi.where())) is expected
 
 
+# --- the ca_bundle client survey ------------------------------------------------------
+#
+# Why this exists. `llm.ca_bundle` makes us build the HTTP client a provider talks
+# through, so it trusts a corporate CA. pydantic-ai is midway through moving from
+# `httpx` to its fork `httpx2`, and its providers no longer agree on which client
+# they take: most accept either (and warn on legacy `httpx`, which v3 removes),
+# anthropic takes only `httpx2`, groq and cohere still take only legacy `httpx`.
+# Hand a provider the wrong one and the user's first run with a CA bundle fails.
+#
+# How we choose. `_ca_bundle_client` keeps no table of provider names. It reads the
+# type annotation each provider puts on its own `http_client` parameter, and builds
+# `httpx2` wherever that annotation allows it. That follows pydantic-ai automatically,
+# but it means we trust the annotations, and the unit tests above only feed it
+# made-up classes.
+#
+# What the survey adds. It runs the same choice against every real provider class
+# that is installed, and checks the client we build is one the provider declares.
+# Locally that is the providers the `openai` extra brings (~26); CI installs ten
+# backend extras, so there it also covers anthropic, groq, cohere, google, mistral
+# and huggingface (~33). A pydantic-ai upgrade that moves a provider to `httpx2`, or
+# drops legacy `httpx`, then fails here, naming the provider, instead of reaching
+# a user. What it cannot see: a provider whose extra CI doesn't install, or one
+# whose annotation is wrong about what its SDK really accepts.
+
+
 def _installed_providers():
-    """Every pydantic-ai provider class importable here that takes an `http_client`."""
+    """Collect every pydantic-ai provider class importable here that takes an `http_client`.
+
+    Walks the `pydantic_ai.providers` package module by module. A module whose SDK
+    is a backend extra we didn't install raises `ImportError` on import, and is
+    skipped: we can only check what is there. Of what imports, we keep the classes
+    defined in that module (not ones it imported from elsewhere, which would be
+    counted twice) whose constructor has an `http_client` parameter, since those are
+    the only ones `_provider_kwargs` hands a client to.
+
+    Returns:
+        One `pytest.param` per provider class, with the class name as the test id,
+        so a failure reads `...[AnthropicProvider]`.
+    """
     import pydantic_ai.providers
 
     found = []
@@ -450,26 +487,51 @@ def _installed_providers():
 
 
 def _classes(hint):
-    """The classes a type hint names, unions and Optional unpacked."""
+    """The classes a type hint names, with unions and Optional unpacked.
+
+    `httpx.AsyncClient | httpx2.AsyncClient | None` becomes the set of the two
+    client classes; `None` and anything else that isn't a class is dropped. This
+    is the "declared" side the survey compares the built client against.
+    """
     if args := typing.get_args(hint):
         return {c for a in args for c in _classes(a)}
     return {hint} if isinstance(hint, type) else set()
 
 
+# Collected once, at import, because pytest needs the list to generate the test ids.
 INSTALLED_PROVIDERS = _installed_providers()
 
 
 def test_the_survey_finds_providers():
-    """An empty survey would pass everything below; the openai extra alone brings dozens."""
+    """Guard the survey against passing by finding nothing.
+
+    If pydantic-ai moved or renamed its providers package, the walk above would find
+    no classes and the parametrized test below would collect zero cases: green, and
+    proving nothing. The `openai` extra alone brings dozens of OpenAI-compatible
+    providers, so fewer than 10 means the walk is broken, not that providers are gone.
+    """
     assert len(INSTALLED_PROVIDERS) >= 10
 
 
 @pytest.mark.parametrize("provider_class", INSTALLED_PROVIDERS)
 def test_every_installed_provider_accepts_its_ca_bundle_client(provider_class):
-    """The client we build is one the provider declares, and httpx2 whenever it declares that.
+    """The client we build for a real provider is one it declares, and httpx2 when it can be.
 
-    Runs over the real classes, so a pydantic-ai upgrade that moves a provider to httpx2,
-    or drops legacy httpx, fails here instead of on a user's first `ca_bundle` run.
+    For one provider class, three steps:
+
+    1. Build the client exactly as a `ca_bundle` run would (`_ca_bundle_client`).
+    2. Resolve the provider's `http_client` annotation independently, the same way a
+       type checker would (`typing.get_type_hints`), and unpack it into the client
+       classes it allows.
+    3. Check the built client is an instance of one of them; and when `httpx2` is
+       among them, that we picked it, because the legacy client warns today and is
+       removed in pydantic-ai v3.
+
+    Some providers name `httpx` in an annotation without importing it at runtime
+    (a typing-only import), so their hints can't be resolved and raise `NameError`.
+    `_ca_bundle_client` falls back to legacy `httpx` for those, which every provider
+    still accepts; here we check that fallback happened, and that the raw annotation
+    does mention `httpx`, so the fallback was not a guess about something unrelated.
     """
     client = backends._ca_bundle_client(provider_class, certifi.where())
     try:
