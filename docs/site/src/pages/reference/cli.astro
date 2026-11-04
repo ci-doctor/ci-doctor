@@ -7,7 +7,7 @@ const cli = `ci-doctor analyze [OPTIONS] [TARGET]
 
 Arguments:
   TARGET                 Pipeline/run id, or the path to a raw job log to replay
-                         offline (an existing path means no network fetch).
+                         offline (an existing path means no run is fetched).
 
 Options:
   --job-id TEXT          Analyze a single job id.
@@ -28,7 +28,27 @@ ci-doctor analyze --format json "$CI_PIPELINE_ID" | jq '.[0].handoff_prompt'
 
 const configCmd = `ci-doctor config           # the effective config, every layer merged
 ci-doctor config --diff    # only what your file/env/flags change vs the defaults
-ci-doctor config --schema  # the JSON Schema, for editors and CI validation`;
+ci-doctor config --schema  # the JSON Schema, for editors and CI validation
+ci-doctor config --validate  # the setup dry run: exit 1 on what analyze would refuse`;
+
+const validateOut = `$ ci-doctor config --validate
+config ok: ci=gitlab, scm=gitlab, 23 matchers from 1 registries.`;
+
+const matchersUse = `ci-doctor matchers add ALIAS/NAME...      # append to matchers.include
+ci-doctor matchers remove ALIAS/NAME...   # drop entries from matchers.include
+ci-doctor matchers list                   # what include resolves to, and via which bundle
+ci-doctor matchers search TERM [--registry ALIAS]
+ci-doctor matchers info ALIAS/NAME        # description, role, registry, path; a bundle's members
+
+ci-doctor matchers registry add NAME=LOCATION...  # add or override, after fetching its index.yaml
+ci-doctor matchers registry remove NAME...        # refused while include still uses it
+ci-doctor matchers registry list
+ci-doctor matchers registry ping [NAME...]        # reachability, latency, matcher and bundle count
+
+# Every command above takes -f/--config PATH (default .ci-doctor.yml, created if missing).`;
+
+const matchersAuthor = `ci-doctor matchers index [ROOT] [--check]    # validate, then write ROOT/index.yaml
+ci-doctor matchers verify [ROOT] [--update]  # run each matcher over its fixtures`;
 
 const deterministic = `# Deterministic report, no model required:
 ci-doctor analyze --config .ci-doctor.yml "$CI_PIPELINE_ID"
@@ -48,13 +68,38 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
 
 <Base
     title="CLI"
-    description="The ci-doctor command line: analyze and config, their flags, and what --verbose prints."
+    description="The ci-doctor command line: analyze, config and matchers, their flags, exit codes, and what --verbose prints."
 >
     <h1>CLI</h1>
     <p class="lead">
-        Two commands: <code>analyze</code> and <code>config</code>. Both always
-        exit 0.
+        Three commands: <code>analyze</code>, <code>config</code> and
+        <code>matchers</code>. A broken setup exits 1; once analysis starts,
+        the exit code is always 0.
     </p>
+
+    <h2>Exit codes</h2>
+    <table>
+        <thead><tr><th>Exit</th><th>When</th></tr></thead>
+        <tbody>
+            <tr
+                ><td><code>1</code></td><td
+                    >A broken setup, caught before analysis starts: an invalid or
+                    missing config file, an empty <code>matchers.include</code>, an
+                    unknown registry or name, a registry that cannot be reached or
+                    serves an invalid file, bad CLI usage, a missing log file. Also
+                    any failure of a <code>matchers</code> command, a crash
+                    included.</td
+                ></tr
+            >
+            <tr
+                ><td><code>0</code></td><td
+                    >Everything else. Once analysis starts, an API error, an LLM
+                    failure or a crash still exits 0, so the analyzer never changes
+                    a pipeline's outcome.</td
+                ></tr
+            >
+        </tbody>
+    </table>
 
     <h2><code>analyze</code></h2>
     <Code code={cli} lang="text" theme="github-dark" />
@@ -85,6 +130,45 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         >:
     </p>
     <Code code={configCmd} lang="bash" theme="github-dark" />
+    <p>
+        <code>--validate</code> runs every setup step <code>analyze</code> takes
+        before analysis: it loads the config, then resolves, fetches and validates
+        every selected matcher. It exits 1 on the first problem, so it is the step
+        to run when you change <code>matchers:</code>:
+    </p>
+    <Code code={validateOut} lang="text" theme="github-dark" />
+
+    <h2><code>matchers</code></h2>
+    <p>
+        Selects matchers and manages the registries they come from. How
+        registries and <code>alias/name</code> refs work is on <a
+            href={url("/concepts/matchers/")}>Matchers</a
+        >.
+    </p>
+    <Code code={matchersUse} lang="text" theme="github-dark" />
+    <p>
+        Commands that change the config touch only its <code>matchers:</code>
+        block, and fetch before they write: an unknown registry or name exits 1
+        and leaves the file as it was. <code>add</code> skips a ref that is already
+        included, directly or through a bundle. <code>remove</code> drops only
+        entries written in <code>include</code>; to drop a matcher that came in
+        through a bundle, remove the bundle. Removing an override of
+        <code>official</code> falls back to its default address.
+    </p>
+    <p>
+        Two commands are for registry authors, run in the registry's own CI.
+        <code>ROOT</code> is the registry folder and defaults to the current
+        directory:
+    </p>
+    <Code code={matchersAuthor} lang="text" theme="github-dark" />
+    <p>
+        <code>index --check</code> writes nothing and exits 1 when the committed
+        <code>index.yaml</code> is stale. <code>verify</code> exits 1 when a
+        matcher's output differs from its <code>.expected</code> file or it has
+        too few fixtures; <code>--update</code> rewrites the
+        <code>.expected</code> files for review. Writing a registry is covered in
+        the <a href="https://github.com/ci-doctor/matchers">matchers repo</a>.
+    </p>
 
     <h2>Debugging with <code>--verbose</code></h2>
     <p>
@@ -101,7 +185,9 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
 
     <div class="note">
         <strong>Offline replay.</strong> Passing a log path instead of a run id runs
-        the full pipeline against a captured log with zero network and zero LLM —
-        ideal for testing your config or reproducing an attribution.
+        the full pipeline against a captured log without the CI provider, and
+        without an LLM when none is configured. The selected matchers are still
+        read from their registries, so point <code>matchers.registries</code> at a
+        local folder to replay with no network at all.
     </div>
 </Base>

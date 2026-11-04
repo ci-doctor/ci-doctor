@@ -24,7 +24,7 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 
 ```
 ci_doctor/
-  cli.py            typer entrypoint (always exits 0): options, rendering, delivery
+  cli.py            typer entrypoint (exits 0 once analysis starts): options, delivery
   pipeline.py       the analysis itself, with no CLI in it — segment, classify,
                     evidence, report — over a live run or a log file
   config/           pydantic schema + defaults.yml + layered loader
@@ -32,11 +32,15 @@ ci_doctor/
                     extract, budget, redact, analyze
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
+  matchers/         matcher registries: file formats (models), validate, index and
+                    verify (the author's side), registry (resolve + load), config_edit
+                    and cli (`ci-doctor matchers …`)
+    transports/     local, http, git: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
     gitlab/         python-gitlab adapter + segmenter + reasons
     github/         PyGithub adapter + segmenter + reasons
-tests/              fixtures + golden-file attribution suite
+tests/              synthetic-log builders (support.py) + unit and e2e tests
 docs/site/          Astro documentation site — see docs/site/GUIDELINES.md before editing
 examples/           .gitlab-ci.yml + GitHub Actions workflows
 ```
@@ -52,7 +56,8 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | An LLM backend | `llm/backends.py` | Lazy-import the SDK inside the client. |
 | A new command | `cli.py` (surface) + `pipeline.py` (work) | Anything a non-terminal caller would also want belongs in `pipeline.py`. |
 | Output format | `render/` | Implements the `Renderer` port. |
-| A matcher / language pack | `config/defaults.yml` | **Data, not code.** See §5.1. |
+| A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
+| A way to fetch a registry | `matchers/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
 | A tunable value | `config/schema.py` (scalar) or `defaults.yml` (data) | Prefer a config knob over a hardcoded pattern. |
 
 `core/` imports only `core.ports` abstractions. Adapters implement them.
@@ -68,15 +73,20 @@ invariants go on the end. The first three, and #10, are load-bearing:
    literal. Pinned by `test_core_carries_no_vendor_name_in_its_code`, which strips
    comments and docstrings first: prose naming the vendors a port deliberately
    spans is the invariant being honoured, not broken.
-3. **Always `exit 0`.** The analyzer must never change a pipeline's outcome — `main()`
-   catches `BaseException` and exits 0. Never add a code path that can exit non-zero.
+3. **Exit 1 only for a broken setup, detected before analysis starts** (config, matcher
+   resolution, CLI usage, a registry failing `matchers index --check` / `verify`). Once
+   analysis starts, always exit 0: the analyzer must never change a pipeline's outcome.
+   `main()` maps `SetupError` (`ci_doctor/errors.py`) to 1 and every other `BaseException`
+   to 0. Never raise `SetupError` from inside the analysis. The `matchers` commands never
+   analyze, so they turn any crash into a `SetupError` (`_SetupGroup` in `matchers/cli.py`):
+   a registry check that crashes must not go green.
 4. **Nothing reaches the public internet** by default — no telemetry, update checks, or
    runtime downloads of models/rules/schemas.
 5. **Never emit unredacted log content.** Redaction runs on the prompt *and* the report.
 6. **Every truncation is visible** (`… [N lines elided] …`), never a silent cut.
 7. `attribution.py` stays a pure function.
 8. Prompts live in `llm/prompts/*.txt`, not inline strings.
-9. Prefer a fixture over a manual test; prefer a config knob over a hardcoded pattern.
+9. Prefer an automated test over a manual one; prefer a config knob over a hardcoded pattern.
 10. **Read-only.** Every provider method is a read. The single exception in the whole
     tool is `SCMProvider.post_note`, which writes to a discussion thread. Nothing
     retries, cancels, restarts, pushes or merges anything — see `core/ports.py`.
@@ -90,65 +100,51 @@ Running them is in [CONTRIBUTING.md §2](CONTRIBUTING.md). What they must look l
 - **Deterministic by default.** Tests run the no-LLM path. If `config/defaults.yml`
   enables an `llm.backend`, the suite will shell out to a real model and slow to
   minutes — keep the shipped `llm:` block commented out.
-- **Fixtures over hand-built strings** for anything log-shaped.
+- **Build the log the test needs** with `tests/support.py`, never from a file. A test
+  renders only the shape it checks, in the real provider format, so the intent is on
+  the page.
 - Assert *behaviour*, not incidental formatting.
 
-### 4.1 Fixture layout
+### 4.1 Synthetic logs
 
-```
-tests/fixtures/
-  logs/<provider>/<case>.log    provider-specific raw job logs
-  expected/<case>.json          provider-NEUTRAL attribution verdicts
-```
-
-Logs are provider-scoped because every CI system frames a job differently. Verdicts
-are **not**: attribution lives in provider-neutral `core/`, so the same scenario must
-classify identically whoever produced the log. One `expected/oom_137.json` therefore
-covers every provider that ships an `oom_137.log`.
-
-Three tests keep that grid square, and all three are load-bearing:
-
-| Test | Catches |
-|---|---|
-| `test_every_expected_verdict_has_at_least_one_log` | a verdict asserting nothing |
-| `test_every_log_has_an_expected_verdict` | a log nothing asserts on — easy to hit, since a language pack looks covered with only a `test_matcher_packs.py` row |
-| `test_every_case_is_covered_by_every_provider` | a scenario proved against one log format only |
-
-So a new case means **one log per provider plus one verdict**, and a new provider
-means a full set of logs. That is the point: the same scenario, framed every way a
-runner can frame it, must reach the same verdict.
-
-When writing another provider's twin, re-frame the log — do not translate it. The
-tool output (the rust panic, the phpunit diff) is provider-neutral and belongs in
-verbatim; the runner's own lines are not, and a GitLab runner line inside a GitHub
-log is a fixture asserting something that can never happen.
-
-### 4.2 Never hardcode a provider path
-
-Use [`tests/support.py`](tests/support.py):
+ci-doctor ships no fixture logs. [`tests/support.py`](tests/support.py) renders the
+runner framing each segmenter parses:
 
 ```python
-from tests import support
+from tests.support import gh_log, gitlab_log
 
-
-@pytest.mark.parametrize("provider", support.providers_with("script_failure_noisy"))
-def test_something(provider):
-    log = support.read_log(provider, "script_failure_noisy")
-    sections = support.segment(provider, log)
+gh_log([("Run pytest -q", ["E   assert 1 == 2"])])  # timestamps, ##[group], ##[error]
+gh_log([("Run ./soak.sh", ["still working..."])], cancelled=True)  # step left open
+gitlab_log([("step_script", ["$ make"])], trailer="ERROR: Job failed: exit code 137")
+gitlab_log([("step_script", ["..."])], open_last=True)  # killed inside the section
 ```
 
-Adding a provider is then **one step and zero test edits**: drop
-`fixtures/logs/<provider>/`. `support.SEGMENTERS` is the shipped
-`providers/registry.py` table re-exported, so the segmenter is already there and
-every provider-generic test picks the directory up.
-`test_every_provider_dir_has_a_segmenter` fails loudly if the two drift.
+Tool output goes in verbatim; the builders add only the runner's own lines. A
+provider-generic test parametrizes over `support.PROVIDERS` and builds its log with
+`support.script_log(provider, lines)`, so the same scenario is proved in every format.
+Attribution lives in provider-neutral `core/`, so it must classify identically
+whoever framed the log — `test_attribution.py` holds one case per provider per rule,
+and `test_every_scenario_is_covered_by_every_provider` keeps that grid square.
+
+Matcher behaviour against real tool output (does `jest` fire on this log, and on
+nothing else?) is not tested here. It belongs to the matchers registry
+([ci-doctor/matchers](https://github.com/ci-doctor/matchers)), which pins every matcher
+with positive and negative fixture logs under `ci-doctor matchers verify`. Tests here
+that need matchers write a tiny registry with `support.write_registry(tmp_path, ...)`
+or take the shared `fx_registry` fixture.
+
+### 4.2 Adding a provider's log format
+
+One entry in `support.LOGS`: a builder for one failed script step in the new format.
+`test_every_segmenter_has_a_log_builder` fails until it exists, and every test
+parametrized over `support.PROVIDERS` then covers the format.
 
 ### 4.3 Which test file
 
 | Testing | File |
 |---|---|
-| Attribution verdict for a scenario | add `logs/<provider>/<case>.log` + `expected/<case>.json` — no code |
-| A matcher/language pack | `test_matcher_packs.py` (add a fixture + one row) |
+| Attribution verdict for a scenario | `test_attribution.py` — one `CASES` row per provider |
+| A matcher/language pack | the [matchers registry](https://github.com/ci-doctor/matchers), not here |
 | Log-format parsing | `test_segmenter.py` |
 | Config layering / validation | `test_config.py` |
 | Report shape, category, LLM fallback | `test_report.py` |
@@ -159,33 +155,31 @@ every provider-generic test picks the directory up.
 
 ### 5.1 Add a matcher / language pack
 
-Pure data — no Python. In `config/defaults.yml` under `extraction.matchers`:
+Pure data — no Python, and not in this repo. Matchers live in **registries**: the
+[official one](https://github.com/ci-doctor/matchers), or your own (a directory, an
+`https://` folder, or a `git+https://`/`git+ssh://` repository) listed under
+`matchers.registries`. A config selects them with `matchers.include` (`official/pytest`,
+`acme/mytool`); `defaults.yml` ships no matchers, only the `official` registry's address.
+In a registry, one file per matcher at `matchers/<ecosystem>/<id>/matcher.yaml`:
 
 ```yaml
-- id: mytool
-  role: tool                          # tool | wrapper | fallback
-  classification: [python, test]      # ecosystem first; metadata only
-  description: >-
-    Acme's build CLI. `MYTOOL ERROR <file>:<line>` is a config error in that file, not a code bug.
-  pattern: '^MYTOOL ERROR'            # or start:/end: for a block — exactly one form
-  exclude: ['^MYTOOL ERROR: retrying'] # anchor lines to reject; RE2 has no lookaround
-  before: 2
-  after: 10
-  examples:
-    match: ['MYTOOL ERROR: config.yaml:3: unknown key']
-    no_match: ['MYTOOL ERROR: retrying in 5s']
+id: mytool
+role: tool                          # tool | wrapper | fallback
+classification: [python, test]      # ecosystem first (its directory); metadata only
+description: >-
+  Acme's build CLI. `MYTOOL ERROR <file>:<line>` is a config error in that file, not a code bug.
+pattern: '^MYTOOL ERROR'            # or start:/end: for a block — exactly one form
+exclude: ['^MYTOOL ERROR: retrying'] # anchor lines to reject; RE2 has no lookaround
+before: 2
+after: 10
 ```
 
-Then **add the fixture and a row in `test_matcher_packs.py`**, or the pack proves
+Then **add fixtures for it** next to the file (`fixtures/*.log`), run
+`ci-doctor matchers verify --update`, review the `.expected` files, and
+`ci-doctor matchers index` to regenerate `index.yaml`. Without fixtures the pack proves
 nothing — a matcher that never matches fails silently, because the tail window still
-returns something. A fixture is three files, and two tests enforce that:
-
-- `tests/fixtures/logs/gitlab/<case>.log` and `logs/github/<case>.log` — both, always
-  (`test_every_case_is_covered_by_every_provider`).
-- `tests/fixtures/expected/<case>.json` — one provider-neutral verdict shared by both
-  (`test_every_log_has_an_expected_verdict`).
-
-`test_every_shipped_pack_is_covered_by_a_case` then fails if a pack has no `CASES` row.
+returns something. `verify` asks for at least 3 positive and 2 negative fixture logs per
+matcher.
 
 Anchor on the **cause**, not on a trailing summary line: a summary-only anchor windows
 *past* the detail above it. And anchor on something only *your tool* prints — see the
@@ -195,10 +189,9 @@ Windows are `before`/`after` lines around the anchor.
 
 Every regex is **RE2** (`core/regex.py`), compiled when the config loads: no lookaround
 (use `exclude`), no backreferences, `\z` not `\Z`, repeats of at most 1000, and
-`\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). `examples` are run by
-`test_every_example_is_accepted_or_rejected_by_the_anchor` for shipped packs only — in a
-user's `.ci-doctor.yml` they are documentation until `packs verify` (E11). A `no_match`
-line is the cheapest place to pin a wrong-tool trap from §7.
+`\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). A pattern is at most 500
+characters and 1,000 RE2 instructions, and an anchor (`pattern`/`start`/`end`) must not
+match an empty line.
 
 **Ranking.** When the evidence exceeds the token budget, `extract.py` sheds whole windows
 by `(role, position)` before `budget.py` truncates what is left: `fallback` first, then
@@ -213,37 +206,31 @@ and keep the highest role among them.
 **`description` is prompt text.** The LLM sees `id [role]: description` for every pack whose
 window reached the excerpt. It knows jest, not your in-house deploy CLI, so say what the
 tool is and what its failure *means* (`E-LOCK: another deploy holds the lock, not a code
-bug`), not only which lines the window keeps. Capped at 400 characters; the prompt frames
-it as context, and the log wins where the two disagree.
+bug`), not only which lines the window keeps. One line of 20-250 printable ASCII
+characters, with no phrase that reads as an instruction to the model; the prompt frames it
+as context, and the log wins where the two disagree.
 
-Config **lists replace, mappings deep-merge** — except lists whose entries all carry an
-`id`, which merge per id (`_merge_by_id` in `config/loader.py`). So a user pack with a new
-id is *added* to the shipped ones, and one reusing a shipped id *overrides* that pack and
-logs a warning naming it. The override is field by field: `role: wrapper` on the shipped
-`pytest` pack keeps its `start`/`end`, because blanking them would leave a matcher that
-can never fire. To switch a block pack to a `pattern`, null its `start` and `end` — a
-matcher has exactly one form.
+A loaded matcher's id is `alias/id`, so the same bare id from two registries is two
+matchers. To change a shipped pack, copy it into your own registry and include that
+instead; there is no field-by-field override.
 
 Every field you add to `config/schema.py` needs a `description=` — it becomes the text in
 the published `ci-doctor.schema.json`, and `test_json_schema_documents_every_field` fails
 without it.
 
-The docs site's matcher catalogue is **generated** from `defaults.yml`: each pack's
-`description`, `role` and `classification`, grouped by the first tag (a new ecosystem
-needs a `GROUPS` heading in `scripts/gen_docs_data.py`). After adding or retuning a pack,
-run `mise run docs:data`; `test_docs_data_is_current` fails if the committed JSON drifts.
+The matcher catalogue is the official registry's site, https://matchers.cidoc.dev.
 
 ### 5.2 Where a pattern goes: the classifier or the catalogue
 
 There are two places a "this looks like a failure" regex could land, and they answer
 different questions at different stages:
 
-| | `_ERROR_RE` in `core/attribution.py` | `extraction.matchers` in `defaults.yml` |
+| | `_ERROR_RE` in `core/attribution.py` | a matcher in a registry |
 |---|---|---|
 | Question | did anything in this **section** fail? | which **lines** are the evidence? |
 | Output | one boolean per line | a windowed excerpt, ranked |
 | Runs | before extraction, and only on rule 6 (last resort) | after the phase is already decided |
-| Tunable | no — `attribute()` takes no `Config`, by design (invariant #7) | yes, per repo, merged by id |
+| Tunable | no — `attribute()` takes no `Config`, by design (invariant #7) | yes, per repo, via `matchers.include` |
 
 So the classifier's list stays **runner-level**: the runner's own error annotations
 (`##[error]`, `ERROR:`, `FATAL`) and a non-zero exit. A `pytest`/`npm`/`go` signature
@@ -252,7 +239,7 @@ added there would be a second copy of the catalogue, hardcoded where no
 makes its runner say so. `test_the_classifier_does_not_carry_a_second_matcher_catalogue`
 pins that.
 
-New language pack → `defaults.yml`, always. Touch `_ERROR_RE` only when a **runner**
+New language pack → a registry, always. Touch `_ERROR_RE` only when a **runner**
 has a failure marker we cannot see.
 
 ### 5.3 The failure category
@@ -286,9 +273,9 @@ token read and a second version probe for nothing.
 4. `SEGMENTERS` keys on `ci`, never on `scm` — log framing is whatever the *runner*
    printed, which is why one segmenter can serve several CI systems (Forgejo and
    Gitea Actions both run act_runner and emit GitHub's `##[group]`).
-5. Add `tests/fixtures/logs/<name>/`. No test edit: the fixture directory is
-   matched against the same `SEGMENTERS` table. Fixtures are keyed on log format,
-   so a git-host-only adapter owes none.
+5. Add a log builder for the format to `support.LOGS` (§4.2).
+   `test_every_segmenter_has_a_log_builder` matches it against the same `SEGMENTERS`
+   table. Builders are keyed on log format, so a git-host-only adapter owes none.
 6. `test_core_carries_no_vendor_name_in_its_code` must stay green — add the new
    vendor to its regex. If it fires, the abstraction broke.
 
@@ -342,15 +329,16 @@ Real bugs, kept here so they don't recur:
 - **A matcher that matches the *runner* is worse than one that matches nothing.** Every
   failed job ends with `ERROR: Job failed: exit code N` (GitLab) or
   `##[error]Process completed with exit code N.` (GitHub), so a pack anchored on a bare
-  `^ERROR: .*failed` looks covered by every fixture in the suite while proving nothing.
+  `^ERROR: .*failed` looks covered by every fixture in the registry while proving nothing.
   `bazel` shipped that way and opened a high-ranked window on 40 of 41 logs.
-  `test_no_pack_fires_on_the_runners_own_trailer` pins it; only `generic_error` (the
-  fallback) and `oom` (the trailer's `exit code 137` is the *only* OOM signal GitLab
-  gives) are exempt.
+  Nothing in this repo pins it now that matchers live in registries: give a pack a
+  negative fixture that ends in the runner's trailer, so `matchers verify` fails if it
+  fires there. Only a fallback (`generic_error`) and `oom` (the trailer's `exit code 137`
+  is the *only* OOM signal GitLab gives) may match it.
 - **A pack can also be "covered" by the wrong tool.** `jest`'s `^FAIL ` matched
   `go test`'s `FAIL example.com/pkg 0.038s`, and `maven_gradle` only ever fired on
   gradle's half of its own pattern — both looked green for months. When adding a pack,
-  check what it matches across *every* fixture, not just its own.
+  check what it matches across *every* fixture in the registry, not just its own.
 - **Uncommenting the `llm:` block in `defaults.yml` makes the test suite call a real
   model**, taking it from ~2s to ~2min, and breaks
   `test_backends.py::test_backend_ready_rules` (it asserts a backend is *not* ready
@@ -370,12 +358,12 @@ Real bugs, kept here so they don't recur:
   predicate also decides which phases are reported as contributing factors, so admitting
   `##[notice]`/`##[debug]` would surface a debug line to the user as a warning. Adding a
   provider whose form is missing silently re-opens the "blamed the cache" bug, and
-  fixture ordering hides it whenever the noisy section comes first — pin it with a unit
+  log ordering hides it whenever the noisy section comes first — pin it with a unit
   case, not a log.
 - **A `^`-anchored matcher does not see the raw file.** Segmentation strips the
   provider's framing (GitHub prefixes every line with an ISO timestamp) before
-  `extract()` runs, so test matchers against `support.log_lines(...)`, never
-  `read_log(...).splitlines()`.
+  `extract()` runs, so test matchers against segmented lines (`read_fixture` in
+  `matchers/verify.py` does it), never `raw_log.splitlines()`.
 - **The domain models are plain dataclasses, not pydantic** — nothing validates what an
   adapter puts in them. A `datetime` where the model says `str | None` sails through and
   crashes much later, in the JSON dump. Normalise at the adapter boundary.

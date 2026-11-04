@@ -264,41 +264,12 @@ wheels = [
 
 [[package]]
 name = "boto3"
-version = "1.43.109"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.14' and sys_platform != 'emscripten'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten')",
-]
-dependencies = [
-    { name = "botocore", version = "1.43.109", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-10-ci-doctorr-openai' or (extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm')" },
-    { name = "jmespath", marker = "extra == 'extra-10-ci-doctorr-openai' or (extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm')" },
-    { name = "s3transfer", marker = "extra == 'extra-10-ci-doctorr-openai' or (extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm')" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/80/0430e16c302b0d1a4ca3c8c69ffee9e4f8f2170d56162d2761b34fd512ba/boto3-1.43.109.tar.gz", hash = "sha256:c829bc3352e1e3922d8fe1db10b697182ac411b64ce5fc3acb0a06a29837417e", size = 112661, upload-time = "2026-10-07T15:24:51.293Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a1/56/c83a8fdadf06f631d1a0c4d82fc8daa9e1a40f6354264fba20c186363f49/boto3-1.43.109-py3-none-any.whl", hash = "sha256:703a81baed186d31e27cf50065d25a9faeb704f009e7c56b0f002ca52a328896", size = 140044, upload-time = "2026-10-07T15:24:49.793Z" },
-]
-
-[[package]]
-name = "boto3"
 version = "1.43.123"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "(python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai') or (python_full_version < '3.12' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai')",
-    "(python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai') or (python_full_version < '3.12' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai')",
-]
 dependencies = [
-    { name = "botocore", version = "1.43.123", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-10-ci-doctorr-litellm' or extra != 'extra-10-ci-doctorr-openai'" },
-    { name = "jmespath", marker = "extra == 'extra-10-ci-doctorr-litellm' or extra != 'extra-10-ci-doctorr-openai'" },
-    { name = "s3transfer", marker = "extra == 'extra-10-ci-doctorr-litellm' or extra != 'extra-10-ci-doctorr-openai'" },
+    { name = "botocore" },
+    { name = "jmespath" },
+    { name = "s3transfer" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/fc/8a/64b46f075149f9160da44aa7e1052dd18431b9ad4435beb0cfb02cc48624/boto3-1.43.123.tar.gz", hash = "sha256:055fabb990c5d2f31fce4ca569255bd640cdd11a3ca68c9ecad35f4f8a5b83b5", size = 112638, upload-time = "2026-10-30T19:18:50.085Z" }
 wheels = [
@@ -307,41 +278,12 @@ wheels = [
 
 [[package]]
 name = "botocore"
-version = "1.43.109"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.14' and sys_platform != 'emscripten'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten')",
-]
-dependencies = [
-    { name = "jmespath", marker = "extra == 'extra-10-ci-doctorr-openai' or (extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm')" },
-    { name = "python-dateutil", marker = "extra == 'extra-10-ci-doctorr-openai' or (extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm')" },
-    { name = "urllib3", marker = "extra == 'extra-10-ci-doctorr-openai' or (extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm')" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/da/424aaef4727876f4095bd2c10e683bb8531ac3bea56b0b6efd29eeb57f91/botocore-1.43.109.tar.gz", hash = "sha256:46b15bea4d942aaea6d7ab7c4b8a3a7290305064a3b41a6cb271cde9da3ba371", size = 16301678, upload-time = "2026-10-07T15:24:46.458Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7c/d7/bf9e5988baf1245f3ac373e09f3204f641e7a2db170f512f236aa90961d6/botocore-1.43.109-py3-none-any.whl", hash = "sha256:cd00edff465264fb448e36acc9ee29a828f738fff3746270b3f685a19194a5a6", size = 15998671, upload-time = "2026-10-07T15:24:43.76Z" },
-]
-
-[[package]]
-name = "botocore"
 version = "1.43.123"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai'",
-    "(python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai') or (python_full_version < '3.12' and extra != 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai')",
-    "(python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai') or (python_full_version < '3.12' and extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai')",
-]
 dependencies = [
-    { name = "jmespath", marker = "extra == 'extra-10-ci-doctorr-litellm' or extra != 'extra-10-ci-doctorr-openai'" },
-    { name = "python-dateutil", marker = "extra == 'extra-10-ci-doctorr-litellm' or extra != 'extra-10-ci-doctorr-openai'" },
-    { name = "urllib3", marker = "extra == 'extra-10-ci-doctorr-litellm' or extra != 'extra-10-ci-doctorr-openai'" },
+    { name = "jmespath" },
+    { name = "python-dateutil" },
+    { name = "urllib3" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e0/de/011fc2a47fb066c47064b122498d2fd21f55bc90ea514acbddc37ca0f8c1/botocore-1.43.123.tar.gz", hash = "sha256:80948cb9b1cdf1a1a25809089a42e3a1bc4af0258d198222db6e97dcc660dd0c", size = 16486269, upload-time = "2026-10-30T19:18:44.609Z" }
 wheels = [
@@ -534,6 +476,7 @@ name = "ci-doctorr"
 version = "0.0.1a11"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "google-re2" },
     { name = "httpx" },
     { name = "pydantic" },
@@ -592,6 +535,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.0" },
     { name = "google-re2", specifier = ">=1.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.40,<1.104" },
@@ -612,7 +556,7 @@ requires-dist = [
     { name = "python-gitlab", specifier = ">=8.4.0" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "requests", specifier = ">=2.32" },
-    { name = "typer", specifier = ">=0.12" },
+    { name = "typer", specifier = ">=0.12,<0.27" },
 ]
 provides-extras = ["openai", "anthropic", "bedrock", "bedrock-mantle", "google", "groq", "mistral", "cohere", "xai", "huggingface", "litellm"]
 
@@ -1606,7 +1550,7 @@ version = "1.103.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
-    { name = "boto3", version = "1.43.123", source = { registry = "https://pypi.org/simple" } },
+    { name = "boto3" },
     { name = "certifi" },
     { name = "click" },
     { name = "fastuuid" },
@@ -2225,12 +2169,10 @@ anthropic = [
     { name = "anthropic" },
 ]
 bedrock = [
-    { name = "boto3", version = "1.43.109", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-10-ci-doctorr-openai' or (extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm')" },
-    { name = "boto3", version = "1.43.123", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-10-ci-doctorr-litellm' or extra != 'extra-10-ci-doctorr-openai'" },
+    { name = "boto3" },
 ]
 bedrock-mantle = [
-    { name = "botocore", version = "1.43.109", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-10-ci-doctorr-openai' or (extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm')" },
-    { name = "botocore", version = "1.43.123", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra != 'extra-10-ci-doctorr-openai') or (extra != 'extra-10-ci-doctorr-litellm' and extra != 'extra-10-ci-doctorr-openai') or (extra == 'extra-10-ci-doctorr-litellm' and extra == 'extra-10-ci-doctorr-openai')" },
+    { name = "botocore" },
     { name = "openai", version = "3.24.0", source = { registry = "https://pypi.org/simple" } },
 ]
 cohere = [
@@ -2904,8 +2846,7 @@ name = "s3transfer"
 version = "0.19.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "botocore", version = "1.43.109", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-10-ci-doctorr-openai' or (extra == 'extra-10-ci-doctorr-bedrock-mantle' and extra == 'extra-10-ci-doctorr-litellm')" },
-    { name = "botocore", version = "1.43.123", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-10-ci-doctorr-litellm' or extra != 'extra-10-ci-doctorr-openai'" },
+    { name = "botocore" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/43/35e4d8aa320bffe8287fe8f65f578fa2d2db0a64212f0e710dce58267854/s3transfer-0.19.2.tar.gz", hash = "sha256:ba0309fd86be3c27dbf78cdd813c13c5e1df16e5874b99d2535ebbdfb9892993", size = 165592, upload-time = "2026-07-22T19:30:44.432Z" }
 wheels = [

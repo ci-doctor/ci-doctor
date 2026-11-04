@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white">
   <img alt="Providers: GitLab | GitHub" src="https://img.shields.io/badge/providers-GitLab%20%7C%20GitHub-fc6d26">
-  <img alt="Read-only, always exit 0" src="https://img.shields.io/badge/read--only-always%20exit%200-2dd4bf">
+  <img alt="Read-only, exit 0 after setup" src="https://img.shields.io/badge/read--only-exit%200%20after%20setup-2dd4bf">
   <img alt="LLM: bring your own (optional)" src="https://img.shields.io/badge/LLM-bring%20your%20own%20·%20optional-1f6feb">
 </p>
 
@@ -33,8 +33,9 @@ the classifier is wrong, that's a bug with a failing test — not a prompt to tu
 - **Deterministic phase attribution** — a pure, fully-tested classifier decides where a job
   broke (`provision` · `prepare` · `fetch` · `script` · `post`) from metadata and log
   structure. Non-fatal `WARNING:` lines can never be blamed.
-- **Read-only and safe** — never edits code, commits, or opens MRs, and **always exits 0**,
-  so it can't change your pipeline's status or hide the real failure.
+- **Read-only and safe** — never edits code, commits, or opens MRs, and **exits 0 once
+  analysis starts**, so it can't change your pipeline's status or hide the real failure.
+  Only a broken setup (bad config, no matchers selected, an unreachable registry) exits 1.
 - **Useful with no LLM** — ships a deterministic report out of the box: phase, reason,
   terminal command, evidence excerpt, and templated remediation.
 - **Bring-your-own model** — optional LLM step via `openai` (any OpenAI-compatible endpoint,
@@ -42,8 +43,8 @@ the classifier is wrong, that's a bug with a failing test — not a prompt to tu
   `xai`, `huggingface` and more natively, or `litellm` (watsonx and ~100 others), selected by config.
 - **GitLab & GitHub** — one provider-neutral core; the GitHub adapter was added with *zero*
   changes to core.
-- **Air-gap friendly** — no telemetry, no update checks, no runtime downloads; ship as a
-  self-contained Docker image or an offline wheel bundle.
+- **Air-gap friendly** — no telemetry, no update checks; ship as a self-contained Docker
+  image or an offline wheel bundle, with the matcher registry cloned to a local path.
 - **Secret redaction** — scrubs secrets from the prompt *and* the report (round-trip tested).
 - **Structured output** — a rich terminal report, `report.md` + `report.json` artifacts (with
   a self-contained `handoff_prompt` you can paste into a coding agent), and one idempotent
@@ -63,9 +64,8 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
    ladder with a `WARNING:`-is-never-fatal rule.
 4. **Denoise / extract / budget** the blamed section into a small, high-signal evidence slice
    (ANSI/CR/dedup denoising, anchored windows, token budgeting — every truncation is visible).
-   Shipped matcher packs cover pytest/jest/go/maven/gradle/bazel, Rust, .NET, Ruby, PHP,
-   node + npm/pnpm/yarn/bun, Playwright/Cypress, tsc/eslint/mypy, Docker and Terraform;
-   add your own under `extraction.matchers` — they merge onto the shipped packs by id.
+   Matchers come from registries, selected with `matchers.include`: browse the official
+   one at https://matchers.cidoc.dev, and add your own under `matchers.registries`.
 5. **LLM (optional)** explains the cause *within* the already-decided phase, returning a
    validated JSON report. Disabled or unreachable → deterministic report instead.
 6. **Render / deliver** to the terminal, `report.md`/`report.json`, and an idempotent MR/PR note.
@@ -96,8 +96,11 @@ docker build -t ci-doctor .
 ## Quickstart
 
 ```sh
-# Replay a captured log offline — no network, no LLM, and no config: the log's
-# own framing says which CI produced it.
+# Select matchers once (writes .ci-doctor.yml; with none selected a run exits 1):
+uv run ci-doctor matchers add official/python
+
+# Replay a captured log — no CI, no token, no LLM: the log's own framing says
+# which CI produced it.
 uv run ci-doctor analyze failing-job.log
 
 # Against a live pipeline (reads $CI_PIPELINE_ID etc. inside CI):
@@ -171,7 +174,7 @@ the full workflow is in
 > the metadata that requires. None of this affects `uses:` — that resolves
 > straight from the repo either way.
 
-**GitLab** (`.gitlab-ci.yml`) — runs only on failure, always exits 0:
+**GitLab** (`.gitlab-ci.yml`) — runs only on failure, exits 0 once analysis starts:
 
 ```yaml
 ci-doctor:
@@ -195,8 +198,10 @@ Both providers have a complete, commented workflow in [`examples/`](https://gith
 ## Air-gapped / offline
 
 ci-doctor makes no network calls except to the GitLab/GitHub and LLM endpoints you
-configure — no telemetry, no update checks, no runtime model/rule/schema downloads.
-Build once where there is internet, then ship inside:
+configure and the matcher registries you declare — no telemetry, no update checks, no
+model or schema downloads. Registries are read on every run, with no cache: clone one
+inside the network and point `matchers.registries` at the local path. Build once where
+there is internet, then ship inside:
 
 ```sh
 docker build -t ci-doctor .                              # a self-contained image
@@ -215,9 +220,8 @@ requirements, configuration, usage, the GitHub Action, and CI/CD examples. Sourc
 
 Start with **[Concepts](https://docs.cidoc.dev/concepts/)** — the pipeline
 end to end, what each module decides, and what a phase, a matcher or a redaction pass
-actually is. **[Matchers](https://docs.cidoc.dev/concepts/matchers/)** lists every
-shipped pack; that page is generated from `config/defaults.yml`, so run
-`mise run docs:data` after changing a pack (a test fails if it drifts).
+actually is. **[Matchers](https://docs.cidoc.dev/concepts/matchers/)** explains matchers,
+bundles and registries; the official catalogue is at https://matchers.cidoc.dev.
 
 For contributors: how the code is built — where things go, the invariants, how to write
 tests — is [GUIDELINES.md](https://github.com/ci-doctor/ci-doctor/blob/master/GUIDELINES.md); how to get a change in — setup, commits,

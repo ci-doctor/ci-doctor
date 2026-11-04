@@ -27,13 +27,74 @@ def _run(monkeypatch, capsys, *argv):
     return capsys.readouterr().out
 
 
+@pytest.fixture
+def registry_config(tmp_path, monkeypatch, fx_registry):
+    """Run in tmp_path with a `.ci-doctor.yml` selecting the test registry's matchers."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ci-doctor.yml").write_text(
+        f"matchers:\n  registries:\n    fx: {fx_registry}\n  include: [fx/all]\n"
+    )
+    return tmp_path
+
+
+def _job_log(where, provider):
+    """Write a failed pytest job's log in `provider`'s format, for offline replay."""
+    path = where / "job.log"
+    path.write_text(support.script_log(provider, support.FAIL))
+    return str(path)
+
+
 def test_main_always_exits_zero_on_error(monkeypatch):
-    """Invariant #3: even a crash exits 0, so a pipeline outcome never changes."""
-    # A missing --config raises FileNotFoundError out of the loader, before anything renders.
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "-f", "/no/such/config.yml", "123"])
+    """Invariant #3: a crash once analysis runs exits 0, so a pipeline outcome never changes."""
+
+    def crash():
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "app", crash)
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 0
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["analyze", "-f", "/no/such/config.yml", "123"],  # a config that isn't there
+        ["analyze", "no/such/job.log"],  # a log that isn't there
+        ["analyze"],  # nothing to do
+        ["analyze", "--no-such-flag"],  # bad usage
+        ["analyze", "123"],  # no matchers selected
+    ],
+)
+def test_a_broken_setup_exits_one(argv, monkeypatch, capsys, tmp_path):
+    """Invariant #3: every way the setup can be wrong is seen, before analysis starts."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", *argv])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 1
+
+
+def test_an_empty_include_says_how_to_pick_matchers(monkeypatch, capsys, tmp_path):
+    """The zero-config run fails with the next step, not a stack of nothing."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "123"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    assert "ci-doctor matchers add official/<name>" in capsys.readouterr().err
+
+
+def test_a_setup_error_is_the_one_exit_one(monkeypatch, capsys):
+    """Invariant #3: a broken setup exits 1 and says why; nothing else does."""
+
+    def broken_setup():
+        raise cli.SetupError("registry 'acme': index.yaml is out of date")
+
+    monkeypatch.setattr(cli, "app", broken_setup)
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 1
+    assert "index.yaml is out of date" in capsys.readouterr().err
 
 
 def test_verbose_enables_debug_logging():
@@ -46,11 +107,11 @@ def test_verbose_enables_debug_logging():
     assert logging.getLogger("ci_doctor").level == logging.INFO
 
 
-@pytest.mark.parametrize("provider", support.providers_with("sample"))
-def test_from_file_replay_smoke(provider, monkeypatch, capsys, tmp_path):
+@pytest.mark.parametrize("provider", support.PROVIDERS)
+def test_from_file_replay_smoke(provider, monkeypatch, capsys, registry_config):
     """Offline replay renders a report and writes both artifacts."""
-    monkeypatch.chdir(tmp_path)  # report.md/report.json land here, not in the repo
-    log = str(support.log_path(provider, "sample").resolve())
+    tmp_path = registry_config  # report.md/report.json land here, not in the repo
+    log = _job_log(tmp_path, provider)
     monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "--no-color", log])
     with pytest.raises(SystemExit) as exc:
         cli.main()
@@ -63,11 +124,11 @@ def test_from_file_replay_smoke(provider, monkeypatch, capsys, tmp_path):
     assert (tmp_path / "report.json").exists()
 
 
-@pytest.mark.parametrize("provider", support.providers_with("sample"))
-def test_format_json_puts_a_parseable_report_on_stdout(provider, monkeypatch, capsys, tmp_path):
+@pytest.mark.parametrize("provider", support.PROVIDERS)
+def test_format_json_puts_a_parseable_report_on_stdout(provider, monkeypatch, capsys, registry_config):
     """`--format json` is what an agent reads: stdout must parse, with no panels in it."""
-    monkeypatch.chdir(tmp_path)
-    log = str(support.log_path(provider, "sample").resolve())
+    tmp_path = registry_config
+    log = _job_log(tmp_path, provider)
     monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "--format", "json", log])
     with pytest.raises(SystemExit) as exc:
         cli.main()
@@ -83,7 +144,7 @@ def test_format_json_puts_a_parseable_report_on_stdout(provider, monkeypatch, ca
     assert "wrote report.md" in captured.err
 
 
-def test_format_json_stdout_has_nothing_but_json(tmp_path):
+def test_format_json_stdout_has_nothing_but_json(registry_config):
     """`--format json | jq` must work, so nothing may share stdout with the payload.
 
     A subprocess, not an in-process call: pytest's logging plugin owns the root
@@ -92,7 +153,6 @@ def test_format_json_stdout_has_nothing_but_json(tmp_path):
     """
     import subprocess
 
-    provider = support.providers_with("sample")[0]
     proc = subprocess.run(
         [
             sys.executable,
@@ -101,9 +161,9 @@ def test_format_json_stdout_has_nothing_but_json(tmp_path):
             "analyze",
             "--format",
             "json",
-            str(support.log_path(provider, "sample").resolve()),
+            _job_log(registry_config, support.PROVIDERS[0]),
         ],
-        cwd=tmp_path,
+        cwd=registry_config,
         capture_output=True,
         text=True,
         check=False,
@@ -156,16 +216,18 @@ def test_repeated_config_flags_apply_left_to_right(monkeypatch, capsys, tmp_path
     assert "temperature: 0.9" in out  # keys only the earlier file set survive
 
 
-def test_config_validate_reports_ok_and_failure(monkeypatch, capsys, tmp_path):
-    """`--validate` names the bad key instead of raising, and confirms a good config."""
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "bad.yml").write_text("llm:\n  nope: 1\n")
+def test_config_validate_reports_ok_and_failure(monkeypatch, capsys, registry_config):
+    """`--validate` is the dry run: a bad key exits 1 naming it; a good setup counts its matchers."""
+    (registry_config / "bad.yml").write_text("llm:\n  nope: 1\n")
     monkeypatch.setattr(sys, "argv", ["ci-doctor", "config", "--validate", "-f", "bad.yml"])
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as exc:
         cli.main()
+    assert exc.value.code == 1
     assert "invalid config" in capsys.readouterr().err  # named, not raised
 
-    assert "config ok" in _run(monkeypatch, capsys, "config", "--validate")
+    out = _run(monkeypatch, capsys, "config", "--validate")
+    assert "config ok" in out
+    assert "2 matchers from 1 registries" in out
 
 
 def test_analyze_reports_a_bad_config_as_a_config_error(monkeypatch, capsys, tmp_path):
@@ -177,6 +239,6 @@ def test_analyze_reports_a_bad_config_as_a_config_error(monkeypatch, capsys, tmp
     with pytest.raises(SystemExit) as exc:
         cli.main()
     err = capsys.readouterr().err
-    assert exc.value.code == 0
+    assert exc.value.code == 1
     assert "invalid config" in err
     assert "internal error" not in err

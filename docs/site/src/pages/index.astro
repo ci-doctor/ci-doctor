@@ -15,7 +15,8 @@ pip install ci-doctorr
 # or the self-contained image, for air-gapped runners
 docker run --rm ci-doctor:latest --version`;
 
-const tryIt = `# Replay a captured log — no network, no LLM, no CI:
+const tryIt = `# Select matchers once, then replay a captured log — no LLM, no CI:
+ci-doctor matchers add official/python
 ci-doctor analyze failing-job.log
 
 # Against a live run (reads $CI_PIPELINE_ID / $GITHUB_REPOSITORY in CI):
@@ -78,8 +79,9 @@ ci-doctor analyze "$CI_PIPELINE_ID"`;
         <div class="card">
             <h3>Never masks the failure</h3>
             <p>
-                Read-only, and always exits 0 — it cannot change your pipeline's
-                status or hide the real error.
+                Read-only, and exits 0 once analysis starts — it cannot change
+                your pipeline's status or hide the real error. Only a broken
+                setup exits 1.
             </p>
         </div>
         <div class="card">
@@ -99,8 +101,8 @@ ci-doctor analyze "$CI_PIPELINE_ID"`;
         <div class="card">
             <h3>Air-gapped</h3>
             <p>
-                No runtime downloads, no telemetry, no hardcoded hosts. Ship as
-                a Docker image or offline wheels.
+                No telemetry, no update checks. Ship as a Docker image or offline
+                wheels, and point the matcher registry at a local copy.
             </p>
         </div>
         <div class="card">

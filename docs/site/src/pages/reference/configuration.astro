@@ -16,7 +16,7 @@ export CI_DOCTOR_CI="github"
 const inspect = `ci-doctor config           # the effective config, every layer merged
 ci-doctor config --diff    # only what your file/env/flags change vs the defaults
 ci-doctor config --schema  # the JSON Schema, for editors and CI validation
-ci-doctor config --validate            # merge every layer and report what fails
+ci-doctor config --validate            # the setup dry run: config, registries, matchers; exit 1 on a problem
 ci-doctor config -f base.yml -f ci.yml # repeatable, the rightmost file wins
 # Output pages through $PAGER on a terminal; --plain prints raw (as does piping).`;
 
@@ -77,18 +77,16 @@ analysis:
 phases:                          # section/step name -> phase (merged onto the shipped map)
   my_custom_deploy_section: script
 
+matchers:
+  registries:                    # alias -> registry folder (the one holding index.yaml)
+    official: https://matchers.cidoc.dev/   # shipped; override it, or add your own:
+    # acme: ./ci/matchers                   # a path, relative to this file
+    # pinned: git+https://github.com/ci-doctor/matchers.git@<tag-or-sha>#subdirectory=<dir>
+  include: []                    # alias/name of a matcher or bundle; empty exits 1
+  # include: [official/python, acme/mytool]
+
 extraction:
-  tail_lines: 120
-  matchers:                      # evidence windows, ranked by (role, position) under budget
-                                 # Merged by id onto the shipped language packs: a new
-                                 # id adds a pack, a shipped id retunes one (and warns).
-    - id: my_service_errors      # new id -> added alongside the shipped packs
-      role: tool                 # tool | wrapper | fallback
-      pattern: '^(ERROR|FATAL)\\b'
-      before: 5
-      after: 20
-    - id: pytest                 # shipped id -> only these fields change, the rest is inherited
-      role: wrapper
+  tail_lines: 120                # lines kept from the end of the blamed section
 
 denoise:
   collapse_carriage_returns: true   # collapse \\r progress bars to their final state
@@ -119,19 +117,20 @@ redaction:
         keys
         <em>mean</em> — phases, attribution, denoising, matchers, budget, redaction
         — start with
-        <a href={url("/concepts/")}>Concepts</a>. The shipped matcher packs are
-        listed on
-        <a href={url("/concepts/matchers/")}>Matchers</a>.
+        <a href={url("/concepts/")}>Concepts</a>. ci-doctor ships no matchers:
+        browse what a registry offers on
+        <a href="https://matchers.cidoc.dev">matchers.cidoc.dev</a>.
     </div>
 
     <h2>How layers combine</h2>
     <Code code={layering} lang="text" theme="github-dark" />
     <p>
-        Mappings deep-merge; lists and scalars replace. The one exception is a
-        list whose entries all carry an <code>id</code> — today only <code
-            >extraction.matchers</code
-        > — which merges per id, so your packs add to the shipped ones instead of
-        wiping them. Point at specific files with <code
+        Mappings deep-merge; lists and scalars replace. So
+        <code>matchers.registries</code>, a mapping, adds to the shipped
+        <code>official</code> entry, while <code>matchers.include</code>, a list,
+        replaces the one before it. A relative registry path resolves against the
+        directory of the config file that names it; one set in an environment
+        variable resolves against the working directory. Point at specific files with <code
             >-f path/to/.ci-doctor.yml</code
         >, repeated as often as you like — each one overrides the last.
     </p>
@@ -308,6 +307,73 @@ redaction:
             >AWS_SECRET_ACCESS_KEY</code
         > (or run with an instance role) so it never reaches that path.
     </div>
+
+    <h2>Matchers</h2>
+    <p>
+        Evidence matchers are not written in this file. They live in registries,
+        and the config only says where those are and what to load from them:
+    </p>
+    <table>
+        <thead><tr><th>Key</th><th>Default</th><th>What it does</th></tr></thead>
+        <tbody>
+            <tr
+                ><td><code>matchers.registries</code></td><td
+                    ><code>{"{official: https://matchers.cidoc.dev/}"}</code></td
+                ><td
+                    >Alias → the folder holding the registry's <code
+                        >index.yaml</code
+                    >. An alias is lowercase letters, digits, <code>_</code> and
+                    <code>-</code>. Locations are listed below.</td
+                ></tr
+            >
+            <tr
+                ><td><code>matchers.include</code></td><td><code>[]</code></td><td
+                    >Matchers and bundles to load, each <code>alias/name</code>.
+                    Nothing is selected by default, and an empty list exits 1.</td
+                ></tr
+            >
+        </tbody>
+    </table>
+    <table>
+        <thead><tr><th>Location</th><th>Example</th></tr></thead>
+        <tbody>
+            <tr
+                ><td>A local path, relative to the config file</td><td
+                    ><code>./ci/matchers</code></td
+                ></tr
+            >
+            <tr><td><code>file://</code></td><td><code>file:///srv/matchers</code></td></tr>
+            <tr
+                ><td><code>https://</code> (<code>http://</code> works, with a
+                    warning)</td
+                ><td><code>https://matchers.cidoc.dev/</code></td></tr
+            >
+            <tr
+                ><td><code>git+https://</code>, with an optional <code>@ref</code>
+                    and <code>#subdirectory=dir</code></td
+                ><td
+                    ><code
+                        >git+https://github.com/acme/matchers.git@v1.2.0#subdirectory=registry</code
+                    ></td
+                ></tr
+            >
+            <tr
+                ><td><code>git+ssh://</code>, same options</td><td
+                    ><code>git+ssh://git@github.com/acme/matchers.git@main</code></td
+                ></tr
+            >
+        </tbody>
+    </table>
+    <p>
+        Every run reads the registries as they are now: there is no cache, no
+        lock file and no version field. To pin one, point it at a fixed revision —
+        a tag or commit SHA after <code>@</code> in a <code>git+</code> location,
+        or a raw URL that contains one. A <code>git+</code> registry needs
+        <code>git</code> on <code>PATH</code> and authenticates however git already
+        does (SSH agent, credential helper). Edit both keys by hand or with
+        <a href={url("/reference/cli/")}><code>ci-doctor matchers</code></a>, and
+        check the result with <code>ci-doctor config --validate</code>.
+    </p>
 
     <h2>Regex syntax</h2>
     <p>

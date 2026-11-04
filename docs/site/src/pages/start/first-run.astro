@@ -3,6 +3,10 @@ import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
 import { url } from "../../lib/url";
 
+const select = `# Pick matchers for your stack (writes .ci-doctor.yml), then check the setup:
+ci-doctor matchers add official/python
+ci-doctor config --validate`;
+
 const replay = `# Save the log of a job that failed, then:
 ci-doctor analyze failing-job.log`;
 
@@ -33,16 +37,31 @@ Remediation
 >
     <h1>First run</h1>
     <p class="lead">
-        Start offline. Passing a log <em>path</em> instead of a run id runs the whole
-        pipeline against a captured log with zero network and zero LLM — the fastest
-        way to see what the tool actually does.
+        Start with a saved log. Passing a log <em>path</em> instead of a run id runs
+        the whole pipeline against it with no CI provider, no token and no LLM —
+        the fastest way to see what the tool actually does.
+    </p>
+
+    <h2>Select matchers</h2>
+    <p>
+        ci-doctor ships no matchers, and a run with none selected exits 1. Add the
+        ones for the tools your jobs run from the official registry — browse them
+        at <a href="https://matchers.cidoc.dev">matchers.cidoc.dev</a>, or with
+        <code>ci-doctor matchers search</code>:
+    </p>
+    <Code code={select} lang="bash" theme="github-dark" />
+    <p>
+        Each run reads the selected matchers from their registry, so it needs to
+        reach <code>matchers.cidoc.dev</code>, or a local copy — see <a
+            href={url("/concepts/matchers/")}>Matchers</a
+        >.
     </p>
 
     <h2>Replay a saved log</h2>
     <Code code={replay} lang="bash" theme="github-dark" />
     <p>
-        An existing path means no fetch is attempted, so this needs no token, no
-        config and no model. It is also the fastest way to test a <code
+        An existing path means no run is fetched, so this needs no token and no
+        model, only the <code>.ci-doctor.yml</code> from the step above. It is also the fastest way to test a <code
             >.ci-doctor.yml</code
         > or reproduce an attribution you disagree with.
     </p>

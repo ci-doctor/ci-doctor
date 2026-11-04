@@ -7,7 +7,8 @@ agent, a future `mcp` command) needs the same run without typer in the call stac
 What stays here is what only a CLI needs: options, rendering, artifacts, the note.
 
 Invariant #3: the analyzer must never change a pipeline's outcome, so `main()`
-catches everything and always exits 0.
+catches everything and exits 0. The one exception is a broken setup
+(:class:`~ci_doctor.errors.SetupError`), which exits 1.
 """
 
 import difflib
@@ -28,13 +29,19 @@ from rich.syntax import Syntax
 from rich.theme import Theme
 
 from ci_doctor import __version__
-from ci_doctor.config.loader import default_config, load_config
+from ci_doctor.config.loader import default_config, load_or_fail
 from ci_doctor.config.schema import Config
 from ci_doctor.core.models import Run
+from ci_doctor.errors import SetupError
+from ci_doctor.matchers.cli import app as matchers_app
+from ci_doctor.matchers.models import Ref
+from ci_doctor.matchers.registry import load as load_matchers
 from ci_doctor.pipeline import JobResult, analyze_log, analyze_run
 from ci_doctor.providers.registry import make_scm_provider
 
 app = typer.Typer(add_completion=False, help="Explain why a CI pipeline failed (read-only postmortem).")
+
+app.add_typer(matchers_app, name="matchers")
 
 log = logging.getLogger("ci_doctor.cli")
 
@@ -117,24 +124,21 @@ def analyze(
         verbose: Enable debug logging.
     """
     _configure_logging(verbose)
-    try:
-        cfg = load_config(repo_config=config_path)
-    except ValueError as exc:  # pydantic's ValidationError included: the user's config, not a crash
-        typer.echo(f"invalid config: {exc}", err=True)
-        return
-    log.debug("ci=%s scm=%s target=%s job_id=%s", cfg.ci, cfg.scm_vendor, target, job_id)
+    cfg = load_or_fail(config_path)
+    log.debug(f"ci={cfg.ci} scm={cfg.scm_vendor} target={target} job_id={job_id}")
+    if target is None:
+        raise SetupError("nothing to do: pass a pipeline id, or the path to a log to replay.")
+    replay = Path(target).is_file()
+    if not replay and _looks_like_a_path(target):
+        raise SetupError(f"no such log file: {target}")
+    # The last setup step: past it, invariant #3 means nothing changes the exit code.
+    matchers = load_matchers(cfg.matchers)
 
     run = provider = None
-    if target is not None and Path(target).is_file():
-        results = analyze_log(Path(target), cfg)
-    elif target is not None and _looks_like_a_path(target):
-        typer.echo(f"no such log file: {target}", err=True)
-        return
-    elif target is not None:
-        run, provider, results = analyze_run(target, cfg, job_id)
+    if replay:
+        results = analyze_log(Path(target), cfg, matchers)
     else:
-        typer.echo("nothing to do: pass a pipeline id, or the path to a log to replay.", err=True)
-        return
+        run, provider, results = analyze_run(target, cfg, matchers, job_id)
 
     _deliver(results, cfg, run=run, no_color=no_color, output_format=output_format)
     _maybe_post_mr(provider, run, results, cfg)
@@ -168,9 +172,9 @@ def config(
     if schema:
         text, lexer = _schema_json(), "json"
     elif not diff:
-        text, lexer = _as_yaml(load_config(repo_config=config_path)), "yaml"
+        text, lexer = _as_yaml(load_or_fail(config_path)), "yaml"
     else:
-        lines = _diff_lines(_as_yaml(default_config()), _as_yaml(load_config(repo_config=config_path)))
+        lines = _diff_lines(_as_yaml(default_config()), _as_yaml(load_or_fail(config_path)))
         text, lexer = "\n".join(lines) or "no differences: running on the shipped defaults.", "diff"
 
     if plain or (not less and not sys.stdout.isatty()):
@@ -186,21 +190,22 @@ def config(
 
 
 def _validate(paths: list[Path]) -> None:
-    """Merge every config layer and report whether the result validates.
+    """The dry run: every setup step `analyze` takes before analysis starts.
+
+    Loads the config, then resolves, fetches and validates every selected matcher.
 
     Args:
         paths: The `--config/-f` files, lowest precedence first.
 
-    Note:
-        Reports to stderr and still exits 0 — invariant #3 applies to every
-        subcommand, so grep the output rather than the exit code.
+    Raises:
+        SetupError: On the first setup problem, which exits 1.
     """
-    try:
-        cfg = load_config(repo_config=paths)
-    except Exception as exc:  # noqa: BLE001 - a bad config is a message, not a traceback
-        typer.echo(f"invalid config: {exc}", err=True)
-        return
-    typer.echo(f"config ok: ci={cfg.ci}, scm={cfg.scm_vendor}, {len(cfg.extraction.matchers)} matchers.")
+    cfg = load_or_fail(paths)
+    matchers = load_matchers(cfg.matchers)
+    registries = len({Ref.parse(r).alias for r in cfg.matchers.include})
+    typer.echo(
+        f"config ok: ci={cfg.ci}, scm={cfg.scm_vendor}, {len(matchers)} matchers from {registries} registries."
+    )
 
 
 def _looks_like_a_path(target: str) -> bool:
@@ -366,8 +371,10 @@ _LEVEL_COLORS = Theme(
 def main() -> None:
     """Console-script entry point.
 
-    Invariant #3: catches everything and always exits 0, so a crash in the
-    analyzer can never turn a passing pipeline red.
+    Invariant #3: a broken setup (a `SetupError`, or bad CLI usage) exits 1, so it
+    is seen; everything else, a crash included, exits 0, so the analyzer can never
+    turn a passing pipeline red. The `matchers` commands raise every crash as a
+    `SetupError` themselves, since they never analyze anything.
     """
     # NullHighlighter, not highlighter=None: rich falls back to ReprHighlighter on None.
     # stderr, because stdout carries the report or the JSON meant to be piped onward.
@@ -386,9 +393,13 @@ def main() -> None:
     )
     try:
         app()
-    except SystemExit:
-        # typer/click signal both normal and usage exits via SystemExit; force 0.
-        raise SystemExit(0) from None
+    except SetupError as exc:
+        print(f"ci-doctor: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+    except SystemExit as exc:
+        # typer/click exit through SystemExit: 0 for success, non-zero for bad usage,
+        # which is a broken setup like any other.
+        raise SystemExit(0 if exc.code in (0, None) else 1) from None
     except BaseException as exc:  # noqa: BLE001 - analyzer must never alter pipeline outcome
         print(f"ci-doctor: internal error, exiting 0 to preserve pipeline status: {exc}", file=sys.stderr)
         raise SystemExit(0) from None

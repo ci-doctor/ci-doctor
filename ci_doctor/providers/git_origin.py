@@ -39,7 +39,7 @@ def origin_repo(env_var: str) -> str | None:
             check=False,  # a missing remote is an answer, not an error
         )
     except (OSError, subprocess.SubprocessError) as exc:  # no git, no repo, hung command
-        log.debug("could not read git origin: %s", exc)
+        log.debug(f"could not read git origin: {exc}")
         return None
     url = proc.stdout.strip().removesuffix(".git")
     # Two shapes: "https://host/group/project" and scp-style "git@host:group/project".
@@ -48,5 +48,5 @@ def origin_repo(env_var: str) -> str | None:
     repo = path.strip("/")
     if not repo:
         return None
-    log.warning("%s is not set; using %r from git origin", env_var, repo)
+    log.warning(f"{env_var} is not set; using {repo!r} from git origin")
     return repo

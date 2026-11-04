@@ -2,7 +2,7 @@
 
 **Postmortem CI failure analyzer.** Reads a failed CI job's log and explains *why*
 it failed: a deterministic classifier decides **where** it failed, an optional LLM
-explains **why**. Read-only, air-gap friendly — no LLM, no network, no problem.
+explains **why**. Read-only, air-gap friendly — no LLM, no problem.
 
 - 📖 Documentation & configuration: https://docs.cidoc.dev/
 - 🐙 Source: https://github.com/ci-doctor/ci-doctor
@@ -14,7 +14,8 @@ explains **why**. Read-only, air-gap friendly — no LLM, no network, no problem
 
 ## Usage
 
-Replay a captured log, offline — no network, no LLM:
+Replay a captured log — no CI, no LLM. Matchers come from registries, so select some
+first in `./.ci-doctor.yml` (`matchers: {include: [official/python]}`):
 
 ```sh
 docker run --rm -v "$PWD:/app" docker.io/fennet/ci-doctor analyze failing-job.log
@@ -25,4 +26,5 @@ For a live pipeline, pass the CI's token and predefined variables (e.g.
 through to the container. Every `.ci-doctor.yml` key also maps to a `CI_DOCTOR_*`
 env var. See the [configuration reference](https://docs.cidoc.dev/reference/configuration/).
 
-Read-only, always exits 0, and scrubs secrets from every report. MIT licensed.
+Read-only, exits 0 once analysis starts (1 only for a broken setup), and scrubs
+secrets from every report. MIT licensed.

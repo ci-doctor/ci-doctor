@@ -1,9 +1,7 @@
 """Layered config loading: schema defaults < defaults.yml < repo file < env < flags.
 
-Mappings deep-merge; plain lists/scalars replace. The one exception is a list whose
-every entry carries an ``id`` (today: ``extraction.matchers``) — those merge per id,
-so a user pack adds to the shipped language packs instead of wiping them, and reusing
-a shipped id overrides only the fields the user wrote. Unknown
+Mappings deep-merge; lists and scalars replace, so `matchers.include` in a repo
+file is the whole selection, not an addition to the default one. Unknown
 keys in a config *file* are a hard error (schema uses ``extra="forbid"``). Env vars
 are more permissive by necessity (see :func:`_env_overlay`).
 """
@@ -14,63 +12,24 @@ from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from importlib import resources
 from pathlib import Path
-from typing import Any, TypeGuard
+from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
 from ci_doctor.config.schema import Config
+from ci_doctor.errors import SetupError
+from ci_doctor.matchers.transports import SCP_STYLE
 
 log = logging.getLogger(__name__)
 
 #: libyaml's safe loader when the wheel ships it (~10x faster than pure Python, and
-#: the packs make `defaults.yml` the largest document parsed per run), else pure Python.
+#: `defaults.yml` is parsed on every run), else pure Python.
 _LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 _ENV_PREFIX = "CI_DOCTOR_"
 _TOP_LEVEL = set(Config.model_fields)  # provider, gitlab, llm, ...
 _DEFAULT_REPO_CONFIG = Path(".ci-doctor.yml")
-
-
-def _is_id_keyed(value: object) -> TypeGuard[list[dict]]:
-    """Whether ``value`` is a non-empty list whose every entry is a dict with an ``id``.
-
-    Args:
-        value: Any merged config value.
-
-    Returns:
-        True if the list can be merged per ``id`` rather than replaced wholesale.
-    """
-    return (
-        isinstance(value, list)
-        and bool(value)
-        and all(isinstance(item, dict) and "id" in item for item in value)
-    )
-
-
-def _merge_by_id(base: list[dict], over: list[dict], where: str) -> list[dict]:
-    """Merge two id-keyed lists: same ``id`` deep-merges field by field.
-
-    Only the keys the user actually wrote are overridden, so retuning one field
-    (``role: wrapper`` on the shipped ``pytest`` pack) keeps the rest of that pack
-    instead of blanking it into a matcher that can never fire.
-
-    Args:
-        base: Entries from the lower-precedence layer (the shipped defaults).
-        over: Entries from the higher-precedence layer (the user's config).
-        where: Dotted config path, used only for the override warning.
-
-    Returns:
-        The base order preserved, overridden entries merged in place, and
-        genuinely new entries appended.
-    """
-    merged = {item["id"]: deepcopy(item) for item in base}
-    for item in over:
-        if item["id"] in merged:
-            log.warning("%s: config overrides the default %r entry", where, item["id"])
-            merged[item["id"]] = _deep_merge(merged[item["id"]], item, where)
-        else:
-            merged[item["id"]] = deepcopy(item)
-    return list(merged.values())
 
 
 def _deep_merge(base: dict, over: dict, path: str = "") -> dict:
@@ -82,16 +41,14 @@ def _deep_merge(base: dict, over: dict, path: str = "") -> dict:
         path: Dotted prefix of the current node, for override warnings.
 
     Returns:
-        A new dict: mappings deep-merged, id-keyed lists merged per id, everything
-        else replaced by ``over``.
+        A new dict: mappings deep-merged, everything else (lists included)
+        replaced by ``over``.
     """
     out = deepcopy(base)
     for key, value in over.items():
         here = f"{path}.{key}" if path else key
         if isinstance(value, dict) and isinstance(out.get(key), dict):
             out[key] = _deep_merge(out[key], value, here)
-        elif _is_id_keyed(value) and _is_id_keyed(out.get(key)):
-            out[key] = _merge_by_id(out[key], value, here)
         else:
             out[key] = deepcopy(value)
     return out
@@ -116,7 +73,7 @@ def _load_yaml(text: str) -> dict:
 
 
 def _shipped_defaults() -> dict:
-    """Read the packaged ``defaults.yml`` (phase map, matcher packs, noise patterns).
+    """Read the packaged ``defaults.yml`` (phase map, matcher registries, noise patterns).
 
     Returns:
         The baseline config layer, before any user input.
@@ -175,6 +132,31 @@ def _env_overlay(environ: Mapping[str, str]) -> dict:
     return out
 
 
+def anchor_registry(value: Any, base: Path) -> Any:  # noqa: ANN401 - unvalidated config
+    """Resolve a relative registry path against the directory of the file that names it.
+
+    `local: ./reg` in `sub/.ci-doctor.yml` means `sub/reg`, wherever the command runs.
+    Only a config file has a directory; a location from the env stays relative to the cwd.
+
+    Args:
+        value: A `matchers.registries` value as written, not yet validated.
+        base: The config file's directory.
+
+    Returns:
+        `base / value` for a relative path; anything else (a URL, `git+`, scp-style,
+        an absolute path, a non-string) unchanged.
+    """
+    if (
+        not isinstance(value, str)
+        or not base.parts
+        or urlsplit(value).scheme
+        or SCP_STYLE.match(value)
+        or Path(value).is_absolute()
+    ):
+        return value
+    return str(base / value)
+
+
 def load_config(
     repo_config: str | Path | Iterable[str | Path] | None = None,
     overrides: dict | None = None,
@@ -210,10 +192,36 @@ def load_config(
     for path in paths:
         if not path.is_file():
             raise FileNotFoundError(f"config file not found: {path}")
-        merged = _deep_merge(merged, _load_yaml(path.read_text()))
+        layer = _load_yaml(path.read_text())
+        registries = (layer.get("matchers") or {}).get("registries")
+        if isinstance(registries, dict):  # anything else fails validation below
+            for alias, value in registries.items():
+                registries[alias] = anchor_registry(value, path.parent)
+        merged = _deep_merge(merged, layer)
 
     merged = _deep_merge(merged, _env_overlay(os.environ if environ is None else environ))
     if overrides:
         merged = _deep_merge(merged, overrides)
 
     return Config(**merged)  # extra="forbid" -> unknown keys raise ValidationError
+
+
+def load_or_fail(paths: list[Path]) -> Config:
+    """:func:`load_config` for a command, turning a bad config into a `SetupError`.
+
+    Every command reads its config through this, so `analyze` and `matchers …`
+    see the same layers, env vars included.
+
+    Args:
+        paths: The `--config/-f` files, lowest precedence first.
+
+    Returns:
+        The effective config.
+
+    Raises:
+        SetupError: If a file is missing or unreadable, or the result doesn't validate.
+    """
+    try:
+        return load_config(repo_config=paths)
+    except Exception as exc:  # noqa: BLE001 - every way a config can be wrong is the user's to fix
+        raise SetupError(f"invalid config: {exc}") from None

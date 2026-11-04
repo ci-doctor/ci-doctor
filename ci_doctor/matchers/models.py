@@ -1,0 +1,162 @@
+"""The registry's own file formats: a matcher file, a bundle, and the `index.yaml` that lists everything.
+
+A matcher file is a :class:`~ci_doctor.config.schema.MatcherConfig` with the few
+rules only a registry adds; the other shapes are the registry's own. Every model is
+strict, so a key we don't know is an error rather than a silently ignored typo.
+"""
+
+from collections import Counter
+from typing import Annotated, Literal, NamedTuple
+
+from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, model_validator
+
+from ci_doctor.config.schema import BARE_ID, Description, MatcherConfig, Tag
+from ci_doctor.config.types import Strict
+
+#: Bounds the work one index can cause.
+MAX_INDEX_ENTRIES = 2000
+#: How deep bundles may nest (a bundle of matchers is depth 1).
+MAX_BUNDLE_DEPTH = 5
+
+#: A registry's layout, relative to its directory.
+INDEX = "index.yaml"
+MATCHER_GLOB = "matchers/*/*/matcher.yaml"
+BUNDLE_GLOB = "bundles/*.yaml"
+
+
+def check_relative_path(path: str) -> str:
+    """Keep an index path inside its registry, judged on the text alone.
+
+    A hostile index must not make ci-doctor read `/etc/...` or fetch another
+    host; the resolved location is checked again when the file is read.
+
+    Args:
+        path: A path as written in `index.yaml`.
+
+    Returns:
+        The path, unchanged.
+
+    Raises:
+        ValueError: On an absolute path, a `..` segment, a backslash, a scheme,
+            a `%`, `?` or `#`, or a file that is not `.yaml`.
+    """
+    # `%`, `?` and `#` because the path is also a URL: urljoin and httpx send
+    # `%2e%2e/` as written, and a server that decodes then normalises serves `../`.
+    if (
+        path.startswith("/")
+        or any(c in path for c in "\\:%?#")
+        or ".." in path.split("/")
+        or not path.endswith(".yaml")
+    ):
+        raise ValueError(f"{path!r} must be a relative POSIX path to a .yaml file inside the registry")
+    return path
+
+
+BareId = Annotated[str, StringConstraints(pattern=rf"^{BARE_ID}$")]
+
+
+class Ref(NamedTuple):
+    """A qualified `alias/name` reference, as written in `matchers.include`.
+
+    The config schema has already checked the shape, so parsing is a split.
+    """
+
+    alias: str
+    name: str
+
+    @classmethod
+    def parse(cls, ref: str) -> "Ref":
+        """Split `alias/name`.
+
+        Args:
+            ref: A validated `matchers.include` entry.
+
+        Returns:
+            The two halves.
+        """
+        alias, _, name = ref.partition("/")
+        return cls(alias, name)
+
+    def __str__(self) -> str:
+        """The reference as the user writes it, and the loaded matcher's id."""
+        return f"{self.alias}/{self.name}"
+
+
+class RegistryMatcher(MatcherConfig):
+    """A matcher as a registry file holds it: stricter than one in a config.
+
+    The id is bare; ci-doctor makes it `alias/id` at load. The description and a
+    tag are required: the description is all the LLM learns about the tool, and the
+    first tag names the ecosystem directory the file sits in.
+    """
+
+    id: BareId = Field(description="Matcher name, bare (`pytest`); also its directory name.")
+    description: Description = Field(
+        description="What the tool is and what its failure means. Shown to the LLM; one line."
+    )
+    classification: list[Tag] = Field(
+        min_length=1, max_length=5, description="1-5 tags, the ecosystem first (`[python, test]`)."
+    )
+
+
+class Bundle(Strict):
+    """A named list of matchers and bundles from the same registry: our `p/python`."""
+
+    id: BareId = Field(description="Bundle name, unique across the registry's matchers and bundles.")
+    description: Description = Field(description="One line saying what the bundle covers.")
+    include: list[BareId] = Field(
+        min_length=1, max_length=100, description="Matcher or bundle names in this registry."
+    )
+
+    @model_validator(mode="after")
+    def _no_duplicates(self) -> "Bundle":
+        """Reject a name listed twice, which is always a mistake in a hand-written list.
+
+        Returns:
+            The bundle, unchanged.
+
+        Raises:
+            ValueError: Naming the duplicates.
+        """
+        if dupes := sorted(n for n, count in Counter(self.include).items() if count > 1):
+            raise ValueError(f"bundle {self.id!r} includes {dupes} more than once")
+        return self
+
+
+class IndexEntry(Strict):
+    """Where one matcher or bundle lives, and what it is, without fetching it."""
+
+    path: Annotated[str, AfterValidator(check_relative_path)] = Field(
+        description="POSIX path relative to the registry directory."
+    )
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$", description="sha256 of the file's bytes. Not checked yet.")
+    description: str = Field(max_length=250, description="The file's description, for search and listings.")
+    classification: list[Tag] = Field(
+        default_factory=list, description="The matcher's tags; empty for a bundle."
+    )
+
+
+class Index(Strict):
+    """`index.yaml`: every matcher and bundle a registry serves, generated by `matchers index`."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    schema_version: Literal[1] = Field(alias="schema", description="Format version.")
+    matchers: dict[BareId, IndexEntry] = Field(default_factory=dict, description="Matchers by name.")
+    bundles: dict[BareId, IndexEntry] = Field(default_factory=dict, description="Bundles by name.")
+
+    @model_validator(mode="after")
+    def _bounded(self) -> "Index":
+        """Cap the entry count and keep names unique across matchers and bundles.
+
+        Returns:
+            The index, unchanged.
+
+        Raises:
+            ValueError: On too many entries, or a name used for both.
+        """
+        if (n := len(self.matchers) + len(self.bundles)) > MAX_INDEX_ENTRIES:
+            raise ValueError(f"index lists {n} entries, over {MAX_INDEX_ENTRIES}")
+        if both := sorted(self.matchers.keys() & self.bundles.keys()):
+            raise ValueError(f"names used for both a matcher and a bundle: {both}")
+        return self

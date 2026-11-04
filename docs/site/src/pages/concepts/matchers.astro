@@ -1,330 +1,191 @@
 ---
 import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
-import Extraction from "../../components/diagrams/Extraction.astro";
 import { url } from "../../lib/url";
-import catalogue from "../../data/matchers.json";
 
-// Generated from ci_doctor/config/defaults.yml by `mise run docs:data`; a test
-// fails if this file drifts from what ships. Never edit the JSON by hand.
-const total = catalogue.reduce((n, g) => n + g.packs.length, 0);
+const matcher = `id: mytool
+role: tool                          # tool | wrapper | fallback
+classification: [python, test]      # ecosystem first; metadata only
+description: >-
+  Acme's build CLI. MYTOOL ERROR <file>:<line> is a config error in that file, not a code bug.
+pattern: '^MYTOOL ERROR'            # or start: + end: for a block
+exclude: ['^MYTOOL ERROR: retrying']
+before: 2
+after: 10`;
 
-// The notes are each pack's own `description` in defaults.yml and use `backticks`
-// for inline code — the only markup they carry. Escape first: several notes
-// contain angle brackets (`error <Capital>`).
-const inlineCode = (s: string) =>
-    s
-        .replace(
-            /[&<>]/g,
-            (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!,
-        )
-        .replace(/`([^`]+)`/g, "<code>$1</code>");
+const config = `matchers:
+  registries:                       # official is already declared; add your own
+    acme: ./ci/matchers             # relative to this file
+  include:
+    - official/python               # a bundle
+    - official/pytest               # a matcher
+    - acme/mytool`;
 
-const addPack = `# .ci-doctor.yml — a new id is *added* to the shipped packs
-extraction:
-  matchers:
-    - id: my_service_errors
-      role: tool
-      classification: [any]
-      description: My service's own error lines.
-      pattern: '^\\[myservice\\] (ERROR|PANIC)'
-      before: 3
-      after: 12
-      examples:
-        match: ['[myservice] ERROR db unreachable']
-        no_match: ['[myservice] WARN slow query']`;
-
-const retune = `# A shipped id *overrides* that pack, field by field, and logs a warning.
-extraction:
-  matchers:
-    - id: pytest
-      role: wrapper       # start:/end: are inherited, not blanked`;
-
-const testIt = `# Prove it fires before you trust it — a matcher that never matches
-# fails silently, because the tail window still returns something.
-ci-doctor analyze path/to/failing-job.log`;
+const pinned = `matchers:
+  registries:
+    acme: git+https://github.com/acme/matchers.git@v1.4.0   # a tag or a commit SHA`;
 ---
 
 <Base
     title="Matchers"
-    description="The shipped matcher packs — what each one anchors on, and how to add or retune your own."
+    description="What a matcher and a bundle are, how roles rank their windows, and how registries and alias/name refs decide which ones a run loads."
 >
     <h1>Matchers</h1>
     <p class="lead">
-        A matcher recognises one tool's failure output and pulls the lines
-        around it into the evidence. {total} ship by default, covering the test frameworks,
-        compilers, linters and package managers most pipelines run. They are data,
-        not code — every one is overridable from your own <code
-            >.ci-doctor.yml</code
-        >.
+        A matcher recognises one tool's failure output and keeps the lines around
+        it. ci-doctor ships none: every run loads the ones your config selects from
+        the registries it declares.
     </p>
 
-    <h2>How a pack is shaped</h2>
-    <p>There are two forms, and a pack uses one or the other:</p>
+    <h2>What a matcher is</h2>
+    <p>
+        A matcher decides which lines of the blamed section are worth showing. Its
+        anchor is an RE2 regex; where it fires, it keeps a <strong>window</strong>,
+        and the <a href={url("/concepts/evidence/")}>evidence</a> step merges the
+        windows, ranks them and fits them to the budget. It comes in exactly one of
+        two forms:
+    </p>
+    <ul>
+        <li><code>pattern</code> with <code>before</code>/<code>after</code>: one
+            anchor line plus that much context.</li>
+        <li><code>start</code> and <code>end</code>: the block between two
+            anchors.</li>
+    </ul>
+    <Code code={matcher} lang="yaml" theme="github-dark" />
+    <p>
+        Every matcher comes from someone else's file, so every field is bounded and
+        checked again each time it is loaded:
+    </p>
     <table>
-        <thead><tr><th>Form</th><th>Fields</th><th>Use when</th></tr></thead>
+        <thead><tr><th>Field</th><th>Limit</th></tr></thead>
         <tbody>
-            <tr>
-                <td><strong>Anchor</strong></td>
-                <td
-                    ><code>pattern</code> + <code>before</code>/<code
-                        >after</code
-                    ></td
-                >
-                <td
-                    >The failure is one recognisable line, and the useful
-                    context is a known number of lines around it.</td
-                >
-            </tr>
-            <tr>
-                <td><strong>Block</strong></td>
-                <td><code>start</code> + <code>end</code></td>
-                <td
-                    >The tool prints a delimited region — <code
-                        >=== FAILURES ===</code
-                    > through to the summary line.</td
-                >
-            </tr>
+            <tr
+                ><td><code>id</code></td><td
+                    >Lowercase letters, digits and <code>_</code>, starting with a
+                    letter, at most 64 characters; the same as its directory. Loaded, it becomes
+                    <code>alias/id</code>.</td
+                ></tr
+            >
+            <tr
+                ><td><code>pattern</code>, <code>start</code>, <code>end</code></td
+                ><td
+                    >RE2, at most 500 characters and 1,000 RE2 instructions, and must
+                    not match an empty line.</td
+                ></tr
+            >
+            <tr
+                ><td><code>exclude</code></td><td
+                    >Up to 20 RE2 regexes that reject an anchor line. RE2 has no
+                    lookaround, so this is how to say "but not this".</td
+                ></tr
+            >
+            <tr><td><code>before</code>, <code>after</code></td><td>0–100 lines.</td></tr>
+            <tr
+                ><td><code>description</code></td><td
+                    >Required. One line of 20–250 printable ASCII characters, with
+                    no URL and nothing that reads like an instruction to the
+                    model.</td
+                ></tr
+            >
+            <tr
+                ><td><code>classification</code></td><td
+                    >Required. 1–5 tags of lowercase letters, digits and
+                    <code>-</code>. The first names the ecosystem directory the file
+                    sits in; the rest are for search and listings. None of them
+                    changes what the matcher does.</td
+                ></tr
+            >
         </tbody>
     </table>
     <p>
-        Both carry a <code>role</code>, which decides who survives when the
-        evidence exceeds the token budget: <code>fallback</code> windows are shed
-        first, then <code>wrapper</code>, then <code>tool</code> — and within a role
-        the earliest, because a job stops at its first failing command. A wrapper
-        reports that something it ran failed: <code>npm ERR!</code> always trails the
-        compiler errors that caused it, so it loses to <code>tsc</code> wherever it
-        sits. Every regex is RE2 — see
-        <a href={url("/reference/configuration/")}>Configuration</a> for the syntax.
+        The <code>description</code> is the one field the model reads: it sits
+        beside the windows that matcher selected, as data. The model knows public
+        tools; it does not know your in-house ones, and the description is where it
+        learns what their failure means.
     </p>
 
-    <div class="note">
-        <strong>Anchor on the cause, not the summary.</strong> A tool's final
-        <code>2 tests failed</code> line comes <em>after</em> the detail explaining
-        why, so a summary-only anchor windows straight past the evidence. Anchor on
-        something only your tool prints, too: a bare <code
-            >^ERROR: .*failed</code
-        > also matches
-        <code>ERROR: Job failed: exit code 1</code>, the line that ends every
-        failed GitLab job.
-    </div>
-
-    <h2>What happens to a match</h2>
+    <h2>Roles</h2>
     <p>
-        Matching is only the first step. Every hit becomes a window, windows
-        that touch are merged, and role and position decide which ones survive the
-        budget — all of it in
-        <code>core/extract.py</code>, before a model is ever involved.
+        <code>role</code> decides which windows survive when the evidence is over
+        budget. A <code>tool</code> prints the failure itself (<code>tsc</code>,
+        pytest, a traceback). A <code>wrapper</code> reports that a child process
+        failed (npm, make, gradle, BuildKit) and prints <em>after</em> it, so it
+        must lose to the tool it ran: <code>npm ERR!</code> trails the compiler
+        error that caused it. A <code>fallback</code> is a guess for output no other
+        matcher recognised, and goes first. Within a role, the later window wins.
+        The section's last lines are always kept as well, ranked below every
+        matcher.
     </p>
 
-    <Extraction />
-
+    <h2>Bundles</h2>
     <p>
-        Two details follow from this. Merged windows take the <em>highest</em> role
-        they absorbed, so a good pack never loses rank by sitting next to a weak one.
-        And shedding stops at one window: a single unbounded <code>start</code
-        >/<code>end</code> block can exceed the budget alone, and cutting <em
-            >inside</em
-        > it is
-        <code>core/budget.py</code>'s job, not the matcher's.
+        A bundle is a named list of matchers and other bundles from the same
+        registry, such as everything for one ecosystem. Including a bundle includes
+        what it lists. Bundles nest at most five deep, a cycle is an error, and a
+        matcher reached twice, directly and through a bundle, loads once.
+        <code>ci-doctor matchers list</code> shows which entry brought each matcher
+        in.
     </p>
 
-    <h2>The shipped catalogue</h2>
+    <h2>Registries and refs</h2>
     <p>
-        Generated from <code>config/defaults.yml</code>, so this is the {total} packs
-        that actually ship, in the order they are declared. <strong
-            >anchor</strong
-        > packs list the context lines they keep either side of the hit; <strong
-            >block</strong
-        > packs run from their <code>start</code> to their <code>end</code>.
+        A registry is a folder with an <code>index.yaml</code> listing every
+        matcher and bundle it serves. Your config names registries under
+        <code>matchers.registries</code>, alias → location, and selects from them
+        under <code>matchers.include</code>, each entry an
+        <code>alias/name</code> ref to a matcher or a bundle. One registry is
+        declared for you: <code>official</code>, at
+        <code>https://matchers.cidoc.dev/</code>. Nothing is included for you.
+    </p>
+    <Code code={config} lang="yaml" theme="github-dark" />
+    <p>
+        A location is a path (relative to the config file that names it),
+        <code>file://</code>, <code>https://</code>, or a git repository as
+        <code>git+https://</code> or <code>git+ssh://</code>, with an optional
+        <code>@ref</code> and <code>#subdirectory=dir</code>. The full list is on
+        <a href={url("/reference/configuration/")}>Configuration</a>.
+    </p>
+    <p>
+        Before analysis starts, each run reads every registry an include names,
+        expands the bundles, and fetches and validates each selected matcher. Every
+        read is bounded: an index of at most 1 MiB and 2,000 entries, a file of at
+        most 64 KiB, paths that cannot leave the registry, an <code>https</code>
+        redirect that cannot drop to <code>http</code>, and a git checkout of at
+        most 100 MiB within 60 seconds. Anything wrong, including an empty
+        <code>include</code>, an unknown alias or name, or an unreachable registry,
+        is a broken setup: the job exits 1, naming the registry and the cause.
+        <code>ci-doctor config --validate</code> runs the same steps as a dry run.
     </p>
 
-    {
-        catalogue.map((group) => (
-            <>
-                <h3>{group.group}</h3>
-                <div class="packs">
-                    {group.packs.map((p) => (
-                        <article class="pack">
-                            <div class="pack-head">
-                                <code class="pack-id">{p.id}</code>
-                                <span class:list={["chip", p.kind]}>
-                                    {p.kind}
-                                </span>
-                                <span class="pack-meta">
-                                    {p.kind === "block"
-                                        ? "start → end"
-                                        : `−${p.before} / +${p.after} lines`}
-                                    {" · "}{p.role}
-                                    {p.tags.length > 0 && ` · ${p.tags.join(", ")}`}
-                                </span>
-                            </div>
-                            <p
-                                class="pack-note"
-                                set:html={inlineCode(p.note)}
-                            />
-                            <dl class="pack-rx">
-                                <dt>
-                                    {p.kind === "block" ? "start" : "pattern"}
-                                </dt>
-                                <dd>
-                                    <code class="rx">{p.match}</code>
-                                </dd>
-                                {p.end && (
-                                    <>
-                                        <dt>end</dt>
-                                        <dd>
-                                            <code class="rx">{p.end}</code>
-                                        </dd>
-                                    </>
-                                )}
-                            </dl>
-                        </article>
-                    ))}
-                </div>
-            </>
-        ))
-    }
-
-    <h2>Adding your own</h2>
+    <h2>Pinning, and running with no network</h2>
     <p>
-        Matcher lists merge <strong>by id</strong>, which is the one exception
-        to "lists replace". A new id is added alongside the shipped packs:
+        There is no cache, no lock file and no version field: every run reads each
+        registry as it is now. That keeps a fix to a matcher one push away from
+        every pipeline, and it means a registry change reaches your next run
+        unreviewed. To hold a registry still, point at a fixed revision: a tag or
+        commit SHA after <code>@</code> in a <code>git+</code> location, or a raw
+        file URL that contains one.
     </p>
-    <Code code={addPack} lang="yaml" theme="github-dark" />
+    <Code code={pinned} lang="yaml" theme="github-dark" />
     <p>
-        The <code>description</code> is not only for this page: the LLM sees it beside
-        the lines your pack selected. The model knows public tools, not your in-house
-        ones — so say what the tool is and what its failure means. The
-        <code>examples</code> are checked by the test suite for shipped packs only;
-        in your own config they document intent but are not run yet.
+        Registries are the one network dependency besides your CI provider and your
+        LLM. On an air-gapped network, clone the registry inside it and point the
+        alias at the local path; nothing is then fetched from outside.
     </p>
 
-    <p>Reusing a shipped id retunes that pack instead, field by field:</p>
-    <Code code={retune} lang="yaml" theme="github-dark" />
+    <h2>Finding and writing matchers</h2>
     <p>
-        Only the fields you write are overridden — setting <code>role</code> on
-        <code>pytest</code> keeps its <code>start</code>/<code>end</code>,
-        because blanking them would leave a matcher that can never fire.
-        ci-doctor logs a warning naming any shipped pack you override, so an
-        accidental id collision is visible rather than silent.
+        The official registry's catalogue, with a playground to try a matcher
+        against a log, is at <a href="https://matchers.cidoc.dev"
+            >matchers.cidoc.dev</a
+        >. From the terminal, <code>ci-doctor matchers search</code> and
+        <code>ci-doctor matchers info</code> read the same indexes; the commands
+        are on <a href={url("/reference/cli/")}>CLI</a>.
     </p>
-
-    <h2>Check it actually fires</h2>
     <p>
-        The most common mistake is a pack that never matches. It fails <em
-            >silently</em
-        >: the tail window still returns output, so the report looks fine while
-        your matcher does nothing. Replay a real failing log and confirm your
-        lines are in the evidence:
-    </p>
-    <Code code={testIt} lang="bash" theme="github-dark" />
-    <p>
-        Contributing a pack upstream? It needs a fixture log for <em>both</em> providers
-        plus an expected verdict — see <a
-            href="https://github.com/ci-doctor/ci-doctor/blob/master/GUIDELINES.md"
-            >GUIDELINES.md</a
-        > §5.1. The <a href={url("/concepts/")}>concepts</a> page explains where
-        extraction sits in the pipeline.
+        Writing a matcher, testing it against fixture logs, and running your own
+        registry are covered in the <a
+            href="https://github.com/ci-doctor/matchers">ci-doctor/matchers</a
+        > repository, which is also where the official matchers are contributed.
     </p>
 </Base>
-
-<style>
-    /* Regexes are the content here, so let them wrap rather than scroll the row. */
-    code.rx {
-        white-space: pre-wrap;
-        word-break: break-word;
-        font-size: 0.8rem;
-        line-height: 1.5;
-    }
-
-    /* The catalogue is many small groups; tighten the default h3 rhythm. */
-    h3 {
-        margin-top: 2.25rem;
-    }
-
-    .packs {
-        display: grid;
-        gap: 0.6rem;
-        margin: 1rem 0;
-    }
-
-    .pack {
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--card);
-        padding: 0.85rem 1.05rem;
-        box-shadow: var(--shadow-sm);
-    }
-
-    .pack-head {
-        display: flex;
-        align-items: baseline;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .pack-id {
-        font-weight: 650;
-        font-size: 0.9rem;
-    }
-
-    .chip {
-        font-size: 0.68rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        padding: 0.15em 0.5em;
-        border-radius: 999px;
-        border: 1px solid var(--border-strong);
-        color: var(--muted);
-    }
-    .chip.block {
-        color: var(--accent);
-        background: var(--accent-soft);
-        border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-    }
-
-    .pack-meta {
-        margin-left: auto;
-        font-family: var(--mono);
-        font-size: 0.74rem;
-        color: var(--muted);
-        white-space: nowrap;
-    }
-
-    .pack-note {
-        margin: 0.5rem 0 0;
-        font-size: 0.92rem;
-        line-height: 1.6;
-        max-width: none;
-    }
-
-    /* pattern/start/end, labelled so a two-regex block pack is unambiguous. */
-    .pack-rx {
-        display: grid;
-        grid-template-columns: max-content 1fr;
-        gap: 0.15rem 0.7rem;
-        margin: 0.6rem 0 0;
-    }
-    .pack-rx dt {
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        color: var(--muted);
-        padding-top: 0.15rem;
-    }
-    .pack-rx dd {
-        margin: 0;
-    }
-
-    @media (max-width: 560px) {
-        .pack-meta {
-            margin-left: 0;
-            width: 100%;
-        }
-        .pack-rx {
-            grid-template-columns: 1fr;
-            gap: 0.05rem;
-        }
-    }
-</style>

@@ -1,4 +1,4 @@
-"""Air-gap guard: no test may open a real network connection.
+"""Air-gap guard: no test may open a real network connection. Plus one shared registry.
 
 Everything is exercised against in-memory doubles, so any real socket connect is
 a bug (a dependency that quietly started phoning home — exactly the regression
@@ -6,9 +6,12 @@ that would surface only in the one environment where it can't be debugged).
 """
 
 import socket
+from pathlib import Path
 from typing import Never
 
 import pytest
+
+from tests import support
 
 
 @pytest.fixture(autouse=True)
@@ -31,3 +34,16 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(socket.socket, "connect", guard)
     monkeypatch.setattr(socket, "create_connection", guard)
+
+
+@pytest.fixture(scope="session")
+def fx_registry(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The two-matcher Python registry from `tests.support`, shared read-only.
+
+    Args:
+        tmp_path_factory: pytest fixture for a session-wide directory.
+
+    Returns:
+        The registry directory. Tests that edit a registry write their own.
+    """
+    return support.py_registry(tmp_path_factory.mktemp("registry"))

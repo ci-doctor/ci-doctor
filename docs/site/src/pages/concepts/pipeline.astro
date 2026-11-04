@@ -43,8 +43,8 @@ const stages = [
         n: 6,
         name: "Extract",
         mod: "core/extract.py",
-        what: "Run every matcher over the blamed section and keep the windows they anchor. Every gap is marked.",
-        cfg: "extraction.matchers",
+        what: "Run every selected matcher over the blamed section and keep the windows they anchor, plus the section's tail. Every gap is marked.",
+        cfg: "matchers, extraction.tail_lines",
     },
     {
         n: 7,
@@ -106,6 +106,12 @@ const stages = [
         }
     </ol>
 
+    <p>
+        Setup comes first: the config is loaded, and every matcher in
+        <code>matchers.include</code> is fetched from its registry and validated.
+        A problem there exits 1 before stage 1; past it, the run always exits 0.
+        <a href={url("/concepts/matchers/")}>Matchers →</a>
+    </p>
     <div class="note">
         <strong>Stage 4 is the one that matters.</strong> Attribution runs <em
             >before</em

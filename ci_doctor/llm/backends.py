@@ -299,7 +299,7 @@ class PydanticAILLMClient(LLMClient):
         try:
             asyncio.run_coroutine_threadsafe(self._close_sdk_client(), loop).result(_CLOSE_WAIT_SECONDS)
         except Exception as exc:  # noqa: BLE001 - closing must never fail the run
-            log.debug("closing the LLM client failed: %s", exc)
+            log.debug(f"closing the LLM client failed: {exc}")
         finally:
             loop.call_soon_threadsafe(loop.stop)
 

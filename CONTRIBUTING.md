@@ -59,7 +59,7 @@ is not the same as garbage: it keeps `.venv`, `docs/site/node_modules`, the
 It does remove the per-version `.venv-3.x` that `test:matrix` builds.
 
 The suite blocks real sockets and never calls an LLM, so it runs in seconds. What a
-*good* test looks like, the fixture layout, and which file to put it in are in
+*good* test looks like, how to build a synthetic log, and which file to put it in are in
 [GUIDELINES.md §4](GUIDELINES.md).
 
 - **`test:matrix`** gives each version its own cached `.venv-3.x`, so your default
@@ -113,6 +113,9 @@ One long-lived branch, and every change reaches it through a pull request:
 - **`<type>/<slug>`** — branch off `master`, named with the same types the commits use:
   `feat/compare-command`, `fix/release-tag-push`, `docs/site-nav`. CI checks the name, so
   `feature/…` or `my-branch` fails before the tests do.
+- **Integration branches** — an epic that lands in phases gets one `feat/<EPIC>` branch
+  (`feat/E11`); each phase is a `feat/<EPIC>-<slug>` PR into it, and the epic reaches
+  `master` as one PR. CI runs on PRs into `feat/**` the same as into `master`.
 - **`master`** — protected by rulesets: no direct push, no force-push, linear history.
   A PR needs one approval from a code owner — any member of `@ci-doctor/maintainers` but
   its author — an approval of its latest push, resolved review threads, and green
@@ -177,6 +180,7 @@ Invariant #2 (no provider names in `core/`) is enforced by
 grep also hits the prose explaining why the ports are vendor-neutral, which is
 the invariant being honoured, not broken.
 
-- New behaviour has a test. New matcher has a fixture.
+- New behaviour has a test. A new matcher goes to the
+  [matchers registry](https://github.com/ci-doctor/matchers), with its fixtures.
 - Never commit `report.md` / `report.json` (local run artifacts).
 - Branch off `master` and open a PR — see §3.

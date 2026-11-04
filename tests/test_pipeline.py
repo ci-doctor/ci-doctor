@@ -58,7 +58,7 @@ class _FakeProvider:
 
 def _wire_provider(monkeypatch, names):
     """Point analyze_run at a fake provider serving `names` as failed jobs."""
-    log = support.read_log("github", "jest_test_failure")
+    log = support.script_log("github", support.FAIL)
     jobs = [
         Job(id=n, name=n, status="failed", started_at=f"2024-01-01T00:0{i}:00Z") for i, n in enumerate(names)
     ]
@@ -72,7 +72,7 @@ def test_analyze_run_preserves_job_order_when_parallel(monkeypatch):
     names = [f"job{i}" for i in range(8)]
     _wire_provider(monkeypatch, names)
     cfg = load_config(environ={}, overrides={"analysis": {"max_parallel_jobs": 4}})
-    _run, _provider, results = analyze_run("42", cfg)
+    _run, _provider, results = analyze_run("42", cfg, [])
     assert [r.job.name for r in results] == names
 
 
@@ -81,7 +81,7 @@ def test_analyze_run_analyzes_every_job_when_sequential(monkeypatch):
     names = [f"job{i}" for i in range(3)]
     _wire_provider(monkeypatch, names)
     cfg = load_config(environ={}, overrides={"analysis": {"max_parallel_jobs": 1}})
-    _run, _provider, results = analyze_run("42", cfg)
+    _run, _provider, results = analyze_run("42", cfg, [])
     assert [r.job.name for r in results] == names
 
 
@@ -110,7 +110,7 @@ def test_analyze_run_builds_one_llm_client_for_the_whole_run(monkeypatch):
         environ={},
         overrides={"llm": {"enabled": True, "model": "m", "api_base": "http://stub"}},
     )
-    _run, _provider, results = analyze_run("42", cfg)
+    _run, _provider, results = analyze_run("42", cfg, [])
     assert len(results) == 4
     assert len(built) == 1
     assert len(closed) == 1
