@@ -64,7 +64,7 @@ ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
 
 const verbose = `ci-doctor -v analyze failing-job.log
 
-ci-doctor [DEBUG] provider=gitlab target=failing-job.log ...
+ci-doctor [DEBUG] ci=gitlab scm=gitlab target=failing-job.log ...
 ci-doctor [DEBUG] job failing-job: 6 top-level sections
 ci-doctor [DEBUG] job failing-job: attribution phase=script reason=script_failure rule=trailer_exit_code confidence=high
 ci-doctor [DEBUG] blamed phase script: denoise 812->190, extract ->140, fit ->140 lines (truncated=False)

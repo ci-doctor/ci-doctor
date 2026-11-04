@@ -1,6 +1,5 @@
 """Config layering: defaults, file/env/flag precedence, the `matchers:` block, matcher fields."""
 
-import logging
 import tomllib
 from pathlib import Path
 
@@ -48,21 +47,11 @@ def test_scm_is_independent_of_ci(tmp_path):
     assert (cfg.ci, cfg.scm_vendor) == ("jenkins", "gitlab")
 
 
-def test_deprecated_provider_key_still_selects_the_ci(tmp_path, caplog):
-    """An existing `.ci-doctor.yml` keeps working, loudly."""
+def test_the_old_provider_key_is_an_unknown_key(tmp_path):
+    """`provider:` was renamed `ci:`; in the alpha the old spelling is a typo like any other."""
     p = tmp_path / ".ci-doctor.yml"
     p.write_text("provider: github\n")
-    with caplog.at_level(logging.WARNING):
-        cfg = load_config(repo_config=p, environ={})
-    assert cfg.ci == "github"
-    assert "deprecated" in caplog.text
-
-
-def test_provider_contradicting_ci_is_an_error(tmp_path):
-    """Both keys set to different systems: refuse rather than pick one."""
-    p = tmp_path / ".ci-doctor.yml"
-    p.write_text("ci: gitlab\nprovider: github\n")
-    with pytest.raises(SetupError):
+    with pytest.raises(SetupError, match="provider"):
         load_config(repo_config=p, environ={})
 
 
