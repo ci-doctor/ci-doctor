@@ -29,7 +29,7 @@ from rich.syntax import Syntax
 from rich.theme import Theme
 
 from ci_doctor import __version__
-from ci_doctor.config.loader import default_config, load_or_fail
+from ci_doctor.config.loader import default_config, load_config
 from ci_doctor.config.schema import Config
 from ci_doctor.core.models import Run
 from ci_doctor.errors import SetupError
@@ -124,7 +124,7 @@ def analyze(
         verbose: Enable debug logging.
     """
     _configure_logging(verbose)
-    cfg = load_or_fail(config_path)
+    cfg = load_config(config_path)
     log.debug(f"ci={cfg.ci} scm={cfg.scm_vendor} target={target} job_id={job_id}")
     if target is None:
         raise SetupError("nothing to do: pass a pipeline id, or the path to a log to replay.")
@@ -172,9 +172,9 @@ def config(
     if schema:
         text, lexer = _schema_json(), "json"
     elif not diff:
-        text, lexer = _as_yaml(load_or_fail(config_path)), "yaml"
+        text, lexer = _as_yaml(load_config(config_path)), "yaml"
     else:
-        lines = _diff_lines(_as_yaml(default_config()), _as_yaml(load_or_fail(config_path)))
+        lines = _diff_lines(_as_yaml(default_config()), _as_yaml(load_config(config_path)))
         text, lexer = "\n".join(lines) or "no differences: running on the shipped defaults.", "diff"
 
     if plain or (not less and not sys.stdout.isatty()):
@@ -200,7 +200,7 @@ def _validate(paths: list[Path]) -> None:
     Raises:
         SetupError: On the first setup problem, which exits 1.
     """
-    cfg = load_or_fail(paths)
+    cfg = load_config(paths)
     matchers = load_matchers(cfg.matchers)
     registries = len({Ref.parse(r).alias for r in cfg.matchers.include})
     typer.echo(

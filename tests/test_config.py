@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from ci_doctor.config.loader import _deep_merge, default_config, load_config
 from ci_doctor.config.schema import SCHEMA_ID, Config, MatcherConfig
+from ci_doctor.errors import SetupError
 
 
 def test_defaults_load_and_validate():
@@ -60,7 +61,7 @@ def test_provider_contradicting_ci_is_an_error(tmp_path):
     """Both keys set to different systems: refuse rather than pick one."""
     p = tmp_path / ".ci-doctor.yml"
     p.write_text("ci: gitlab\nprovider: github\n")
-    with pytest.raises(ValidationError):
+    with pytest.raises(SetupError):
         load_config(repo_config=p, environ={})
 
 
@@ -68,7 +69,7 @@ def test_unknown_key_is_error(tmp_path):
     """A typo in a config file raises rather than being silently ignored."""
     p = tmp_path / ".ci-doctor.yml"
     p.write_text("gitlab:\n  nonsense_key: 1\n")
-    with pytest.raises(ValidationError):
+    with pytest.raises(SetupError):
         load_config(repo_config=p, environ={})
 
 
@@ -83,7 +84,7 @@ def test_repo_file_overrides_defaults(tmp_path):
 
 def test_missing_repo_file_raises(tmp_path):
     """An explicitly named config file that does not exist is an error."""
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(SetupError):
         load_config(repo_config=tmp_path / "nope.yml", environ={})
 
 
@@ -122,7 +123,7 @@ def test_registries_merge_and_include_replaces(tmp_path):
 
 def test_an_unqualified_include_says_how_to_qualify_it(tmp_path):
     """`python` alone names no registry; the error shows the qualified form."""
-    with pytest.raises(ValidationError, match="official/python"):
+    with pytest.raises(SetupError, match="official/python"):
         load_config(repo_config=_write(tmp_path, "matchers:\n  include: [python]\n"), environ={})
 
 
@@ -138,7 +139,7 @@ def test_a_trailing_newline_does_not_pass_as_an_alias_or_reference(matchers):
 def test_inline_matchers_fail_with_the_migration_hint(tmp_path):
     """An old `extraction.matchers` list is not a typo to the user; say where matchers went."""
     body = "extraction:\n  matchers:\n    - id: x\n      pattern: 'a'\n"
-    with pytest.raises(ValidationError, match="matchers now come from registries"):
+    with pytest.raises(SetupError, match="matchers now come from registries"):
         load_config(repo_config=_write(tmp_path, body), environ={})
 
 
@@ -173,9 +174,9 @@ def test_latency_knobs_have_defaults():
 
 def test_latency_knobs_reject_nonsense():
     """Neither knob accepts a value that would stall or disable the run."""
-    with pytest.raises(ValidationError):
+    with pytest.raises(SetupError):
         load_config(environ={}, overrides={"llm": {"max_retries": -1}})
-    with pytest.raises(ValidationError):
+    with pytest.raises(SetupError):
         load_config(environ={}, overrides={"analysis": {"max_parallel_jobs": 0}})
 
 
@@ -188,7 +189,7 @@ def test_latency_knobs_reject_nonsense():
 )
 def test_a_pattern_re2_cannot_compile_is_a_config_error(tmp_path, body):
     """Every user-regex surface is RE2, and a bad one fails the load, not the run."""
-    with pytest.raises(ValidationError, match="is not valid RE2"):
+    with pytest.raises(SetupError, match="is not valid RE2"):
         load_config(repo_config=_write(tmp_path, body), environ={})
 
 
@@ -239,7 +240,7 @@ def test_exclude_is_re2_too():
 )
 def test_an_empty_regex_is_a_config_error(tmp_path, body):
     """`''` compiles in RE2, and is a silent bug on every regex surface."""
-    with pytest.raises(ValidationError, match="at least 1 character"):
+    with pytest.raises(SetupError, match="at least 1 character"):
         load_config(repo_config=_write(tmp_path, body), environ={})
     with pytest.raises(ValidationError, match="at least 1 character"):
         _matcher(pattern="")  # a matcher that never fires

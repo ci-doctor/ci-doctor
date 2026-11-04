@@ -18,7 +18,7 @@ import httpx
 import typer
 from typer.core import TyperGroup
 
-from ci_doctor.config.loader import anchor_registry, load_or_fail
+from ci_doctor.config.loader import anchor_registry, load_config
 from ci_doctor.config.schema import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.config_edit import edit_matchers, read_block
@@ -107,7 +107,7 @@ def _effective(path: Path) -> MatchersConfig:
     Raises:
         SetupError: If the config does not validate.
     """
-    return load_or_fail([path] if path.is_file() else []).matchers
+    return load_config([path] if path.is_file() else []).matchers
 
 
 def _via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str, str]:

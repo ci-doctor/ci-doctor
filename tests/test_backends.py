@@ -25,6 +25,7 @@ from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from ci_doctor.config.loader import load_config
+from ci_doctor.errors import SetupError
 from ci_doctor.llm import backends
 from ci_doctor.llm.backends import _KNOWN, PydanticAILLMClient, backend_ready, make_client
 
@@ -517,7 +518,7 @@ def test_openai_api_picks_the_model_class(api, model_class):
 
 def test_openai_api_rejects_an_unknown_value():
     """Only the two APIs exist; a typo fails at load, not at the first call."""
-    with pytest.raises(ValueError, match="openai"):
+    with pytest.raises(SetupError, match="openai"):
         _llm(backend="openai", openai={"api": "completions"})
 
 
@@ -614,13 +615,13 @@ def test_bedrock_mantle_builds_an_openai_shaped_model(aws_env):
 )
 def test_a_cloud_backend_requires_its_settings_block(backend, block):
     """Choosing a cloud backend without its block fails at load, naming the block."""
-    with pytest.raises(ValueError, match=f"llm.{block}:"):
+    with pytest.raises(SetupError, match=f"llm.{block}:"):
         load_config(environ={}, overrides={"llm": {"backend": backend, "model": "m"}})
 
 
 def test_the_old_flat_cloud_keys_are_rejected():
     """The flat fields moved into blocks; `extra=forbid` flags the old spelling."""
-    with pytest.raises(ValueError, match="aws_region"):
+    with pytest.raises(SetupError, match="aws_region"):
         load_config(environ={}, overrides={"llm": {"backend": "bedrock", "aws": {}, "aws_region": "x"}})
 
 
