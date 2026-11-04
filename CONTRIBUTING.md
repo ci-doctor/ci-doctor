@@ -82,7 +82,7 @@ shell — read them, they are short.
 |---|---|
 | `pre-commit` | `ruff check --fix` then `ruff format` on staged `*.py`, `ruff format --preview` on staged `*.md`, and re-stages only what it rewrote. Fix runs first: removing an unused import leaves the blank lines it sat between. |
 | `commit-msg` | `commitlint` (rules in `.commitlintrc.yml`; CI checks the PR title against the same types) rejects anything that is not a Conventional Commit. Not cosmetic — the release workflow reads the type to decide whether to ship. |
-| `pre-push` | `pytest`, `ty`, `commitlint` over the branch's commits, and `gitleaks` if installed. Everything CI runs, before the round trip. |
+| `pre-push` | `pytest`, `ty`, and `gitleaks` if installed. Everything CI runs, before the round trip. |
 
 `--no-verify` skips them. CI still runs the suite and checks the PR title, so it only
 moves where you find out.
