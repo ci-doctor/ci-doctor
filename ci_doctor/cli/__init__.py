@@ -19,7 +19,7 @@ from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
 
 from ci_doctor import __version__
-from ci_doctor.cli import _output, analyze, config
+from ci_doctor.cli import _context, _output, analyze, config
 from ci_doctor.cli.matchers import app as matchers_app
 from ci_doctor.errors import SetupError
 
@@ -53,6 +53,11 @@ def _root(
         "-f",
         help="Path to a .ci-doctor.yml, for every command. Repeatable — later files override earlier ones.",
     ),
+    write_to: Path | None = typer.Option(
+        None,
+        "--write-to",
+        help="The file commands that edit the config write (read too, once it exists). Default: your user config.",
+    ),
     plain: bool = typer.Option(
         False, "--plain", help="Bare text for scripts: no tables, no colour, no pager."
     ),
@@ -65,7 +70,8 @@ def _root(
     ),
 ) -> None:
     """Explain why a CI pipeline failed (read-only postmortem)."""
-    ctx.obj = config_path or []  # the `-f` files, lowest precedence first
+    ctx.meta[_context.FILES] = config_path or []
+    ctx.meta[_context.WRITE_TO] = write_to
     ctx.meta[_output.PLAIN] = plain
     ctx.meta[_output.NO_COLOR] = no_color or plain
     _output.configure_logging(verbose, colour=not (no_color or plain))

@@ -1,4 +1,7 @@
-"""Layered config loading: schema defaults < defaults.yml < repo file < env < flags.
+"""Layered config loading: schema defaults < defaults.yml < user file < repo file < env < flags.
+
+The user file (:func:`user_config`) holds what applies to every repo on the machine,
+and is where `ci-doctor matchers …` writes by default.
 
 Mappings deep-merge; lists and scalars replace, so `matchers.include` in a repo
 file is the whole selection, not an addition to the default one. Unknown
@@ -15,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import click
 import yaml
 
 from ci_doctor.config.schemas import Config
@@ -29,6 +33,19 @@ _LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 _ENV_PREFIX = "CI_DOCTOR_"
 _TOP_LEVEL = set(Config.model_fields)  # provider, gitlab, llm, ...
 _DEFAULT_REPO_CONFIG = Path(".ci-doctor.yml")
+
+
+def user_config() -> Path:
+    """The user's own config file, whether or not it exists.
+
+    `~/.config/ci-doctor/config.yml` on Linux (`$XDG_CONFIG_HOME`),
+    `~/Library/Application Support/ci-doctor/` on macOS and `%APPDATA%/ci-doctor/`
+    on Windows: click's `get_app_dir`, already a dependency, knows each platform's place.
+
+    Returns:
+        The path.
+    """
+    return Path(click.get_app_dir("ci-doctor")) / "config.yml"
 
 
 def _deep_merge(base: dict, over: dict, path: str = "") -> dict:
@@ -173,7 +190,7 @@ def _repo_paths(repo_config: str | Path | Iterable[str | Path] | None) -> list[P
 
 
 def _file_layer(path: Path) -> dict:
-    """Read one repo config file, its relative registry paths anchored to its directory.
+    """Read one config file, its relative registry paths anchored to its directory.
 
     Args:
         path: An existing config file.
@@ -196,8 +213,9 @@ def load_config(
 ) -> Config:
     """Assemble and validate the effective config from every layer.
 
-    Layers apply lowest to highest: schema defaults, ``defaults.yml``, the repo
-    config file(s), ``CI_DOCTOR_*`` env vars, then ``overrides``.
+    Layers apply lowest to highest: schema defaults, ``defaults.yml``, the user
+    config (when it exists), the repo config file(s), ``CI_DOCTOR_*`` env vars,
+    then ``overrides``.
 
     Args:
         repo_config: One config file path, or several applied left to right so the
@@ -216,7 +234,8 @@ def load_config(
     """
     layers = [_shipped_defaults()]
     try:
-        layers += [_file_layer(path) for path in _repo_paths(repo_config)]
+        user = [p for p in [user_config()] if p.is_file()]
+        layers += [_file_layer(path) for path in [*user, *_repo_paths(repo_config)]]
         layers.append(_env_overlay(os.environ if environ is None else environ))
         layers.append(overrides or {})
         merged: dict = {}

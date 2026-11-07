@@ -3,7 +3,7 @@
 Every command exits 1 on failure (a `SetupError`, invariant #3; a crash too, see
 `_SetupGroup`), so a registry's CI step goes red on a stale index and a user typo never
 silently edits the config. Commands that change the config touch only its `matchers:`
-block (`config_edit.py`) and fetch before they write, so a bad registry or name leaves
+block (`config/edit.py`) and fetch before they write, so a bad registry or name leaves
 the file as it was.
 """
 

@@ -48,8 +48,9 @@ ci-doctor matchers registry remove NAME...        # refused while include still 
 ci-doctor matchers registry list
 ci-doctor matchers registry ping [NAME...]        # reachability, latency, matcher and bundle count
 
-# The global ci-doctor -f PATH picks the config; the commands that edit it write the
-# last -f (default .ci-doctor.yml, created if missing).
+# The global ci-doctor -f PATH adds config files to read. The commands that edit the
+# config write your user config (~/.config/ci-doctor/config.yml on Linux), created if
+# missing; ci-doctor --write-to FILE matchers ... writes FILE instead, and reads it too.
 # Output is a table by default; ci-doctor --plain matchers ... prints one bare line per row.`;
 
 const matchersAuthor = `ci-doctor matchers index [ROOT] [--check]    # validate, then write ROOT/index.yaml

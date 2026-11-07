@@ -1,15 +1,28 @@
 """`ci-doctor matchers search`."""
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 import typer
 
 from ci_doctor.cli._context import editable
-from ci_doctor.cli._output import say, table
+from ci_doctor.cli._output import Row, say, table
 from ci_doctor.matchers.models import Index
 from ci_doctor.matchers.registry import Resolved, index_for, session
 
 NAME = "search"
+
+
+@dataclass(frozen=True)
+class _Hit(Row):
+    name: str
+    kind: str
+    classification: str
+    description: str
+
+    def line(self) -> str:
+        tags = f" [{self.classification}]" if self.classification else ""
+        return f"{self.name}  ({self.kind}){tags}  {self.description}"
 
 
 def run(
@@ -26,10 +39,10 @@ def run(
     if not rows:
         say(f"no matchers match {term!r}", "yellow")
         return
-    table(["Name", "Kind", "Classification", "Description"], rows, _line)
+    table(_Hit, rows)
 
 
-def _hits(alias: str, served: Index, needle: str) -> Iterator[tuple[str, str, str, str]]:
+def _hits(alias: str, served: Index, needle: str) -> Iterator[_Hit]:
     """The matchers and bundles of one registry that match the search.
 
     Args:
@@ -38,14 +51,10 @@ def _hits(alias: str, served: Index, needle: str) -> Iterator[tuple[str, str, st
         needle: The lowercased search term.
 
     Yields:
-        `(alias/name, kind, tags, description)` for each entry whose name,
+        A row for each entry whose name,
         description or classification contains `needle`.
     """
     for kind, entries in (("matcher", served.matchers), ("bundle", served.bundles)):
         for name, e in entries.items():
             if needle in " ".join([name, e.description, *e.classification]).lower():
-                yield f"{alias}/{name}", kind, ", ".join(e.classification), e.description
-
-
-def _line(name: str, kind: str, tags: str, description: str) -> str:
-    return f"{name}  ({kind}){f' [{tags}]' if tags else ''}  {description}"
+                yield _Hit(f"{alias}/{name}", kind, ", ".join(e.classification), e.description)

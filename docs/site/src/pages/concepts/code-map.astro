@@ -38,7 +38,12 @@ const packages = [
             {
                 path: "loader.py",
                 entry: "load_config()",
-                role: "Applies the five layers in order, and resolves a relative registry path against the directory of the config file that names it.",
+                role: "Applies the six layers in order, and resolves a relative registry path against the directory of the config file that names it.",
+            },
+            {
+                path: "edit.py",
+                entry: "edit_block()",
+                role: "Rewrites one top-level block of a config file (`matchers:`), leaving the rest of it and its comments alone.",
             },
             {
                 path: "defaults.yml",
@@ -128,11 +133,6 @@ const packages = [
                 role: "`matchers verify`: runs each matcher alone over its fixture logs, read the way `analyze` reads a log, and compares the output with the committed `.expected` files.",
             },
             {
-                path: "config_edit.py",
-                entry: "edit_matchers()",
-                role: "Rewrites only the `matchers:` block of a config file, leaving the rest of it and its comments alone.",
-            },
-            {
                 path: "transports/",
                 entry: "transport_for()",
                 role: "How a registry's files are read, picked by the location's shape: `local` (a path or `file://`) or `http` (bounded redirects and sizes).",
@@ -214,7 +214,7 @@ const packages = [
     },
 ];
 
-const layering = `schema defaults  <  defaults.yml  <  repo .ci-doctor.yml  <  CI_DOCTOR_* env  <  CLI flags`;
+const layering = `schema defaults  <  defaults.yml  <  user config  <  repo .ci-doctor.yml  <  CI_DOCTOR_* env  <  CLI flags`;
 ---
 
 <Base
@@ -268,7 +268,7 @@ const layering = `schema defaults  <  defaults.yml  <  repo .ci-doctor.yml  <  C
 
     <h2>Configuration layering</h2>
     <p>
-        Every knob in every one of those files is set by the same five-layer
+        Every knob in every one of those files is set by the same six-layer
         merge:
     </p>
     <Code code={layering} lang="text" theme="github-dark" />

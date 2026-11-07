@@ -3,7 +3,7 @@ import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
 import { url } from "../../lib/url";
 
-const layering = `schema defaults  <  defaults.yml  <  repo .ci-doctor.yml  <  CI_DOCTOR_* env  <  CLI flags`;
+const layering = `schema defaults  <  defaults.yml  <  user config  <  repo .ci-doctor.yml  <  CI_DOCTOR_* env  <  CLI flags`;
 
 const envExample = `# Nested keys use a double underscore:
 export CI_DOCTOR_LLM__MODEL="qwen2.5-coder:32b"
@@ -135,6 +135,14 @@ redaction:
         variable resolves against the working directory. Point at specific files with <code
             >ci-doctor -f path/to/.ci-doctor.yml</code
         >, before the command, repeated as often as you like — each one overrides the last.
+    </p>
+    <p>
+        The user config applies to every repo on the machine:
+        <code>~/.config/ci-doctor/config.yml</code> on Linux (or under
+        <code>$XDG_CONFIG_HOME</code>), <code>~/Library/Application Support/ci-doctor/config.yml</code>
+        on macOS, <code>%APPDATA%\ci-doctor\config.yml</code> on Windows. It is where
+        <code>ci-doctor matchers add</code> and the other editing commands write;
+        <code>ci-doctor --write-to .ci-doctor.yml matchers add …</code> edits the repo file instead.
     </p>
 
     <h2>Inspecting the result</h2>

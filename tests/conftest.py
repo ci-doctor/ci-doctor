@@ -36,6 +36,22 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket, "create_connection", guard)
 
 
+@pytest.fixture(autouse=True)
+def _user_config_dir(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point the user config at an empty directory, so the developer's own never leaks in.
+
+    Args:
+        tmp_path_factory: pytest fixture for a fresh directory.
+        monkeypatch: pytest fixture used to patch click's app dir.
+
+    Returns:
+        The directory `config.yml` lives in; tests that need a user config write it there.
+    """
+    home = tmp_path_factory.mktemp("user-config")
+    monkeypatch.setattr("click.get_app_dir", lambda _name: str(home))
+    return home
+
+
 @pytest.fixture(scope="session")
 def fx_registry(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The two-matcher Python registry from `tests.support`, shared read-only.

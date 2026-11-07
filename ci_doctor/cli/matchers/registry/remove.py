@@ -4,10 +4,9 @@ from typing import Annotated
 
 import typer
 
-from ci_doctor.cli._context import target
+from ci_doctor.cli._context import edit, read, target
 from ci_doctor.cli._output import done
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.config_edit import edit_matchers, read_block
 from ci_doctor.matchers.models import Ref
 
 NAME = "remove"
@@ -20,21 +19,21 @@ def run(
 
     Removing an override of a shipped registry (`official`) falls back to its default.
     """
-    config = target()
-    block = read_block(config)
+    block = read("matchers")
     own, include = block.get("registries", {}), block.get("include", [])
     for name in names:
         if name not in own:
-            raise SetupError(f"registry {name!r} is not in {config}")
+            raise SetupError(f"registry {name!r} is not in {target()}")
         if used := [r for r in include if Ref.parse(r).alias == name]:
             raise SetupError(f"registry {name!r} is still used by matchers.include: {', '.join(used)}")
+    kept = {k: v for k, v in own.items() if k not in names}
 
     def drop(m: dict) -> None:
-        for name in names:
-            m["registries"].pop(name, None)
-        if not m["registries"]:
+        if kept:
+            m["registries"] = kept
+        else:
             del m["registries"]
 
-    edit_matchers(config, drop)
+    edit("matchers", drop)
     for name in dict.fromkeys(names):
         done(f"removed {name}")

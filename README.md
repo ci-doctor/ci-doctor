@@ -121,7 +121,7 @@ they ran.
 
 ## Configuration
 
-Layered and pydantic-validated — `defaults.yml` < repo `.ci-doctor.yml` < `CI_DOCTOR_*` env
+Layered and pydantic-validated — `defaults.yml` < your user config < repo `.ci-doctor.yml` < `CI_DOCTOR_*` env
 < CLI flags, with nested env vars using `__` (`CI_DOCTOR_LLM__MODEL=…`). Unknown keys are
 an error. Minimal config:
 

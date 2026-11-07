@@ -262,3 +262,12 @@ def test_schema_url_lives_in_the_canonical_repo():
     assert repo == "https://github.com/ci-doctor/ci-doctor"
     assert SCHEMA_ID == f"{repo}/releases/latest/download/ci-doctor.schema.json"
     assert header == f"# yaml-language-server: $schema={SCHEMA_ID}"
+
+
+def test_the_user_config_sits_between_the_defaults_and_the_repo_file(tmp_path, _user_config_dir):
+    """The user file applies everywhere; a repo file still overrides it."""
+    (_user_config_dir / "config.yml").write_text("ci: github\nllm:\n  model: mine\n")
+    repo = tmp_path / ".ci-doctor.yml"
+    repo.write_text("llm:\n  model: the-repo's\n")
+    cfg = load_config(repo, environ={})
+    assert (cfg.ci, cfg.llm.model) == ("github", "the-repo's")

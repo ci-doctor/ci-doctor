@@ -29,13 +29,13 @@ ci_doctor/
   service/          what each command does, with no terminal in it: analyze (segment,
                     classify, evidence, report), deliver (artifacts, MR note), setup
   config/           schemas/ (the pydantic model, §2.2) + defaults.yml + layered loader
-                    + dump (yaml, diff)
+                    (user file < repo file) + dump (yaml, diff) + edit (one top-level block)
   core/             provider-neutral: models, ports, attribution (pure), denoise,
                     extract, budget, redact, analyze
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
   matchers/         matcher registries: file formats (models), validate, index and
-                    verify (the author's side), registry (resolve + load), config_edit
+                    verify (the author's side), registry (resolve + load)
     transports/     local, http: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
@@ -70,7 +70,7 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 ```
 cli/
   __init__.py       `ci-doctor`: the root app, global options, main()
-  _context.py       the global -f files (config_files, target, editable)
+  _context.py       the config read (-f) and written (--write-to, else the user config)
   _output.py        say / done / skipped / table, the pager, --plain and --no-color
   analyze.py        `ci-doctor analyze`
   config.py         `ci-doctor config`
@@ -92,8 +92,13 @@ cli/
   never the reverse, and `service/` imports no typer or click; `tests/test_layout.py`
   pins both.
 - **Options that mean the same thing everywhere are global**, on the root app: `-f`,
-  `--plain`, `--no-color`. Read them through `_context` and `_output`, never with a
-  per-command flag. Print through `_output` (`say`, `done`, `table`) so `--plain` works.
+  `--write-to`, `--plain`, `--no-color`. Read them through `_context` and `_output`, never
+  with a per-command flag. Print through `_output` (`say`, `done`, `table`) so `--plain`
+  works. A table's row is a frozen dataclass subclassing `_output.Row`: its fields are the
+  columns and its `line()` is the `--plain` form, so the three can't drift apart.
+- **Commands that edit the config** write the user config (`ci-doctor`'s directory under
+  the platform's config home) unless `--write-to FILE` names another, and change one
+  top-level block through `_context.edit` (`config/edit.py`).
 
 ### 2.2 The config schema
 

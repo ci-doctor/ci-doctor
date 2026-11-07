@@ -12,8 +12,9 @@ from pathlib import Path
 import yaml
 
 from ci_doctor.errors import SetupError
+from ci_doctor.files import atomic_write
 from ci_doctor.matchers.models import BUNDLE_GLOB, INDEX, MAX_BUNDLE_DEPTH, Bundle, Index
-from ci_doctor.matchers.validate import atomic_write, load_bundle, load_matcher, matcher_files
+from ci_doctor.matchers.validate import load_bundle, load_matcher, matcher_files
 
 
 class _IndexDumper(yaml.SafeDumper):
