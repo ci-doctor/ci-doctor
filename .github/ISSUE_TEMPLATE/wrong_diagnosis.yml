@@ -1,0 +1,55 @@
+name: Wrong diagnosis
+description: ci-doctor blamed the wrong phase or step, or missed the real error.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most useful thing you can attach is the job log, so we can replay it with
+        `ci-doctor analyze job.log`. **Redact secrets first.** If a matcher fired on the
+        wrong lines (rather than the wrong phase being blamed), report it to
+        [ci-doctor/matchers](https://github.com/ci-doctor/matchers/issues) instead.
+  - type: textarea
+    id: got
+    attributes:
+      label: What ci-doctor said
+      description: The phase it blamed and the summary, or paste the report.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What actually failed
+      description: The step and the lines that show the real cause.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Job log
+      description: Attach the raw log file (drag it in), or paste the relevant part.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `ci-doctor --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: ci
+    attributes:
+      label: CI system
+      options:
+        - GitLab
+        - GitHub Actions
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: llm
+    attributes:
+      label: LLM
+      description: Was an LLM backend configured?
+      options:
+        - No (deterministic report)
+        - "Yes"

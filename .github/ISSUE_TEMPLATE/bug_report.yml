@@ -1,0 +1,69 @@
+name: Bug report
+description: ci-doctor crashed, errored, or did something it shouldn't.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. If the problem is a **wrong diagnosis** (blamed the wrong step,
+        missed the real error), use the "Wrong diagnosis" template instead.
+
+        **Logs and configs can hold secrets.** Redact tokens, hostnames and anything private before pasting.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got instead.
+      placeholder: |
+        I ran `ci-doctor analyze 12345` and expected …, but got …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest steps that show it. A replayable job log (`ci-doctor analyze job.log`) is ideal.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output with `-v`
+      description: The full output of the failing command, run with `-v` for debug logs.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `ci-doctor --version`.
+      placeholder: 0.0.1a12
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run it
+      options:
+        - pip / uv
+        - Docker image
+        - GitHub Action
+        - GitLab CI job
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: ci
+    attributes:
+      label: CI system
+      options:
+        - GitLab
+        - GitHub Actions
+        - Other / not relevant
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Config
+      description: Output of `ci-doctor config --diff`, redacted.
+      render: yaml
