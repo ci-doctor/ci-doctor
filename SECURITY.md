@@ -8,7 +8,7 @@ Please **don't open a public issue**. Email **work@cidoc.dev** with:
 - the steps or a proof of concept that shows it,
 - the version (`ci-doctor --version`) and how you run it (pip, Docker image, CI job).
 
-You'll get a reply within 3 working days. We'll keep you updated while we work on a fix,
+You'll get a reply within 5 working days. We'll keep you updated while we work on a fix,
 and credit you in the release notes unless you'd rather stay anonymous. Please give us
 a chance to ship the fix before you disclose it publicly.
 
