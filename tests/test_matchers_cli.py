@@ -349,15 +349,23 @@ def test_a_crash_in_a_matchers_command_exits_1(cfg, monkeypatch, capsys):
     assert "boom" in err
 
 
-def test_a_relative_registry_path_is_relative_to_its_config_file(cfg, monkeypatch, capsys, fx_registry):
-    """`-f sub/.ci-doctor.yml` with `./reg` means `sub/reg`, wherever the command runs."""
+def test_registry_add_stores_a_relative_path_absolute(cfg, monkeypatch, capsys, fx_registry):
+    """`./reg` means the cwd's `reg`, even though the user config lives elsewhere."""
+    shutil.copytree(fx_registry, Path.cwd() / "reg")
+    code, _, err = _run(monkeypatch, capsys, "registry", "add", "fx=./reg")
+    assert code == 0, err
+    assert _block(cfg)["registries"] == {"fx": str(Path.cwd() / "reg")}
+
+
+def test_a_hand_written_relative_registry_path_is_relative_to_its_config_file(
+    cfg, monkeypatch, capsys, fx_registry
+):
+    """`sub/.ci-doctor.yml` with `./reg` means `sub/reg`, wherever the command runs."""
     sub = Path.cwd() / "sub"
     shutil.copytree(fx_registry, sub / "reg")
-    config = sub / ".ci-doctor.yml"
-    code, _, err = _run(monkeypatch, capsys, "registry", "add", "fx=./reg", config=config)
-    assert code == 0, err
-    assert _block(config)["registries"] == {"fx": "./reg"}
-    _write(config, "matchers:\n  registries:\n    fx: ./reg\n  include: [fx/pytest]\n")
+    config = _write(
+        sub / ".ci-doctor.yml", "matchers:\n  registries:\n    fx: ./reg\n  include: [fx/pytest]\n"
+    )
     code, out, err = _run(monkeypatch, capsys, "list", config=config)
     assert code == 0, err
     assert "fx/pytest  via direct" in out
