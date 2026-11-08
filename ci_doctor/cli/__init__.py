@@ -2,9 +2,10 @@
 
 The tree mirrors the commands: `cli/analyze.py` is `ci-doctor analyze`,
 `cli/matchers/registry/ping.py` is `ci-doctor matchers registry ping`. A group's
-`__init__.py` holds its typer app and lists its commands; a command is a module
-with a `NAME` and a `run()`. Nothing here does the work: a command parses,
-calls `service/` (or the package that owns it) and prints.
+`__init__.py` holds its typer app and registers its commands; a command is a module
+holding one :class:`~ci_doctor.cli._lib.command.Command`. What commands share lives in
+`_lib/`. Nothing here does the work: a command parses, calls `service/` (or the
+package that owns it) and prints.
 
 Invariant #3: the analyzer must never change a pipeline's outcome, so `main()`
 catches everything and exits 0. The one exception is a broken setup
@@ -19,14 +20,16 @@ from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
 
 from ci_doctor import __version__
-from ci_doctor.cli import _context, _output, analyze, config
+from ci_doctor.cli._lib import context, terminal
+from ci_doctor.cli.analyze import AnalyzeCommand
+from ci_doctor.cli.config import ConfigCommand
 from ci_doctor.cli.matchers import app as matchers_app
 from ci_doctor.errors import SetupError
 
 log = logging.getLogger("ci_doctor.cli")
 app = typer.Typer(add_completion=False, help="Explain why a CI pipeline failed (read-only postmortem).")
-for command in (analyze, config):
-    app.command(command.NAME)(command.run)
+for command in (AnalyzeCommand, ConfigCommand):
+    command.register(app)
 app.add_typer(matchers_app, name="matchers")
 
 
@@ -70,11 +73,11 @@ def _root(
     ),
 ) -> None:
     """Explain why a CI pipeline failed (read-only postmortem)."""
-    ctx.meta[_context.FILES] = config_path or []
-    ctx.meta[_context.WRITE_TO] = write_to
-    ctx.meta[_output.PLAIN] = plain
-    ctx.meta[_output.NO_COLOR] = no_color or plain
-    _output.configure_logging(verbose, colour=not (no_color or plain))
+    ctx.meta[context.FILES] = config_path or []
+    ctx.meta[context.WRITE_TO] = write_to
+    ctx.meta[terminal.PLAIN] = plain
+    ctx.meta[terminal.NO_COLOR] = no_color or plain
+    terminal.configure_logging(verbose, colour=not (no_color or plain))
 
 
 def main() -> None:
@@ -93,7 +96,7 @@ def main() -> None:
         force=True,
         handlers=[
             RichHandler(
-                console=_output.LOG_CONSOLE,
+                console=terminal.LOG_CONSOLE,
                 show_time=False,
                 show_path=False,
                 markup=False,

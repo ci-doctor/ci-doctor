@@ -11,8 +11,14 @@ import click
 import typer
 from typer.core import TyperGroup
 
-from ci_doctor.cli.matchers import add, index, info, list, remove, search, verify
+from ci_doctor.cli.matchers.add import AddCommand
+from ci_doctor.cli.matchers.index import IndexCommand
+from ci_doctor.cli.matchers.info import InfoCommand
+from ci_doctor.cli.matchers.list import ListCommand
 from ci_doctor.cli.matchers.registry import app as registry_app
+from ci_doctor.cli.matchers.remove import RemoveCommand
+from ci_doctor.cli.matchers.search import SearchCommand
+from ci_doctor.cli.matchers.verify import VerifyCommand
 from ci_doctor.errors import SetupError
 
 
@@ -35,6 +41,14 @@ class _SetupGroup(TyperGroup):
 
 
 app = typer.Typer(cls=_SetupGroup, no_args_is_help=True, help="Browse, select and build matchers.")
-for command in (index, verify, add, remove, list, search, info):
-    app.command(command.NAME)(command.run)
+for command in (
+    IndexCommand,
+    VerifyCommand,
+    AddCommand,
+    RemoveCommand,
+    ListCommand,
+    SearchCommand,
+    InfoCommand,
+):
+    command.register(app)
 app.add_typer(registry_app, name="registry")

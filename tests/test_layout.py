@@ -49,3 +49,27 @@ def test_each_config_key_has_its_own_schema_module():
         and field.annotation.__module__ != f"ci_doctor.config.schemas.{name}"
     }
     assert misplaced == {}
+
+
+def test_each_command_module_holds_one_command():
+    """`cli/<group…>/<name>.py` is one `Command` subclass named `name`; shared code lives in `_lib/`."""
+    import importlib
+    import inspect
+
+    from ci_doctor.cli._lib.command import Command
+
+    cli = PACKAGE / "cli"
+    found = {}
+    for path in cli.rglob("*.py"):
+        if "_lib" in path.parts or path.name.startswith("__"):
+            continue
+        module = importlib.import_module(
+            "ci_doctor." + ".".join(path.relative_to(PACKAGE).with_suffix("").parts)
+        )
+        own = [
+            c
+            for _, c in inspect.getmembers(module, inspect.isclass)
+            if issubclass(c, Command) and c.__module__ == module.__name__
+        ]
+        found[str(path.relative_to(cli))] = [(c.name, bool(inspect.getdoc(c))) for c in own]
+    assert found and all(v == [(Path(k).stem, True)] for k, v in found.items()), found

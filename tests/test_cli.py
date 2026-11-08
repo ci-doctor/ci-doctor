@@ -7,7 +7,8 @@ import pytest
 from rich.color import ColorSystem
 
 from ci_doctor import cli
-from ci_doctor.cli import _output
+from ci_doctor.cli._lib import terminal
+from ci_doctor.cli._lib.outputs import pager
 from tests import support
 
 
@@ -103,9 +104,9 @@ def test_verbose_enables_debug_logging():
     """`--verbose` turns on DEBUG; without it the level returns to INFO."""
     import logging
 
-    _output.configure_logging(True)
+    terminal.configure_logging(True)
     assert logging.getLogger("ci_doctor").level == logging.DEBUG
-    _output.configure_logging(False)  # default INFO when not verbose and no env override
+    terminal.configure_logging(False)  # default INFO when not verbose and no env override
     assert logging.getLogger("ci_doctor").level == logging.INFO
 
 
@@ -252,9 +253,9 @@ def test_the_config_pager_ignores_manpager_and_keeps_colours(monkeypatch):
     monkeypatch.setenv("MANPAGER", "sh -c 'col -bx'")
     monkeypatch.setenv("PAGER", "less")
     monkeypatch.setenv("LESS", "FX")
-    monkeypatch.setattr(_output.shutil, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(_output.subprocess, "run", lambda cmd, **kw: seen.update(cmd=cmd, **kw))
-    _output.LessPager().show("\x1b[94mci\x1b[0m")
+    monkeypatch.setattr(pager.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(pager.subprocess, "run", lambda cmd, **kw: seen.update(cmd=cmd, **kw))
+    pager.LessPager().show("\x1b[94mci\x1b[0m")
     assert seen["cmd"] == ["less"]
     assert seen["env"]["LESS"] == "FX -R"
     assert seen["input"] == "\x1b[94mci\x1b[0m"
@@ -264,8 +265,8 @@ def test_a_setup_error_is_logged_at_error_level_without_colour_under_plain(monke
     """The failure reads like the other log lines, `ERROR` first, and `--plain` leaves it uncoloured."""
     monkeypatch.chdir(tmp_path)
     # A colour terminal, were it not for --plain: rich picks its colour system at construction.
-    monkeypatch.setattr(_output.LOG_CONSOLE, "_force_terminal", True)
-    monkeypatch.setattr(_output.LOG_CONSOLE, "_color_system", ColorSystem.STANDARD)
+    monkeypatch.setattr(terminal.LOG_CONSOLE, "_force_terminal", True)
+    monkeypatch.setattr(terminal.LOG_CONSOLE, "_color_system", ColorSystem.STANDARD)
     monkeypatch.setattr(sys, "argv", ["ci-doctor", "--plain", "-v", "analyze", "123"])
     with pytest.raises(SystemExit) as exc:
         cli.main()

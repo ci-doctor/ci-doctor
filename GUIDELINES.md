@@ -70,10 +70,14 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 ```
 cli/
   __init__.py       `ci-doctor`: the root app, global options, main()
-  _context.py       the config read (-f) and written (--write-to, else the user config)
-  _output.py        say / done / skipped / table, the pager, --plain and --no-color
+  _lib/             what commands share; no command lives here
+    command.py      Command, the base every command derives from
+    context.py      the config read (-f) and written (--write-to, else the user config)
+    terminal.py     --plain, --no-color, the log console
+    outputs/        what a command prints with, one module per kind: message, table, pager
   analyze.py        `ci-doctor analyze`
   config.py         `ci-doctor config`
+  report.py         `ci-doctor report`
   matchers/
     __init__.py     `ci-doctor matchers`: the group, and _SetupGroup
     add.py …        `ci-doctor matchers add`, one module per command
@@ -82,9 +86,12 @@ cli/
       ping.py …
 ```
 
-- **A command is a module** with a `NAME` and a `run()`. **A group is a package**: its
-  `__init__.py` holds the typer app and registers its commands, one line each. Explicit,
-  not discovered: a scan of the folder would turn a typo into a missing command nobody
+- **A command is a module holding one `Command` subclass** (`PingCommand` in `ping.py`):
+  its docstring is the `--help`, `name` is the command as typed, `run` (marked
+  `@override`) is the entry point, and the helpers and table rows it needs are its own
+  private members. `test_each_command_module_holds_one_command` pins it. **A group is a
+  package**: its `__init__.py` holds the typer app and calls `register(app)` for each
+  command, one line each. Explicit, not discovered: a scan of the folder would turn a typo into a missing command nobody
   sees, and neither `ty` nor grep could follow it.
 - **No logic in `cli/`.** A command parses its options, calls `service/` (or the package
   that owns the work, like `matchers/`) and prints. Anything an editor, an agent or a
@@ -92,13 +99,14 @@ cli/
   never the reverse, and `service/` imports no typer or click; `tests/test_layout.py`
   pins both.
 - **Options that mean the same thing everywhere are global**, on the root app: `-f`,
-  `--write-to`, `--plain`, `--no-color`. Read them through `_context` and `_output`, never
-  with a per-command flag. Print through `_output` (`say`, `done`, `table`) so `--plain`
-  works. A table's row is a frozen dataclass subclassing `_output.Row`: its fields are the
-  columns and its `line()` is the `--plain` form, so the three can't drift apart.
+  `--write-to`, `--plain`, `--no-color`. Read them through `_lib.context` and
+  `_lib.terminal`, never with a per-command flag. Print through `_lib.outputs` (`say`,
+  `done`, `table`, `page`) so `--plain` works; a new kind of output is a new module
+  there. A table's row is a frozen dataclass subclassing `outputs.table.Row`: its fields
+  are the columns and its `line()` is the `--plain` form, so the three can't drift apart.
 - **Commands that edit the config** write the user config (`ci-doctor`'s directory under
   the platform's config home) unless `--write-to FILE` names another, and change one
-  top-level block through `_context.edit` (`config/edit.py`).
+  top-level block through `_lib.context.edit` (`config/edit.py`).
 
 ### 2.2 The config schema
 

@@ -10,6 +10,7 @@ license-files = ["LICEN[CS]E*"]
 dependencies = [
     "typer>=0.12,<0.27",  # 0.27 vendors click and drops the API cli/matchers/__init__.py subclasses
     "click>=8.0",  # imported directly by cli/ (_SetupGroup, the click context)
+    "typing-extensions>=4.4",  # `override` (PEP 698) on Python 3.11; typing has it from 3.12
     "pydantic>=2.5",
     "pyyaml>=6",
     "python-gitlab>=8.4.0",
