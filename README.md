@@ -86,7 +86,9 @@ uv sync --extra bedrock       # or: pip install '.[bedrock]'     — Amazon Bedr
 uv sync --extra google        # or: pip install '.[google]'      — Gemini / Vertex AI (also: groq, mistral, cohere, xai, huggingface)
 ```
 
-Or build the self-contained image:
+Or build the self-contained image. It has no LLM SDK; bake some in with
+`--build-arg EXTRAS=openai,anthropic`, or add one in the job with `pip install "ci-doctorr[openai]"`
+(pinned to the lock):
 
 ```sh
 docker build -t ci-doctor .
@@ -95,7 +97,7 @@ docker build -t ci-doctor .
 ## Quickstart
 
 ```sh
-# Select matchers once (writes .ci-doctor.yml; with none selected a run exits 1):
+# Select matchers once (writes your user config; with none selected a run exits 1):
 uv run ci-doctor matchers add official/python
 
 # Replay a captured log — no CI, no token, no LLM: the log's own framing says

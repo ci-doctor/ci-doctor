@@ -21,18 +21,26 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-editable --no-build
 
 # Our own package is the one thing built from source, so this step can't take --no-build.
+# EXTRAS=openai,anthropic bakes LLM backends in; the published image has none.
+# constraints.txt pins any extra added later with pip to the lock.
+ARG EXTRAS=""
 COPY pyproject.toml uv.lock README.md LICENSE /src/
 COPY ci_doctor /src/ci_doctor
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-editable
+    uv sync --locked --no-editable ${EXTRAS:+--extra "$EXTRAS"} \
+    && uv export --locked --all-extras --no-dev --no-hashes --no-emit-project -o /opt/ci-doctor/constraints.txt
 
 
 FROM python:3.14-slim
 
 COPY --from=builder /opt/ci-doctor /opt/ci-doctor
+# `pip install "ci-doctorr[openai]"` then lands in the venv, at the locked versions.
 ENV PATH="/opt/ci-doctor/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYDANTIC_AI_NO_BANNER=1
+    PYDANTIC_AI_NO_BANNER=1 \
+    PIP_PYTHON=/opt/ci-doctor/bin/python \
+    PIP_CONSTRAINT=/opt/ci-doctor/constraints.txt \
+    PIP_ROOT_USER_ACTION=ignore
 
 # Root on purpose: it writes report.md into a mounted dir it doesn't own (GitLab, -v $PWD).
 WORKDIR /app
