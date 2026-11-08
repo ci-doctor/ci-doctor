@@ -13,22 +13,24 @@ The author's side, building `index.yaml`, is `index.py`.
 import contextlib
 import difflib
 import logging
+import time
 from collections.abc import Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 from pydantic import ValidationError
 
-from ci_doctor.config.schema import MatcherConfig, MatchersConfig, unqualified
+from ci_doctor.config.schemas.matcher import MatcherConfig
+from ci_doctor.config.schemas.matchers import MatchersConfig, unqualified
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Index, Ref
+from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
 from ci_doctor.matchers.transports import redact, transport_for
 from ci_doctor.matchers.validate import bundle_from, matcher_from, parse_yaml
 
 log = logging.getLogger("ci_doctor.matchers")
 
-TIMEOUT = 10.0
 INDEX_CAP = 1024 * 1024
 FILE_CAP = 64 * 1024
 EMPTY_INCLUDE = (
@@ -60,7 +62,7 @@ def registry_dir(alias: str, value: str) -> str:
 
     Returns:
         The location its transport reads from: an `http(s)://` URL ending in `/`,
-        a `git+` location as written, or a local directory path.
+        or a local directory path.
 
     Raises:
         SetupError: On a location naming the index file, or one no transport accepts.
@@ -118,10 +120,11 @@ def fetch_index(alias: str, location: str, client: httpx.Client) -> Index:
 
 
 @contextlib.contextmanager
-def session(client: httpx.Client | None = None) -> Iterator[httpx.Client]:
-    """The HTTP client for one run: the caller's, or a fresh one closed afterwards.
+def session(cfg: MatchersConfig, client: httpx.Client | None = None) -> Iterator[httpx.Client]:
+    """The caller's HTTP client, or a fresh one closed afterwards.
 
     Args:
+        cfg: The `matchers:` block, for its timeout and how many fetches run at once.
         client: A client to reuse (tests pass one over `httpx.MockTransport`).
 
     Yields:
@@ -130,16 +133,14 @@ def session(client: httpx.Client | None = None) -> Iterator[httpx.Client]:
     if client is not None:
         yield client
         return
-    with httpx.Client(timeout=TIMEOUT) as fresh:
+    limits = httpx.Limits(max_connections=max(cfg.fetch_workers, 10))
+    with httpx.Client(timeout=cfg.timeout_seconds, limits=limits) as fresh:
         yield fresh
 
 
 @dataclass
 class Resolved:
     """Registries read so far, and what `matchers.include` expands to.
-
-    Also the per-command cache of the CLI's lookups: an alias's index is fetched
-    into it once, however many references name that alias.
 
     Attributes:
         locations: Each referenced registry's directory, by alias.
@@ -289,36 +290,80 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
         raise SetupError(EMPTY_INCLUDE)
     refs = [Ref.parse(r) for r in cfg.include]
     out = Resolved()
-    with session(client) as http:
+    with session(cfg, client) as http:
         for alias in dict.fromkeys(r.alias for r in refs):
             index_for(cfg, alias, http, out)
             if (location := out.locations[alias]).startswith("http://"):
                 log.warning(f"registry {alias!r} is fetched over plain http, unencrypted: {redact(location)}")
-        expanded: dict[str, tuple[list[str], int]] = {}
+        bundles = _prefetch_bundles(refs, out, http, cfg.fetch_workers)
+        walked: dict[str, tuple[list[str], int]] = {}
         for ref in refs:
-            via = "direct" if ref.name in out.indexes[ref.alias].matchers else str(ref)
-            for key in _expand(ref, (), out, expanded, http)[0]:
+            keys, depth = _expand(ref, (), out, walked, bundles, http)
+            if depth > MAX_BUNDLE_DEPTH:
+                raise SetupError(f"bundle {ref} nests deeper than {MAX_BUNDLE_DEPTH}")
+            via = "direct" if depth == 0 else str(ref)
+            for key in keys:
                 out.matchers.setdefault(key, via)
     return out
+
+
+def _prefetch_bundles(refs: list[Ref], out: Resolved, http: httpx.Client, workers: int) -> dict[str, Bundle]:
+    """Fetch every bundle `refs` reach, a nesting level at a time, in parallel.
+
+    One round trip per level instead of per bundle. Names, cycles and depth are
+    `_expand`'s to report; a bundle too deep to prefetch it fetches itself.
+
+    Args:
+        refs: The top-level `matchers.include` entries.
+        out: The registries read so far, indexes included.
+        http: The run's HTTP client.
+        workers: How many files to fetch at once.
+
+    Returns:
+        Each bundle reached, by `alias/name`.
+
+    Raises:
+        SetupError: If a bundle file fails to fetch or validate.
+    """
+    fetched: dict[str, Bundle] = {}
+    level = refs
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ci-doctor-fetch") as pool:
+        for _ in range(MAX_BUNDLE_DEPTH):
+            todo = [
+                r
+                for r in dict.fromkeys(level)
+                if r.name in out.indexes[r.alias].bundles and str(r) not in fetched
+            ]
+            if not todo:
+                break
+            fetched |= zip(
+                map(str, todo),
+                pool.map(lambda r: bundle_from(*_fetch_entry(r, out, http)), todo),
+                strict=True,
+            )
+            level = [Ref(r.alias, name) for r in todo for name in fetched[str(r)].include]
+    return fetched
 
 
 def _expand(
     ref: Ref,
     stack: tuple[str, ...],
     out: Resolved,
-    expanded: dict[str, tuple[list[str], int]],
+    walked: dict[str, tuple[list[str], int]],
+    bundles: dict[str, Bundle],
     http: httpx.Client,
 ) -> tuple[list[str], int]:
-    """The matchers one reference selects, recursing through bundles, each bundle walked once.
+    """The `alias/name` matchers `ref` selects, and how deep its bundles nest.
 
-    Memoized per bundle: in a diamond (two bundles sharing a third) the paths to the
-    shared bundle multiply with depth, so walking each one is exponential.
+    Each bundle is walked once (`walked`), so diamonds don't multiply; a memoized
+    bundle reports its depth and `resolve()` checks the total.
 
     Args:
         ref: The matcher or bundle to expand.
         stack: The bundles currently being expanded, outermost first.
-        out: The registries read so far; its indexes and locations are filled in.
-        expanded: Bundles already walked, by `alias/name`: their matchers and depth.
+        out: The registries read so far.
+        walked: Bundles already expanded, by `alias/name`: their matchers and depth.
+        bundles: Bundle files already fetched, by `alias/name`.
         http: The run's HTTP client.
 
     Returns:
@@ -336,20 +381,33 @@ def _expand(
         raise _not_served(ref, index)
     if key in stack:
         raise SetupError(f"bundle cycle: {' -> '.join((*stack, key))}")
-    if key not in expanded:
-        if len(stack) >= MAX_BUNDLE_DEPTH:
-            raise SetupError(f"bundle {stack[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
-        bundle = bundle_from(*_fetch_entry(ref, out, http))
-        members: dict[str, None] = {}
-        depth = 0
-        for name in bundle.include:
-            sub, sub_depth = _expand(Ref(ref.alias, name), (*stack, key), out, expanded, http)
-            members.update(dict.fromkeys(sub))
-            depth = max(depth, sub_depth)
-        expanded[key] = (list(members), depth + 1)
-    if len(stack) + expanded[key][1] > MAX_BUNDLE_DEPTH:  # walked first from a shallower place
-        raise SetupError(f"bundle {(*stack, key)[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
-    return expanded[key]
+    if len(stack) >= MAX_BUNDLE_DEPTH:
+        raise SetupError(f"bundle {stack[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
+    if key not in walked:
+        bundle = bundles[key] if key in bundles else bundle_from(*_fetch_entry(ref, out, http))
+        subs = [
+            _expand(Ref(ref.alias, name), (*stack, key), out, walked, bundles, http)
+            for name in bundle.include
+        ]
+        members = dict.fromkeys(k for keys, _ in subs for k in keys)
+        walked[key] = (list(members), 1 + max((depth for _, depth in subs), default=0))
+    return walked[key]
+
+
+def via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str, str]:
+    """Which top-level entry of `include` brings in each matcher: `"direct"` or the bundle.
+
+    Args:
+        cfg: The `matchers:` block (its registries and fetch settings).
+        include: The refs to expand.
+        http: The run's HTTP client.
+
+    Returns:
+        `alias/name` -> `"direct"` or the bundle; empty when `include` is.
+    """
+    if not include:
+        return {}
+    return resolve(cfg.model_copy(update={"include": include}), http).matchers
 
 
 def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[MatcherConfig]:
@@ -366,11 +424,15 @@ def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[Matche
         SetupError: On anything :func:`resolve` rejects, or a matcher file that
             can't be fetched or fails a load-time rule.
     """
-    with session(client) as http:
+    start = time.perf_counter()
+    with session(cfg, client) as http:
         resolved = resolve(cfg, http)
-        # model_copy skips validation: the bare id was checked on fetch, and `alias/id`
-        # is what makes the same bare id from two registries two distinct matchers.
-        return [
-            fetch_matcher(Ref.parse(key), resolved, http).model_copy(update={"id": key})
-            for key in resolved.matchers
-        ]
+        keys = list(resolved.matchers)
+        # map() keeps include order, and re-raises the first failure in that order.
+        with ThreadPoolExecutor(max_workers=cfg.fetch_workers, thread_name_prefix="ci-doctor-fetch") as pool:
+            fetched = list(pool.map(lambda key: fetch_matcher(Ref.parse(key), resolved, http), keys))
+    log.debug(
+        f"loaded {len(keys)} matchers from {len(resolved.indexes)} registries in {time.perf_counter() - start:.1f}s"
+    )
+    # `alias/id` keeps the same bare id from two registries apart.
+    return [m.model_copy(update={"id": key}) for key, m in zip(keys, fetched, strict=True)]

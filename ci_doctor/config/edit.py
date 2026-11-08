@@ -1,11 +1,7 @@
-"""Edit the `matchers:` block of a config file and leave the rest of it alone.
+"""Edit one top-level block of a config file and leave the rest byte for byte.
 
-Round-tripping the whole file through a YAML dumper would drop every comment, and a
-round-trip-preserving library is a new dependency for one block. So the block is spliced
-as text: only `matchers:` is re-dumped; everything else survives byte for byte. The cost,
-documented, is that comments *inside* the block are lost. The result is re-parsed and
-checked before anything is written, so a mis-splice fails loudly instead of corrupting
-the user's config.
+The block is spliced as text so the file's comments survive (only those inside the
+block are lost); the result is re-parsed and validated before anything is written.
 """
 
 import copy
@@ -16,11 +12,10 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.validate import atomic_write
+from ci_doctor.files import atomic_write
 
-_KEY_LINE = re.compile(r"^matchers\s*:")
 _TOP_LEVEL = re.compile(r"^[^\s#]")
 
 
@@ -48,30 +43,33 @@ def _read(path: Path) -> tuple[str, dict]:
     return text, data
 
 
-def read_block(path: Path) -> dict:
-    """The file's own `matchers:` mapping (not the merged defaults).
+def read_block(path: Path, key: str) -> dict:
+    """A copy of the file's own `key:` block, `{}` when absent.
 
     Args:
         path: The config file, which may not exist.
+        key: A top-level config key.
 
     Returns:
         A copy of the block, `{}` when absent.
     """
-    return copy.deepcopy(_read(path)[1].get("matchers") or {})
+    return copy.deepcopy(_read(path)[1].get(key) or {})
 
 
-def _splice(text: str, dumped: str) -> str:
-    """Replace the `matchers:` block in `text` with `dumped`, or append it.
+def _splice(text: str, key: str, dumped: str) -> str:
+    """Replace the `key:` block in `text` with `dumped`, or append it.
 
     Args:
         text: The file's current text.
+        key: The top-level key.
         dumped: The new block, ending in a newline.
 
     Returns:
         The new file text.
     """
     lines = text.splitlines(keepends=True)
-    start = next((i for i, ln in enumerate(lines) if _KEY_LINE.match(ln)), None)
+    key_line = re.compile(rf"^{re.escape(key)}\s*:")
+    start = next((i for i, ln in enumerate(lines) if key_line.match(ln)), None)
     if start is None:
         return text + ("" if not text or text.endswith("\n") else "\n") + dumped
     end = next((i for i in range(start + 1, len(lines)) if _TOP_LEVEL.match(lines[i])), len(lines))
@@ -83,30 +81,27 @@ def _splice(text: str, dumped: str) -> str:
     return "".join(lines[:start]) + dumped + "".join(lines[tail:])
 
 
-def edit_matchers(path: Path, mutate: Callable[[dict], None]) -> None:
-    """Apply `mutate` to the file's `matchers` mapping and write it back safely.
+def edit_block(path: Path, key: str, mutate: Callable[[dict], None]) -> None:
+    """Apply `mutate` to the file's `key:` block and write it back.
 
     Args:
         path: The config file; created if missing.
+        key: The top-level key to edit.
         mutate: Changes the mapping in place.
 
     Raises:
         SetupError: If the file is unreadable, or the edit would change anything but
-            `matchers` or produce an invalid config. The file is then untouched.
+            `key` or produce an invalid config. The file is then untouched.
     """
     text, data = _read(path)
-    block = copy.deepcopy(data.get("matchers") or {})
+    block = copy.deepcopy(data.get(key) or {})
     mutate(block)
-    dumped = yaml.safe_dump({"matchers": block}, sort_keys=False, default_flow_style=False)
-    new_text = _splice(text, dumped)
-
-    expected = {**data, "matchers": block}
+    new_text = _splice(text, key, yaml.safe_dump({key: block}, sort_keys=False, default_flow_style=False))
     try:
         reparsed = yaml.safe_load(new_text)
-        if reparsed != expected:
-            raise SetupError(f"{path}: refusing to edit, the result would change more than `matchers`")
+        if reparsed != {**data, key: block}:
+            raise SetupError(f"{path}: refusing to edit, the result would change more than `{key}`")
         Config.model_validate(reparsed)
     except (yaml.YAMLError, ValidationError) as err:
         raise SetupError(f"{path}: refusing to write an invalid config: {err}") from None
-
     atomic_write(path, new_text)

@@ -3,7 +3,7 @@
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Job, Run
 from ci_doctor.core.ports import LLMClient
-from ci_doctor.pipeline import _ordered, analyze_run, run_from_file
+from ci_doctor.service.analyze import _ordered, analyze_run, run_from_file
 from tests import support
 
 
@@ -63,7 +63,7 @@ def _wire_provider(monkeypatch, names):
         Job(id=n, name=n, status="failed", started_at=f"2024-01-01T00:0{i}:00Z") for i, n in enumerate(names)
     ]
     provider = _FakeProvider(jobs, log)
-    monkeypatch.setattr("ci_doctor.pipeline.make_ci_provider", lambda cfg: provider)
+    monkeypatch.setattr("ci_doctor.service.analyze.make_ci_provider", lambda cfg: provider)
     return provider
 
 

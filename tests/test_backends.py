@@ -7,17 +7,12 @@ schema is covered end-to-end in tests/test_report.py.
 """
 
 import asyncio
-import os
-import sys
 import threading
 import time
-import types
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import ClassVar
 
-import certifi
-import httpx
 import pytest
 from pydantic import BaseModel
 from pydantic_ai.messages import ModelResponse, TextPart
@@ -25,6 +20,7 @@ from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from ci_doctor.config.loader import load_config
+from ci_doctor.errors import SetupError
 from ci_doctor.llm import backends
 from ci_doctor.llm.backends import _KNOWN, PydanticAILLMClient, backend_ready, make_client
 
@@ -155,15 +151,11 @@ def test_a_missing_sdk_names_the_extra_to_install(monkeypatch):
         make_client(_llm(backend="azure", model="m", azure={"endpoint": "https://x", "api_version": "v1"}))
 
 
-def test_ca_bundle_becomes_an_http_client_only_where_accepted(fake_pydantic_ai):
-    """A provider with an http_client parameter gets the CA-bundle client; one without doesn't."""
+def test_a_provider_builds_its_own_http_client(fake_pydantic_ai):
+    """We never hand a provider a client: its SDK's own reads SSL_CERT_FILE and the rest."""
     fake_pydantic_ai["provider_class"] = _FakeClientProvider
-    backends._generic_model(_llm(backend="groq", model="m", ca_bundle=certifi.where()), {})
-    assert isinstance(_FakeClientProvider.built["http_client"], httpx.AsyncClient)
-
-    fake_pydantic_ai["provider_class"] = _FakeProvider
-    backends._generic_model(_llm(backend="groq", model="m", ca_bundle=certifi.where()), {})
-    assert "http_client" not in _FakeProvider.built
+    backends._generic_model(_llm(backend="groq", model="m"), {})
+    assert _FakeClientProvider.built["http_client"] is None
 
 
 @pytest.mark.parametrize(
@@ -235,9 +227,8 @@ def test_google_cloud_passes_project_and_location(fake_pydantic_ai):
 
 @pytest.mark.parametrize("backend", sorted(_KNOWN))
 def test_make_client_builds_a_client_for_every_backend(backend, monkeypatch, fake_pydantic_ai):
-    """Every name the config accepts builds a PydanticAILLMClient (litellm's bridge faked too)."""
-    for overridden in ("openai", "litellm"):
-        monkeypatch.setitem(backends._OVERRIDES, overridden, lambda cfg, environ: TestModel())
+    """Every name the config accepts builds a PydanticAILLMClient."""
+    monkeypatch.setitem(backends._OVERRIDES, "openai", lambda cfg, environ: TestModel())
     fake_pydantic_ai["provider_class"] = _AnyProvider
     kwargs = {
         "backend": backend,
@@ -392,18 +383,6 @@ def test_close_never_raises():
     client.close()
 
 
-def test_close_shuts_a_real_sdk_client_built_with_a_ca_bundle():
-    """The `httpx` client `ca_bundle` creates is closed through the SDK client that owns it."""
-    pytest.importorskip("openai")
-    cfg = _llm(backend="openai", model="m", api_base="http://127.0.0.1:1/v1", ca_bundle=certifi.where())
-    client = make_client(cfg)
-    http_client = client._model.client._client
-    assert not http_client.is_closed
-    client._loop_for()  # close() is a no-op until a call has started the loop
-    client.close()
-    assert http_client.is_closed
-
-
 def test_one_repair_retry_on_invalid_then_valid_reply():
     """PromptedOutput + Agent(retries=1) retries exactly once on a schema-invalid reply."""
     calls = {"n": 0}
@@ -437,21 +416,6 @@ def test_temperature_and_timeout_reach_the_agent():
     assert agent.model_settings["timeout"] == 42
 
 
-def test_litellm_ca_bundle_sets_its_ssl_verify(monkeypatch):
-    """Litellm's only CA knob is the module-level `ssl_verify`; an unset bundle leaves it alone."""
-    fake_litellm = types.ModuleType("litellm")
-    fake_litellm.ssl_verify = True
-    fake_bridge = types.ModuleType("pydantic_ai_litellm")
-    fake_bridge.LiteLLMModel = lambda *a, **k: TestModel()
-    monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
-    monkeypatch.setitem(sys.modules, "pydantic_ai_litellm", fake_bridge)
-
-    backends._litellm_model(_llm(backend="litellm", model="m"), {})
-    assert fake_litellm.ssl_verify is True
-    backends._litellm_model(_llm(backend="litellm", model="m", ca_bundle="/etc/ca.pem"), {})
-    assert fake_litellm.ssl_verify == "/etc/ca.pem"
-
-
 def test_timeout_is_a_wall_clock_budget_for_the_whole_call():
     """A slow reply is cut off at `timeout_seconds`, repair retry and SDK retries included."""
 
@@ -466,24 +430,7 @@ def test_timeout_is_a_wall_clock_budget_for_the_whole_call():
     assert time.monotonic() - started < 5
 
 
-def test_litellm_model_string_reaches_litellm_model(monkeypatch):
-    """Litellm's own model-string convention passes straight through (fake module: the real one conflicts)."""
-    captured = {}
-
-    class _FakeLiteLLMModel:
-        def __init__(self, model_name, *, api_key=None, api_base=None):
-            captured["model_name"] = model_name
-
-    fake_module = types.ModuleType("pydantic_ai_litellm")
-    fake_module.LiteLLMModel = _FakeLiteLLMModel
-    monkeypatch.setitem(sys.modules, "pydantic_ai_litellm", fake_module)
-
-    backends._litellm_model(_llm(backend="litellm", model="vertex_ai/gemini-1.5-pro"), {})
-    assert captured["model_name"] == "vertex_ai/gemini-1.5-pro"
-
-
 # Real construction: needs each provider's SDK, so each test skips when it is absent.
-# (openai/azure/bedrock-mantle conflict with litellm — see pyproject.toml.)
 _REAL = [
     ("openai", "openai", "OpenAIChatModel", {"api_base": "http://stub"}),
     (
@@ -517,7 +464,7 @@ def test_openai_api_picks_the_model_class(api, model_class):
 
 def test_openai_api_rejects_an_unknown_value():
     """Only the two APIs exist; a typo fails at load, not at the first call."""
-    with pytest.raises(ValueError, match="openai"):
+    with pytest.raises(SetupError, match="openai"):
         _llm(backend="openai", openai={"api": "completions"})
 
 
@@ -560,37 +507,6 @@ def test_bedrock_builds_with_only_a_region(aws_env):
     assert model.model_name == "anthropic.claude-opus-4-6-v1:0"
 
 
-def test_bedrock_ca_bundle_reaches_the_boto_client(aws_env, monkeypatch):
-    """Bedrock has no `http_client`; the bundle reaches boto via AWS_CA_BUNDLE, then is removed again."""
-    pytest.importorskip("boto3")
-    monkeypatch.delenv("AWS_CA_BUNDLE", raising=False)
-    model = backends._generic_model(
-        _llm(backend="bedrock", model="m", aws={"region": "us-east-1"}, ca_bundle=certifi.where()), {}
-    )
-    assert model.client._endpoint.http_session._verify == certifi.where()
-    assert "AWS_CA_BUNDLE" not in os.environ
-
-
-def test_bedrock_ca_bundle_restores_a_preexisting_variable(monkeypatch):
-    """A caller's own AWS_CA_BUNDLE survives, even when the build fails."""
-    monkeypatch.setenv("AWS_CA_BUNDLE", "/mine.pem")
-    with pytest.raises(RuntimeError), backends._aws_ca_bundle("/ours.pem"):
-        assert os.environ["AWS_CA_BUNDLE"] == "/ours.pem"
-        raise RuntimeError
-    assert os.environ["AWS_CA_BUNDLE"] == "/mine.pem"
-
-
-def test_bedrock_keeps_the_providers_own_setup_with_a_ca_bundle(aws_env, monkeypatch):
-    """A bearer token still works alongside a CA bundle (a pre-built boto client would skip it)."""
-    pytest.importorskip("boto3")
-    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "tok")
-    model = backends._generic_model(
-        _llm(backend="bedrock", model="m", aws={"region": "us-east-1"}, ca_bundle=certifi.where()), {}
-    )
-    assert model.client.meta.config.signature_version == "bearer"
-    assert model.client.meta.config.read_timeout == 300
-
-
 def test_bedrock_falls_back_to_the_aws_region_env_var(aws_env, monkeypatch):
     """No aws.region configured -> AWS_DEFAULT_REGION is used."""
     pytest.importorskip("boto3")
@@ -614,13 +530,13 @@ def test_bedrock_mantle_builds_an_openai_shaped_model(aws_env):
 )
 def test_a_cloud_backend_requires_its_settings_block(backend, block):
     """Choosing a cloud backend without its block fails at load, naming the block."""
-    with pytest.raises(ValueError, match=f"llm.{block}:"):
+    with pytest.raises(SetupError, match=f"llm.{block}:"):
         load_config(environ={}, overrides={"llm": {"backend": backend, "model": "m"}})
 
 
 def test_the_old_flat_cloud_keys_are_rejected():
     """The flat fields moved into blocks; `extra=forbid` flags the old spelling."""
-    with pytest.raises(ValueError, match="aws_region"):
+    with pytest.raises(SetupError, match="aws_region"):
         load_config(environ={}, overrides={"llm": {"backend": "bedrock", "aws": {}, "aws_region": "x"}})
 
 

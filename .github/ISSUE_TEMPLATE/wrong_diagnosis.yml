@@ -1,0 +1,36 @@
+name: Wrong diagnosis
+description: ci-doctor blamed the wrong phase or step, or missed the real error.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Attach the job log so we can replay it; redact secrets first. A matcher firing on the
+        wrong lines goes to [ci-doctor/matchers](https://github.com/ci-doctor/matchers/issues).
+  - type: textarea
+    id: got
+    attributes:
+      label: What ci-doctor said
+      description: The phase it blamed, or paste the report.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What actually failed
+      description: The step, and the lines that show the real cause.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Job log
+      description: Attach the raw log, or paste the relevant part.
+  - type: textarea
+    id: report
+    attributes:
+      label: "`ci-doctor report`"
+      description: Run with the same `-f` files. It prints no secrets.
+      render: text
+    validations:
+      required: true

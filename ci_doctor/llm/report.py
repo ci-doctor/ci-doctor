@@ -17,7 +17,7 @@ from string import Template
 
 from pydantic import ValidationError
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.core.analyze import EvidenceBundle
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Phase

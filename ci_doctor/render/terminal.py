@@ -21,8 +21,8 @@ from rich.text import Text
 
 from ci_doctor.core.models import Run
 from ci_doctor.llm.schema import RemediationStep, Report
-from ci_doctor.pipeline import JobResult
 from ci_doctor.render.pipeline import header_line, job_verdict
+from ci_doctor.service.analyze import JobResult
 
 #: Name of the collapsible section wrapping the report inside a GitLab job log.
 _SECTION = "ci_doctor_report"

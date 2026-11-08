@@ -25,16 +25,11 @@ dependency, so `uv.lock` pins it and `uv run ruff` is identical locally and in C
 
 The LLM backends are pip extras (`openai`, `anthropic`, `bedrock`, ...), and the base
 install has none of their SDKs, so the provider tests skip under a plain `uv sync`. To run
-them, sync every extra that can coexist (CI's `providers` job does exactly this):
+them, sync every extra (CI's `providers` job does exactly this):
 
 ```sh
-uv sync --extra openai --extra anthropic --extra bedrock --extra bedrock-mantle \
-  --extra google --extra groq --extra mistral --extra cohere --extra xai --extra huggingface
+uv sync --all-extras
 ```
-
-`uv sync --all-extras` fails by design: `litellm` pins `openai<3.0` while Pydantic AI's
-OpenAI integration needs `openai>=3.8`, so `litellm` is a separate install track
-(`--extra litellm`), never combined with `openai` or `bedrock-mantle`.
 
 `codegraph` comes with it but is not run for you — indexing this repo into
 `.codegraph/` is your call, and the index is local to your machine (the directory
@@ -82,7 +77,7 @@ shell — read them, they are short.
 |---|---|
 | `pre-commit` | `ruff check --fix` then `ruff format` on staged `*.py`, `ruff format --preview` on staged `*.md`, and re-stages only what it rewrote. Fix runs first: removing an unused import leaves the blank lines it sat between. |
 | `commit-msg` | `commitlint` (rules in `.commitlintrc.yml`; CI checks the PR title against the same types) rejects anything that is not a Conventional Commit. Not cosmetic — the release workflow reads the type to decide whether to ship. |
-| `pre-push` | `pytest`, `ty`, `commitlint` over the branch's commits, and `gitleaks` if installed. Everything CI runs, before the round trip. |
+| `pre-push` | `pytest`, `ty`, and `gitleaks` if installed. Everything CI runs, before the round trip. |
 
 `--no-verify` skips them. CI still runs the suite and checks the PR title, so it only
 moves where you find out.

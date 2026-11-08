@@ -17,7 +17,7 @@ import re
 from importlib import import_module
 from typing import Any
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.core.ports import CIProvider, LogSegmenter, SCMProvider
 
 log = logging.getLogger("ci_doctor.providers")

@@ -15,7 +15,7 @@ from typing import Any
 import gitlab
 from gitlab.v4.objects import Project, ProjectPipelineJob
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import FailureReason, Job, MergeRequestRef, Run, RunnerInfo
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo

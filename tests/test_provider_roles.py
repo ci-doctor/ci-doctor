@@ -10,12 +10,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from ci_doctor import cli
 from ci_doctor.config.loader import load_config
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import SYNTHETIC_SECTIONS
 from ci_doctor.core.ports import CIProvider, SCMProvider
-from ci_doctor.pipeline import JobResult
 from ci_doctor.providers.github.provider import GitHubProvider
 from ci_doctor.providers.github.segmenter import GitHubSegmenter
 from ci_doctor.providers.gitlab.provider import GitLabProvider
@@ -27,6 +25,8 @@ from ci_doctor.providers.registry import (
     segmenter_for,
     segmenter_for_log,
 )
+from ci_doctor.service.analyze import JobResult
+from ci_doctor.service.deliver import post_note
 from tests import support
 
 
@@ -73,16 +73,16 @@ def test_no_git_host_is_not_an_error(cfg):
     assert make_scm_provider(cfg, ci_provider=None) is None
 
 
-def test_note_is_skipped_when_there_is_no_git_host(capsys):
+def test_note_is_skipped_when_there_is_no_git_host():
     """The delivery step says why it skipped instead of raising."""
     report = SimpleNamespace(confidence="high")
     run = SimpleNamespace(id="1", mr=SimpleNamespace(iid="7"))
     cfg = Config(ci="jenkins")
     cfg.output.mr_note = True
 
-    cli._maybe_post_mr(None, run, [JobResult(None, None, report)], cfg)
+    note = post_note(None, run, [JobResult(None, None, report)], cfg)
 
-    assert "no git-host adapter for 'jenkins'" in capsys.readouterr().err
+    assert "no git-host adapter for 'jenkins'" in note
 
 
 def test_segmenter_follows_the_ci_not_the_git_host():

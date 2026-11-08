@@ -1,41 +1,24 @@
-"""LLM backend registry.
+"""LLM backends: one `PydanticAILLMClient` per run, over the model `llm.backend` names.
 
-Every backend builds one `PydanticAILLMClient` wrapping a `pydantic_ai.models.Model`,
-selected by `llm.backend`. Each wraps the caller's output type in `PromptedOutput` per
-call, with one built-in repair retry (`Agent(retries=1)`) — no hand-rolled JSON parsing
-or retry loop here.
+A backend is a provider Pydantic AI ships itself, built through `infer_model` from the
+constructor arguments it accepts; only `openai` overrides that, to pick Chat Completions
+or Responses. Each needs its own pip extra, and its SDK is imported only when used.
 
-Any Pydantic AI-native provider goes through one generic path: Pydantic AI's own
-`infer_model` picks the `Model` class, and the provider is built from the constructor
-arguments it actually accepts (`api_key`, `base_url`, `http_client`). Adding a provider
-is a name in `LLMConfig.backend` and a pip extra. A provider with settings of its own
-adds a block under `config/types/` that dumps to its constructor arguments (see
-`LLMConfig.provider_settings`). Two backends override the generic path: `openai` picks
-Chat Completions or the Responses API, and `litellm` is the community `pydantic-ai-litellm`
-bridge, which routes in-process to ~100 providers by litellm's own model-string
-convention (`vertex_ai/gemini-1.5-pro`).
-
-Every backend needs its own pip extra; there is no default SDK in the base install.
-`openai`/`azure` and `litellm` are mutually exclusive — litellm pins `openai<3.0`,
-Pydantic AI's OpenAI integration needs `openai>=3.8` (see `[tool.uv] conflicts`).
-
-Every SDK is imported inside the builder that needs it, so importing this module
-costs nothing on a run that never reaches a model.
+TLS trust comes from the environment (`SSL_CERT_FILE`, `AWS_CA_BUNDLE`): each SDK builds
+its own HTTP client, and ours would override its timeouts, retries and auth.
 """
 
 import asyncio
-import contextlib
 import inspect
 import logging
 import os
-import ssl
 import threading
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, TypeVar, get_args
 
 from pydantic import BaseModel
 
-from ci_doctor.config.schema import LLMConfig
+from ci_doctor.config.schemas.llm import LLMConfig
 from ci_doctor.core.ports import LLMClient
 
 log = logging.getLogger("ci_doctor.llm")
@@ -69,33 +52,7 @@ def _provider_kwargs(provider_class: type, cfg: LLMConfig, environ: Mapping[str,
         kwargs["api_key"] = _api_key(cfg, environ)
     if "base_url" in params and cfg.api_base:
         kwargs["base_url"] = cfg.api_base
-    if "http_client" in params and cfg.ca_bundle:
-        import httpx
-
-        kwargs["http_client"] = httpx.AsyncClient(verify=ssl.create_default_context(cafile=cfg.ca_bundle))
     return kwargs
-
-
-@contextlib.contextmanager
-def _aws_ca_bundle(path: str | None) -> Iterator[None]:
-    """Expose `llm.ca_bundle` to boto as `AWS_CA_BUNDLE` while the Bedrock provider builds its client.
-
-    The provider has no `http_client`, and handing it a ready-made boto client would skip its
-    own setup (bearer-token auth, 300s read timeout). boto reads the variable once, at client
-    creation, so it is restored straight after.
-    """
-    if not path:
-        yield
-        return
-    previous = os.environ.get("AWS_CA_BUNDLE")
-    os.environ["AWS_CA_BUNDLE"] = path
-    try:
-        yield
-    finally:
-        if previous is None:
-            del os.environ["AWS_CA_BUNDLE"]
-        else:
-            os.environ["AWS_CA_BUNDLE"] = previous
 
 
 _M = TypeVar("_M", bound=BaseModel)
@@ -106,7 +63,7 @@ def _apply_max_retries(provider: object, cfg: LLMConfig) -> None:
 
     The openai/anthropic/groq SDKs retry 429s, 5xxs and connection errors themselves
     (default 2); leaving that alone would multiply with the Agent's own repair retry.
-    Providers without a `max_retries` client attribute (bedrock via boto, litellm) keep
+    Providers without a `max_retries` client attribute (bedrock via boto) keep
     their own retry behavior.
     """
     client = getattr(provider, "client", None)
@@ -126,8 +83,7 @@ def _build_provider(cfg: LLMConfig, environ: Mapping[str, str]) -> "Provider[Any
     if block := cfg.provider_settings:
         # AWS auth itself comes from the environment/IAM (boto3's chain), not an API key.
         kwargs.update(block.model_dump(by_alias=True, exclude_none=True))
-    with _aws_ca_bundle(cfg.ca_bundle if cfg.backend == "bedrock" else None):
-        provider = provider_class(**kwargs)
+    provider = provider_class(**kwargs)
     _apply_max_retries(provider, cfg)
     return provider
 
@@ -151,24 +107,8 @@ def _openai_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
     return model_class(model_name, provider=provider)
 
 
-def _litellm_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
-    """Anything litellm reaches that the native providers can't."""
-    from pydantic_ai_litellm import LiteLLMModel  # ty: ignore[unresolved-import]
-
-    model_name = _require_model(cfg)
-    if cfg.ca_bundle:
-        import litellm  # ty: ignore[unresolved-import]
-
-        litellm.ssl_verify = (
-            cfg.ca_bundle
-        )  # litellm's only CA knob; a module global, but we are the only caller
-
-    return LiteLLMModel(model_name, api_key=_api_key(cfg, environ), api_base=cfg.api_base or None)
-
-
 _OVERRIDES: dict[str, Callable[[LLMConfig, Mapping[str, str]], "Model"]] = {
     "openai": _openai_model,
-    "litellm": _litellm_model,
 }
 
 #: What a backend needs before a call is worth attempting; the default is just a model.
@@ -278,7 +218,7 @@ class PydanticAILLMClient(LLMClient):
         return self._loop
 
     async def _close_sdk_client(self) -> None:
-        """Close the model's SDK client — and with it the `httpx` client `ca_bundle` built."""
+        """Close the model's SDK client and the connections it pooled."""
         client = getattr(self._model, "client", None)
         closer = getattr(client, "aclose", None) or getattr(client, "close", None)
         if closer is not None:

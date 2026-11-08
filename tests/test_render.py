@@ -10,8 +10,8 @@ import json
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import Job, Run
 from ci_doctor.llm.schema import Evidence, RemediationStep, Report
-from ci_doctor.pipeline import JobResult
 from ci_doctor.render.markdown import MarkdownRenderer, render_pipeline_markdown
+from ci_doctor.service.analyze import JobResult
 
 
 def _report():

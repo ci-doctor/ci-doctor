@@ -4,13 +4,14 @@ Every case is offline: local registries are directories under tmp_path or the
 shared `fx_registry`, and `http(s)://` goes through `httpx.MockTransport`.
 """
 
+import contextlib
 import logging
 
 import httpx
 import pytest
 import yaml
 
-from ci_doctor.config.schema import MatchersConfig
+from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers import registry
 from ci_doctor.matchers.registry import FILE_CAP, INDEX_CAP, load, resolve
@@ -164,7 +165,7 @@ def test_a_location_naming_the_index_file_is_refused(location):
 
 
 def test_an_unsupported_scheme_is_refused():
-    """Only paths, `file://` and `http(s)://` and `git+`."""
+    """Only paths, `file://` and `http(s)://`."""
     with pytest.raises(SetupError, match="unsupported scheme 'ftp'"):
         load(_cfg(["r/x"], r="ftp://reg.test/m/"))
 
@@ -345,3 +346,29 @@ def test_diamond_bundles_are_expanded_once_each(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "_expand", counting)
     assert resolve(cfg).matchers == {"r/x": "r/l0_0", "r/y": "r/l0_0"}
     assert calls < 100
+
+
+def test_each_bundle_and_matcher_file_is_fetched_once(tmp_path, monkeypatch):
+    """Bundles are prefetched a level at a time and matchers in parallel; nothing is read twice."""
+    bundles = {"top": ["mid", "x"], "mid": ["leaf", "y"], "leaf": ["x", "y"]}
+    cfg = _cfg(["r/top"], r=_registry(tmp_path, ["x", "y"], bundles=bundles))
+    seen = []
+    real = registry.fetch_file
+
+    def counting(alias, location, rel, **kwargs):
+        seen.append(rel)
+        return real(alias, location, rel, **kwargs)
+
+    monkeypatch.setattr(registry, "fetch_file", counting)
+    assert [m.id for m in load(cfg)] == ["r/x", "r/y"]  # include order survives the parallel fetch
+    assert len(seen) == len(set(seen)) == 6  # index, 3 bundles, 2 matchers
+
+
+def test_the_fetch_settings_come_from_the_config(monkeypatch):
+    """`matchers.timeout_seconds` and `fetch_workers` reach the HTTP client."""
+    seen = {}
+    monkeypatch.setattr(registry.httpx, "Client", lambda **kw: seen.update(kw) or contextlib.nullcontext())
+    with registry.session(MatchersConfig(timeout_seconds=3, fetch_workers=16)):
+        pass
+    assert seen["timeout"] == 3
+    assert seen["limits"].max_connections == 16

@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from ci_doctor import cli
+import ci_doctor
 from ci_doctor.core.models import FailureReason, Job, LogLine, Phase, Run, Section
-from ci_doctor.pipeline import run_from_file
+from ci_doctor.service.analyze import run_from_file
 
 
 def test_domain_model_instantiates():
@@ -50,7 +50,7 @@ def test_core_carries_no_vendor_name_in_its_code():
     import re
 
     vendors = re.compile(r"gitlab|github|jenkins|forgejo|gitea|bitbucket|woodpecker", re.IGNORECASE)
-    core = Path(cli.__file__).parent / "core"
+    core = Path(ci_doctor.__file__).parent / "core"
     offenders = {}
     for path in sorted(core.glob("*.py")):
         tree = ast.parse(path.read_text())

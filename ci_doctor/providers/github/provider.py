@@ -21,7 +21,7 @@ from github.Repository import Repository
 from github.WorkflowJob import WorkflowJob
 from github.WorkflowRun import WorkflowRun
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo

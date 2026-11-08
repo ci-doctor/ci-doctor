@@ -1,6 +1,6 @@
 """The registry's own file formats: a matcher file, a bundle, and the `index.yaml` that lists everything.
 
-A matcher file is a :class:`~ci_doctor.config.schema.MatcherConfig` with the few
+A matcher file is a :class:`~ci_doctor.config.schemas.MatcherConfig` with the few
 rules only a registry adds; the other shapes are the registry's own. Every model is
 strict, so a key we don't know is an error rather than a silently ignored typo.
 """
@@ -10,8 +10,9 @@ from typing import Annotated, Literal, NamedTuple
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, model_validator
 
-from ci_doctor.config.schema import BARE_ID, Description, MatcherConfig, Tag
-from ci_doctor.config.types import Strict
+from ci_doctor.config.schemas._base import Strict
+from ci_doctor.config.schemas.matcher import Description, MatcherConfig, Tag
+from ci_doctor.config.schemas.matchers import BARE_ID
 
 #: Bounds the work one index can cause.
 MAX_INDEX_ENTRIES = 2000

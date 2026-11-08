@@ -8,15 +8,16 @@ requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "typer>=0.12,<0.27",  # 0.27 vendors click and drops the API matchers/cli.py subclasses
-    "click>=8.0",  # imported directly by matchers/cli.py (_SetupGroup)
+    "typer>=0.12,<0.27",  # 0.27 vendors click; cli/ reads click's context directly
+    "click>=8.0",  # cli/ reads the click context; config/ uses get_app_dir
+    "typing-extensions>=4.4",  # `override` on Python 3.11
     "pydantic>=2.5",
     "pyyaml>=6",
     "python-gitlab>=8.4.0",
     "pydantic-ai-slim>=2.40",  # core Agent only; a model SDK comes from a backend extra below
     "pygithub>=2.9.1",
     "requests>=2.32",  # imported directly to fetch GitHub's job-log redirect
-    "httpx>=0.27",  # imported directly for the openai backend's ca_bundle client
+    "httpx>=0.27",  # registry fetches
     "google-re2>=1.1",  # RE2: linear-time matching for user/pack regexes — the ReDoS guard
 ]
 classifiers = [
@@ -39,12 +40,7 @@ Issues = "https://github.com/ci-doctor/ci-doctor/issues"
 Changelog = "https://github.com/ci-doctor/ci-doctor/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
-# Optional LLM backends (base install stays lean/air-gap-clean; pick exactly one).
-# openai and azure both ride the openai SDK, so one extra covers both backends.
-# There is no "all": litellm hard-pins openai<3.0 while pydantic-ai's own OpenAI
-# integration requires openai>=3.8 — the two cannot be installed together, ever,
-# in one environment. `backend: openai`/`azure` and `backend: litellm` are
-# mutually exclusive install tracks, not a menu to combine.
+# LLM backends, one extra per Pydantic AI provider; `openai` also serves azure.
 openai = ["pydantic-ai-slim[openai]>=2.40"]
 anthropic = ["pydantic-ai-slim[anthropic]>=2.40"]
 bedrock = ["pydantic-ai-slim[bedrock]>=2.40"]
@@ -55,13 +51,6 @@ mistral = ["pydantic-ai-slim[mistral]>=2.40"]
 cohere = ["pydantic-ai-slim[cohere]>=2.40"]
 xai = ["pydantic-ai-slim[xai]>=2.40"]
 huggingface = ["pydantic-ai-slim[huggingface]>=2.40"]
-litellm = ["litellm>=1.40,<1.104", "pydantic-ai-litellm>=0.2.8,<0.3"]  # community bridge, 0.x: a minor bump can break; litellm 1.104 caps filelock<4, which has open CVEs
-
-[tool.uv]
-conflicts = [
-    [{ extra = "openai" }, { extra = "litellm" }],
-    [{ extra = "bedrock-mantle" }, { extra = "litellm" }],
-]
 
 [project.scripts]
 ci-doctor = "ci_doctor.cli:main"
@@ -105,7 +94,7 @@ convention = "google"
 # ANN off for tests: a test function returns None and says so by being a test.
 # `support.py` and `conftest.py` are annotated anyway — they are shared code.
 "tests/**" = ["S101", "S603", "ANN"]  # assert is the test; subprocess there is fixture setup
-"ci_doctor/cli.py" = ["B008"]  # typer declares options as call-valued defaults, by design
+"ci_doctor/cli/**" = ["B008"]  # typer declares options as call-valued defaults, by design
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

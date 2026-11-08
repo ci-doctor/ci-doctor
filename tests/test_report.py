@@ -10,7 +10,7 @@ from typing import get_args
 import pytest
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.config.schema import MatcherConfig, Role
+from ci_doctor.config.schemas.matcher import MatcherConfig, Role
 from ci_doctor.core.analyze import EvidenceBundle, build_bundle
 from ci_doctor.core.attribution import attribute
 from ci_doctor.core.models import FailureReason, Job, Phase
@@ -169,15 +169,6 @@ def test_deterministic_report_leaves_script_category_to_the_model(provider, outp
     job, attr, bundle, cfg = _pipeline(log, reason=FailureReason.UNKNOWN, provider=provider)
     report = produce_report(job, attr, bundle, cfg)  # deterministic
     assert report.category == "unknown"
-
-
-def test_litellm_backend_needs_no_api_base():
-    """Litellm is ready on `model` alone — it routes by model name, not endpoint."""
-    job, attr, bundle, cfg = _pipeline(
-        _SIMPLE_LOG, overrides={"llm": {"backend": "litellm", "model": "bedrock/anthropic.claude-v2"}}
-    )
-    report = produce_report(job, attr, bundle, cfg, client=FakeClient([_GOOD]))
-    assert report.summary == "unit tests failed on assert"
 
 
 def test_degraded_fallback_on_llm_error():

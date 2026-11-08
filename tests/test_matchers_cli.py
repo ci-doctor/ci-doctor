@@ -7,15 +7,14 @@ through `httpx.MockTransport`.
 
 import shutil
 import sys
+from pathlib import Path
 
 import httpx
 import pytest
 import yaml
 
 from ci_doctor import cli
-from ci_doctor.matchers import cli as mcli
-from ci_doctor.matchers import registry
-from ci_doctor.matchers.cli import _history_url
+from ci_doctor.cli.matchers import index
 from tests import support
 
 
@@ -34,15 +33,15 @@ def _mock_http(monkeypatch, fx_registry):
             return httpx.Response(503)
         return httpx.Response(404)
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
-    monkeypatch.setattr(mcli, "session", lambda: registry.session(client))
+    real = httpx.Client  # every command opens its own client; each gets the mock transport
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real(**kw, transport=httpx.MockTransport(handler)))
 
 
 @pytest.fixture
-def cfg(tmp_path, monkeypatch):
-    """A `.ci-doctor.yml` path in an empty cwd."""
+def cfg(tmp_path, monkeypatch, _user_config_dir):
+    """The user config, where edits go by default; the cwd is empty."""
     monkeypatch.chdir(tmp_path)
-    return tmp_path / ".ci-doctor.yml"
+    return _user_config_dir / "config.yml"
 
 
 def _write(path, text):
@@ -50,9 +49,10 @@ def _write(path, text):
     return path
 
 
-def _run(monkeypatch, capsys, *argv):
-    """Run the CLI; returns (exit code, stdout, stderr)."""
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "matchers", *argv])
+def _run(monkeypatch, capsys, *argv, config=None, plain=True):
+    """Run `ci-doctor [--write-to config] [--plain] matchers argv`; returns (exit code, stdout, stderr)."""
+    pre = ["--write-to", str(config)] if config else []
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", *pre, *(["--plain"] if plain else []), "matchers", *argv])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     out = capsys.readouterr()
@@ -96,7 +96,7 @@ def test_add_unknown_name_exits_1_with_a_hint_and_writes_nothing(cfg, monkeypatc
     """Add unknown name exits 1 with a hint and writes nothing."""
     code, _, err = _run(monkeypatch, capsys, "add", "official/pytset")
     assert code == 1
-    assert "did you mean official/pytest?" in err
+    assert "did you mean official/pytest?" in " ".join(err.split())  # rich wraps the log line
     assert not cfg.exists()
 
 
@@ -194,18 +194,6 @@ def test_info_on_a_bundle_lists_its_flattened_members(cfg, monkeypatch, capsys):
 def test_info_unknown_ref_exits_1(cfg, monkeypatch, capsys):
     """Info unknown ref exits 1."""
     assert _run(monkeypatch, capsys, "info", "official/zzzzzz")[0] == 1
-
-
-def test_history_link_for_github_hosts_only():
-    """History link for github hosts only."""
-    assert (
-        _history_url("https://raw.githubusercontent.com/o/r/main/reg/", "m/a.yaml")
-        == "https://github.com/o/r/commits/main/reg/m/a.yaml"
-    )
-    assert (
-        _history_url("https://o.github.io/r/", "m/a.yaml") == "https://github.com/o/r/commits/HEAD/m/a.yaml"
-    )
-    assert _history_url("https://matchers.cidoc.dev/", "m/a.yaml") is None
 
 
 # --- registry ------------------------------------------------------------------------
@@ -334,7 +322,7 @@ def test_matchers_commands_see_the_env_layer_like_analyze(cfg, monkeypatch, caps
 @pytest.mark.parametrize("argv", [["index", "--check"], ["verify"]])
 def test_a_non_utf8_matcher_file_fails_the_registry_check(cfg, monkeypatch, capsys, argv):
     """A latin-1 byte is a broken registry, exit 1, whatever the locale's encoding."""
-    root = support.write_registry(cfg.parent / "reg", support.PY_MATCHERS)
+    root = support.write_registry(Path.cwd() / "reg", support.PY_MATCHERS)
     path = next(root.glob("matchers/*/*/matcher.yaml"))
     path.write_bytes(path.read_bytes().replace(b"description: ", b"description: caf\xe9 ", 1))
     code, _, err = _run(monkeypatch, capsys, *argv, str(root))
@@ -345,7 +333,7 @@ def test_a_non_utf8_matcher_file_fails_the_registry_check(cfg, monkeypatch, caps
 
 def test_writing_into_a_missing_directory_exits_1(cfg, monkeypatch, capsys, fx_registry):
     """The config's directory not existing is a setup problem, not a crash to hide."""
-    code, _, _ = _run(monkeypatch, capsys, "registry", "add", f"fx={fx_registry}", "-f", "nodir/c.yml")
+    code, _, _ = _run(monkeypatch, capsys, "registry", "add", f"fx={fx_registry}", config="nodir/c.yml")
     assert code == 1
 
 
@@ -355,31 +343,74 @@ def test_a_crash_in_a_matchers_command_exits_1(cfg, monkeypatch, capsys):
     def crash(*_args, **_kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(mcli, "write_index", crash)
+    monkeypatch.setattr(index, "write_index", crash)
     code, _, err = _run(monkeypatch, capsys, "index", "--check", ".")
     assert code == 1
     assert "boom" in err
 
 
-def test_a_relative_registry_path_is_relative_to_its_config_file(cfg, monkeypatch, capsys, fx_registry):
-    """`-f sub/.ci-doctor.yml` with `./reg` means `sub/reg`, wherever the command runs."""
-    sub = cfg.parent / "sub"
-    shutil.copytree(fx_registry, sub / "reg")
-    config = sub / ".ci-doctor.yml"
-    code, _, err = _run(monkeypatch, capsys, "registry", "add", "fx=./reg", "-f", str(config))
+def test_registry_add_stores_a_relative_path_absolute(cfg, monkeypatch, capsys, fx_registry):
+    """`./reg` means the cwd's `reg`, even though the user config lives elsewhere."""
+    shutil.copytree(fx_registry, Path.cwd() / "reg")
+    code, _, err = _run(monkeypatch, capsys, "registry", "add", "fx=./reg")
     assert code == 0, err
-    assert _block(config)["registries"] == {"fx": "./reg"}
-    _write(config, "matchers:\n  registries:\n    fx: ./reg\n  include: [fx/pytest]\n")
-    code, out, err = _run(monkeypatch, capsys, "list", "-f", str(config))
+    assert _block(cfg)["registries"] == {"fx": str(Path.cwd() / "reg")}
+
+
+def test_a_hand_written_relative_registry_path_is_relative_to_its_config_file(
+    cfg, monkeypatch, capsys, fx_registry
+):
+    """`sub/.ci-doctor.yml` with `./reg` means `sub/reg`, wherever the command runs."""
+    sub = Path.cwd() / "sub"
+    shutil.copytree(fx_registry, sub / "reg")
+    config = _write(
+        sub / ".ci-doctor.yml", "matchers:\n  registries:\n    fx: ./reg\n  include: [fx/pytest]\n"
+    )
+    code, out, err = _run(monkeypatch, capsys, "list", config=config)
     assert code == 0, err
     assert "fx/pytest  via direct" in out
 
 
 def test_a_relative_registry_path_from_the_env_is_relative_to_the_cwd(cfg, monkeypatch, capsys, fx_registry):
     """An env var has no file to be relative to."""
-    shutil.copytree(fx_registry, cfg.parent / "reg")
+    shutil.copytree(fx_registry, Path.cwd() / "reg")
     monkeypatch.setenv("CI_DOCTOR_MATCHERS__REGISTRIES", "{fx: ./reg}")
     monkeypatch.setenv("CI_DOCTOR_MATCHERS__INCLUDE", "[fx/pytest]")
-    code, out, err = _run(monkeypatch, capsys, "list", "-f", str(cfg.parent / "sub" / "missing.yml"))
+    code, out, err = _run(monkeypatch, capsys, "list", config=Path.cwd() / "sub" / "missing.yml")
     assert code == 0, err
     assert "fx/pytest  via direct" in out
+
+
+def test_the_default_output_is_a_table(cfg, monkeypatch, capsys):
+    """Without `--plain`, rows are a table with a header and changes carry a mark."""
+    monkeypatch.setenv("COLUMNS", "200")
+    _, out, _ = _run(monkeypatch, capsys, "add", "official/pytest", plain=False)
+    assert "✓ added official/pytest" in out
+    _, out, _ = _run(monkeypatch, capsys, "list", plain=False)
+    assert out.split()[:3] == ["Matcher", "Via", "Classification"]
+    assert "official/pytest" in out
+
+
+def test_edits_go_to_the_user_config_by_default(cfg, monkeypatch, capsys):
+    """Not the last `-f`, not `./.ci-doctor.yml`: the user config, its directory created."""
+    shutil.rmtree(cfg.parent)
+    repo = _write(Path.cwd() / ".ci-doctor.yml", "ci: github\n")
+    monkeypatch.setattr(
+        sys, "argv", ["ci-doctor", "-f", str(repo), "--plain", "matchers", "add", "official/pytest"]
+    )
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 0, capsys.readouterr().err
+    assert _block(cfg) == {"include": ["official/pytest"]}
+    assert repo.read_text() == "ci: github\n"
+    assert "official/pytest  via direct" in _run(monkeypatch, capsys, "list")[1]  # and it is read back
+
+
+def test_write_to_picks_the_file_and_is_read_back(cfg, monkeypatch, capsys):
+    """`--write-to x` edits x, and later commands given it see the edit."""
+    other = Path.cwd() / "other.yml"
+    assert _run(monkeypatch, capsys, "add", "official/pytest", config=other)[0] == 0
+    assert _block(other) == {"include": ["official/pytest"]}
+    assert not cfg.exists()
+    assert "official/pytest" in _run(monkeypatch, capsys, "list", config=other)[1]
+    assert _run(monkeypatch, capsys, "list", "--write-to", str(other))[0] == 1  # global: before the command

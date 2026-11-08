@@ -3,7 +3,7 @@ import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
 import { url } from "../../lib/url";
 
-const layering = `schema defaults  <  defaults.yml  <  repo .ci-doctor.yml  <  CI_DOCTOR_* env  <  CLI flags`;
+const layering = `schema defaults  <  defaults.yml  <  user config  <  repo .ci-doctor.yml  <  CI_DOCTOR_* env  <  CLI flags`;
 
 const envExample = `# Nested keys use a double underscore:
 export CI_DOCTOR_LLM__MODEL="qwen2.5-coder:32b"
@@ -17,8 +17,8 @@ const inspect = `ci-doctor config           # the effective config, every layer 
 ci-doctor config --diff    # only what your file/env/flags change vs the defaults
 ci-doctor config --schema  # the JSON Schema, for editors and CI validation
 ci-doctor config --validate            # the setup dry run: config, registries, matchers; exit 1 on a problem
-ci-doctor config -f base.yml -f ci.yml # repeatable, the rightmost file wins
-# Output pages through $PAGER on a terminal; --plain prints raw (as does piping).`;
+ci-doctor -f base.yml -f ci.yml config # repeatable, the rightmost file wins
+# Output pages through $PAGER on a terminal; ci-doctor --plain config prints raw (as does piping).`;
 
 const schemaComment = `# yaml-language-server: $schema=https://github.com/ci-doctor/ci-doctor/releases/latest/download/ci-doctor.schema.json
 llm:
@@ -48,11 +48,10 @@ github:                          # used when github is the ci or the scm
 llm:
   enabled: true                  # false => deterministic-only report
   backend: openai                # openai | anthropic | azure | bedrock | bedrock-mantle | google |
-                                 # google-cloud | groq | mistral | cohere | xai | huggingface | litellm
+                                 # google-cloud | groq | mistral | cohere | xai | huggingface
   model: null                    # e.g. "qwen2.5-coder:32b" or "claude-opus-4-8"
-  api_base: null                 # OpenAI-compatible / litellm base URL
+  api_base: null                 # OpenAI-compatible base URL
   api_key_env: null              # optional; local servers often need none
-  ca_bundle: null                # LLM endpoint's own CA, independent of the provider's
   openai:
     api: chat                    # backend: openai; chat (Chat Completions) | responses (Responses API)
   azure: null                    # backend: azure; required there
@@ -66,7 +65,7 @@ llm:
   max_input_tokens: 12000
   temperature: 0.1
   timeout_seconds: 120           # wall-clock budget for one call, retries included
-  max_retries: 1                 # SDK retries (not bedrock/litellm); Pydantic AI's own Agent retries once more on an invalid reply
+  max_retries: 1                 # SDK retries (not bedrock); Pydantic AI's own Agent retries once more on an invalid reply
 
 analysis:
   include_allowed_failures: false   # allow_failure jobs are noise by default
@@ -81,9 +80,11 @@ matchers:
   registries:                    # alias -> registry folder (the one holding index.yaml)
     official: https://matchers.cidoc.dev/   # shipped; override it, or add your own:
     # acme: ./ci/matchers                   # a path, relative to this file
-    # pinned: git+https://github.com/ci-doctor/matchers.git@<tag-or-sha>#subdirectory=<dir>
+    # pinned: https://raw.githubusercontent.com/acme/matchers/<tag-or-sha>/
   include: []                    # alias/name of a matcher or bundle; empty exits 1
   # include: [official/python, acme/mytool]
+  timeout_seconds: 10            # per registry request
+  fetch_workers: 8               # registry files fetched at once; 1 fetches in order
 
 extraction:
   tail_lines: 120                # lines kept from the end of the blamed section
@@ -131,8 +132,16 @@ redaction:
         replaces the one before it. A relative registry path resolves against the
         directory of the config file that names it; one set in an environment
         variable resolves against the working directory. Point at specific files with <code
-            >-f path/to/.ci-doctor.yml</code
-        >, repeated as often as you like — each one overrides the last.
+            >ci-doctor -f path/to/.ci-doctor.yml</code
+        >, before the command, repeated as often as you like — each one overrides the last.
+    </p>
+    <p>
+        The user config applies to every repo on the machine:
+        <code>~/.config/ci-doctor/config.yml</code> on Linux (or under
+        <code>$XDG_CONFIG_HOME</code>), <code>~/Library/Application Support/ci-doctor/config.yml</code>
+        on macOS, <code>%APPDATA%\ci-doctor\config.yml</code> on Windows. It is where
+        <code>ci-doctor matchers add</code> and the other editing commands write;
+        <code>ci-doctor --write-to .ci-doctor.yml matchers add …</code> edits the repo file instead.
     </p>
 
     <h2>Inspecting the result</h2>
@@ -153,6 +162,18 @@ redaction:
 
     <h2>Environment variables</h2>
     <Code code={envExample} lang="bash" theme="github-dark" />
+
+    <h2>Custom CA certificates</h2>
+    <p>
+        ci-doctor has no CA setting for the LLM or the matcher registries: each client
+        trusts what its environment says, the way <code>pip</code>, <code>uv</code> and
+        <code>curl</code> do. Point <code>SSL_CERT_FILE</code> (or <code>SSL_CERT_DIR</code>)
+        at a bundle holding your internal CA <em>and</em> the public roots, usually the
+        system one, such as <code>/etc/ssl/certs/ca-certificates.crt</code>. That covers the
+        registry fetches and every LLM SDK built on httpx. Bedrock reads
+        <code>AWS_CA_BUNDLE</code> instead. The GitLab and GitHub clients keep their own
+        <code>ca_bundle</code> / <code>verify_ssl</code> keys below.
+    </p>
 
     <h2>LLM backends</h2>
     <p>
@@ -262,18 +283,6 @@ redaction:
                     ><code>model</code>; <code>api_key_env</code> or <code>HF_TOKEN</code>; <code>pip install ci-doctorr[huggingface]</code></td
                 ></tr
             >
-            <tr
-                ><td><code>litellm</code></td><td
-                    >Whatever else <a href="https://docs.litellm.ai/">litellm</a>
-                    reaches — Vertex, Cohere, watsonx, custom proxies, ~100
-                    providers total</td
-                ><td
-                    ><code>model</code> in litellm's own
-                    <code>provider/model</code> form; <code
-                        >pip install ci-doctorr[litellm]</code
-                    ></td
-                ></tr
-            >
         </tbody>
     </table>
     <div class="note">
@@ -287,15 +296,10 @@ redaction:
         provider you're using.
     </div>
     <div class="note">
-        <strong><code>openai</code>/<code>azure</code>/<code>bedrock-mantle</code> and <code>litellm</code>
-        are mutually exclusive installs, not a menu to combine.</strong> litellm
-        hard-pins <code>openai&lt;3.0</code>, while Pydantic AI's own OpenAI
-        integration needs <code>openai&gt;=3.8</code> — the two cannot be installed
-        in one environment. Pick whichever track covers your provider;
-        Every other native backend is unaffected either way.
-        <code>litellm</code> may
-        also pull <code>tiktoken</code>, which fetches vocab at runtime, so it is
-        unfit for a strict air gap. When the LLM is disabled or unavailable,
+        <strong>Only Pydantic AI's own providers.</strong> Every backend is a provider
+        <a href="https://ai.pydantic.dev/models/overview/">Pydantic AI</a> ships itself,
+        so the extras install side by side. Pydantic AI supports more providers than the
+        ones listed here; ask for one you need. When the LLM is disabled or unavailable,
         ci-doctor emits the deterministic report instead of failing.
     </div>
     <div class="note">
@@ -332,6 +336,18 @@ redaction:
                     Nothing is selected by default, and an empty list exits 1.</td
                 ></tr
             >
+            <tr
+                ><td><code>matchers.timeout_seconds</code></td><td><code>10</code></td><td
+                    >Seconds to wait on each registry request before failing the
+                    setup. Raise it for a slow mirror.</td
+                ></tr
+            >
+            <tr
+                ><td><code>matchers.fetch_workers</code></td><td><code>8</code></td><td
+                    >Registry files fetched at once, 1–32. Lower it for a registry
+                    that rate-limits.</td
+                ></tr
+            >
         </tbody>
     </table>
     <table>
@@ -348,29 +364,13 @@ redaction:
                     warning)</td
                 ><td><code>https://matchers.cidoc.dev/</code></td></tr
             >
-            <tr
-                ><td><code>git+https://</code>, with an optional <code>@ref</code>
-                    and <code>#subdirectory=dir</code></td
-                ><td
-                    ><code
-                        >git+https://github.com/acme/matchers.git@v1.2.0#subdirectory=registry</code
-                    ></td
-                ></tr
-            >
-            <tr
-                ><td><code>git+ssh://</code>, same options</td><td
-                    ><code>git+ssh://git@github.com/acme/matchers.git@main</code></td
-                ></tr
-            >
         </tbody>
     </table>
     <p>
         Every run reads the registries as they are now: there is no cache, no
-        lock file and no version field. To pin one, point it at a fixed revision —
-        a tag or commit SHA after <code>@</code> in a <code>git+</code> location,
-        or a raw URL that contains one. A <code>git+</code> registry needs
-        <code>git</code> on <code>PATH</code> and authenticates however git already
-        does (SSH agent, credential helper). Edit both keys by hand or with
+        lock file and no version field. To pin one, point it at a URL that
+        contains a fixed revision, such as a raw URL with a tag or commit SHA in
+        it. Edit both keys by hand or with
         <a href={url("/reference/cli/")}><code>ci-doctor matchers</code></a>, and
         check the result with <code>ci-doctor config --validate</code>.
     </p>

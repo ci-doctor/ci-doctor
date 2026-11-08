@@ -3,8 +3,8 @@
 from ci_doctor.core.models import Run
 from ci_doctor.core.ports import Renderer
 from ci_doctor.llm.schema import Report
-from ci_doctor.pipeline import JobResult
 from ci_doctor.render.pipeline import header_line
+from ci_doctor.service.analyze import JobResult
 
 
 def _yn(value: bool) -> str:

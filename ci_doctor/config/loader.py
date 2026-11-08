@@ -1,9 +1,8 @@
-"""Layered config loading: schema defaults < defaults.yml < repo file < env < flags.
+"""Layered config: schema defaults < defaults.yml < user file < repo file < env < flags.
 
-Mappings deep-merge; lists and scalars replace, so `matchers.include` in a repo
-file is the whole selection, not an addition to the default one. Unknown
-keys in a config *file* are a hard error (schema uses ``extra="forbid"``). Env vars
-are more permissive by necessity (see :func:`_env_overlay`).
+Mappings deep-merge; lists and scalars replace, so a repo's `matchers.include` is the
+whole selection. Unknown keys in a file are an error; env vars are laxer
+(:func:`_env_overlay`).
 """
 
 import logging
@@ -15,11 +14,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import click
 import yaml
 
-from ci_doctor.config.schema import Config
+from ci_doctor.config.schemas import Config
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.transports import SCP_STYLE
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +29,15 @@ _LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 _ENV_PREFIX = "CI_DOCTOR_"
 _TOP_LEVEL = set(Config.model_fields)  # provider, gitlab, llm, ...
 _DEFAULT_REPO_CONFIG = Path(".ci-doctor.yml")
+
+
+def user_config() -> Path:
+    """The user's config file (click's per-platform app dir), whether or not it exists.
+
+    Returns:
+        The path.
+    """
+    return Path(click.get_app_dir("ci-doctor")) / "config.yml"
 
 
 def _deep_merge(base: dict, over: dict, path: str = "") -> dict:
@@ -143,18 +151,51 @@ def anchor_registry(value: Any, base: Path) -> Any:  # noqa: ANN401 - unvalidate
         base: The config file's directory.
 
     Returns:
-        `base / value` for a relative path; anything else (a URL, `git+`, scp-style,
-        an absolute path, a non-string) unchanged.
+        `base / value` for a relative path; anything else (a URL, an absolute path, a
+        non-string) unchanged.
     """
-    if (
-        not isinstance(value, str)
-        or not base.parts
-        or urlsplit(value).scheme
-        or SCP_STYLE.match(value)
-        or Path(value).is_absolute()
-    ):
+    if not isinstance(value, str) or not base.parts or urlsplit(value).scheme or Path(value).is_absolute():
         return value
     return str(base / value)
+
+
+def _repo_paths(repo_config: str | Path | Iterable[str | Path] | None) -> list[Path]:
+    """The repo config files to layer, lowest precedence first.
+
+    Args:
+        repo_config: As given to :func:`load_config`.
+
+    Returns:
+        The given files, or `./.ci-doctor.yml` when none were given and it exists.
+
+    Raises:
+        SetupError: If a given file does not exist.
+    """
+    if isinstance(repo_config, (str, Path)):
+        repo_config = [repo_config]
+    paths = [Path(p) for p in repo_config or []]
+    if not paths:
+        return [_DEFAULT_REPO_CONFIG] if _DEFAULT_REPO_CONFIG.is_file() else []
+    if missing := [p for p in paths if not p.is_file()]:
+        raise SetupError(f"config file not found: {missing[0]}")
+    return paths
+
+
+def _file_layer(path: Path) -> dict:
+    """Read one config file, its relative registry paths anchored to its directory.
+
+    Args:
+        path: An existing config file.
+
+    Returns:
+        The file's layer, not yet validated.
+    """
+    layer = _load_yaml(path.read_text())
+    registries = (layer.get("matchers") or {}).get("registries")
+    if isinstance(registries, dict):  # anything else fails validation later
+        for alias, value in registries.items():
+            registries[alias] = anchor_registry(value, path.parent)
+    return layer
 
 
 def load_config(
@@ -163,9 +204,6 @@ def load_config(
     environ: Mapping[str, str] | None = None,
 ) -> Config:
     """Assemble and validate the effective config from every layer.
-
-    Layers apply lowest to highest: schema defaults, ``defaults.yml``, the repo
-    config file(s), ``CI_DOCTOR_*`` env vars, then ``overrides``.
 
     Args:
         repo_config: One config file path, or several applied left to right so the
@@ -179,49 +217,18 @@ def load_config(
         The validated config.
 
     Raises:
-        FileNotFoundError: If a given path does not exist.
-        pydantic.ValidationError: On an unknown or ill-typed key.
+        SetupError: If a file is missing, unreadable or not YAML, or the result
+            doesn't validate (an unknown or ill-typed key).
     """
-    merged = _shipped_defaults()
-
-    if isinstance(repo_config, (str, Path)):
-        repo_config = [repo_config]
-    paths = [Path(p) for p in repo_config or []]
-    if not paths and _DEFAULT_REPO_CONFIG.is_file():
-        paths = [_DEFAULT_REPO_CONFIG]
-    for path in paths:
-        if not path.is_file():
-            raise FileNotFoundError(f"config file not found: {path}")
-        layer = _load_yaml(path.read_text())
-        registries = (layer.get("matchers") or {}).get("registries")
-        if isinstance(registries, dict):  # anything else fails validation below
-            for alias, value in registries.items():
-                registries[alias] = anchor_registry(value, path.parent)
-        merged = _deep_merge(merged, layer)
-
-    merged = _deep_merge(merged, _env_overlay(os.environ if environ is None else environ))
-    if overrides:
-        merged = _deep_merge(merged, overrides)
-
-    return Config(**merged)  # extra="forbid" -> unknown keys raise ValidationError
-
-
-def load_or_fail(paths: list[Path]) -> Config:
-    """:func:`load_config` for a command, turning a bad config into a `SetupError`.
-
-    Every command reads its config through this, so `analyze` and `matchers …`
-    see the same layers, env vars included.
-
-    Args:
-        paths: The `--config/-f` files, lowest precedence first.
-
-    Returns:
-        The effective config.
-
-    Raises:
-        SetupError: If a file is missing or unreadable, or the result doesn't validate.
-    """
+    layers = [_shipped_defaults()]
     try:
-        return load_config(repo_config=paths)
-    except Exception as exc:  # noqa: BLE001 - every way a config can be wrong is the user's to fix
+        user = [p for p in [user_config()] if p.is_file()]
+        layers += [_file_layer(path) for path in [*user, *_repo_paths(repo_config)]]
+        layers.append(_env_overlay(os.environ if environ is None else environ))
+        layers.append(overrides or {})
+        merged: dict = {}
+        for layer in layers:
+            merged = _deep_merge(merged, layer)
+        return Config(**merged)  # extra="forbid" -> unknown keys raise ValidationError
+    except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:  # ValidationError is a ValueError
         raise SetupError(f"invalid config: {exc}") from None

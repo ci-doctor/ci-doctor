@@ -1,0 +1,36 @@
+name: Bug report
+description: ci-doctor crashed, errored, or did something it shouldn't.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Wrong step blamed? Use "Wrong diagnosis" instead. Redact secrets before pasting.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest steps; a replayable job log is ideal.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output with `-v`
+      description: The failing command's output with `ci-doctor -v`.
+      render: text
+  - type: textarea
+    id: report
+    attributes:
+      label: "`ci-doctor report`"
+      description: Run with the same `-f` files. It prints no secrets.
+      render: text
+    validations:
+      required: true

@@ -40,7 +40,7 @@ the classifier is wrong, that's a bug with a failing test — not a prompt to tu
   terminal command, evidence excerpt, and templated remediation.
 - **Bring-your-own model** — optional LLM step via `openai` (any OpenAI-compatible endpoint,
   self-hosted or hosted), `anthropic`, `azure`, `bedrock`, `google`, `groq`, `mistral`, `cohere`,
-  `xai`, `huggingface` and more natively, or `litellm` (watsonx and ~100 others), selected by config.
+  `xai` and `huggingface`, all through Pydantic AI's own providers, selected by config.
 - **GitLab & GitHub** — one provider-neutral core; the GitHub adapter was added with *zero*
   changes to core.
 - **Air-gap friendly** — no telemetry, no update checks; ship as a self-contained Docker
@@ -79,15 +79,16 @@ git clone https://github.com/ci-doctor/ci-doctor
 cd ci-doctor
 uv sync                       # or: pip install .
 
-# pick exactly one LLM backend extra (openai/azure and litellm are mutually exclusive):
+# pick the LLM backend extra for your provider:
 uv sync --extra openai        # or: pip install '.[openai]'      — Ollama/vLLM/OpenAI-compatible
 uv sync --extra anthropic     # or: pip install '.[anthropic]'   — Anthropic direct
 uv sync --extra bedrock       # or: pip install '.[bedrock]'     — Amazon Bedrock, AWS IAM auth
 uv sync --extra google        # or: pip install '.[google]'      — Gemini / Vertex AI (also: groq, mistral, cohere, xai, huggingface)
-uv sync --extra litellm       # or: pip install '.[litellm]'     — Vertex/Cohere/watsonx/~100 more
 ```
 
-Or build the self-contained image:
+Or build the self-contained image. It has no LLM SDK; bake some in with
+`--build-arg EXTRAS=openai,anthropic`, or add one in the job with `pip install "ci-doctorr[openai]"`
+(pinned to the lock):
 
 ```sh
 docker build -t ci-doctor .
@@ -96,7 +97,7 @@ docker build -t ci-doctor .
 ## Quickstart
 
 ```sh
-# Select matchers once (writes .ci-doctor.yml; with none selected a run exits 1):
+# Select matchers once (writes your user config; with none selected a run exits 1):
 uv run ci-doctor matchers add official/python
 
 # Replay a captured log — no CI, no token, no LLM: the log's own framing says
@@ -121,7 +122,7 @@ they ran.
 
 ## Configuration
 
-Layered and pydantic-validated — `defaults.yml` < repo `.ci-doctor.yml` < `CI_DOCTOR_*` env
+Layered and pydantic-validated — `defaults.yml` < your user config < repo `.ci-doctor.yml` < `CI_DOCTOR_*` env
 < CLI flags, with nested env vars using `__` (`CI_DOCTOR_LLM__MODEL=…`). Unknown keys are
 an error. Minimal config:
 
@@ -134,7 +135,7 @@ github:
 
 llm:
   enabled: true                       # false => deterministic-only report
-  backend: openai                     # openai | anthropic | azure | bedrock | google | groq | mistral | ... | litellm
+  backend: openai                     # openai | anthropic | azure | bedrock | google | groq | mistral | ...
   model: qwen2.5-coder:32b
   api_base: http://openai-compatible-endpoint.internal:8000/v1
 
