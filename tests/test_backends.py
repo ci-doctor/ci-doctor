@@ -7,23 +7,14 @@ schema is covered end-to-end in tests/test_report.py.
 """
 
 import asyncio
-import importlib
-import inspect
-import os
-import pkgutil
 import sys
 import threading
 import time
 import types
-import typing
-import warnings
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import ClassVar
 
-import certifi
-import httpx
-import httpx2
 import pytest
 from pydantic import BaseModel
 from pydantic_ai.messages import ModelResponse, TextPart
@@ -162,15 +153,11 @@ def test_a_missing_sdk_names_the_extra_to_install(monkeypatch):
         make_client(_llm(backend="azure", model="m", azure={"endpoint": "https://x", "api_version": "v1"}))
 
 
-def test_ca_bundle_becomes_an_http_client_only_where_accepted(fake_pydantic_ai):
-    """A provider with an http_client parameter gets the CA-bundle client; one without doesn't."""
+def test_a_provider_builds_its_own_http_client(fake_pydantic_ai):
+    """We never hand a provider a client: its SDK's own reads SSL_CERT_FILE and the rest."""
     fake_pydantic_ai["provider_class"] = _FakeClientProvider
-    backends._generic_model(_llm(backend="groq", model="m", ca_bundle=certifi.where()), {})
-    assert isinstance(_FakeClientProvider.built["http_client"], httpx.AsyncClient)
-
-    fake_pydantic_ai["provider_class"] = _FakeProvider
-    backends._generic_model(_llm(backend="groq", model="m", ca_bundle=certifi.where()), {})
-    assert "http_client" not in _FakeProvider.built
+    backends._generic_model(_llm(backend="groq", model="m"), {})
+    assert _FakeClientProvider.built["http_client"] is None
 
 
 @pytest.mark.parametrize(
@@ -399,174 +386,6 @@ def test_close_never_raises():
     client.close()
 
 
-class _Httpx2Provider:
-    def __init__(self, *, http_client: "httpx2.AsyncClient | None" = None): ...
-
-
-class _EitherProvider:
-    def __init__(self, *, http_client: "httpx.AsyncClient | httpx2.AsyncClient | None" = None): ...
-
-
-class _LegacyProvider:
-    def __init__(self, *, http_client: "httpx.AsyncClient | None" = None): ...
-
-
-class _UnresolvableProvider:
-    def __init__(self, *, http_client: "not_imported.AsyncClient | None" = None): ...  # noqa: F821 - unresolvable on purpose
-
-
-@pytest.mark.parametrize(
-    ("provider_class", "expected"),
-    [
-        (_Httpx2Provider, httpx2.AsyncClient),  # anthropic
-        (_EitherProvider, httpx2.AsyncClient),  # openai & co: legacy still works, but warns
-        (_LegacyProvider, httpx.AsyncClient),  # groq, cohere
-        (_UnresolvableProvider, httpx.AsyncClient),
-    ],
-)
-def test_the_ca_bundle_client_is_the_kind_the_provider_takes(provider_class, expected):
-    """httpx2 wherever the provider's annotation accepts it, legacy httpx otherwise."""
-    assert type(backends._ca_bundle_client(provider_class, certifi.where())) is expected
-
-
-# --- the ca_bundle client survey ------------------------------------------------------
-#
-# Why this exists. `llm.ca_bundle` makes us build the HTTP client a provider talks
-# through, so it trusts a corporate CA. pydantic-ai is midway through moving from
-# `httpx` to its fork `httpx2`, and its providers no longer agree on which client
-# they take: most accept either (and warn on legacy `httpx`, which v3 removes),
-# anthropic takes only `httpx2`, groq and cohere still take only legacy `httpx`.
-# Hand a provider the wrong one and the user's first run with a CA bundle fails.
-#
-# How we choose. `_ca_bundle_client` keeps no table of provider names. It reads the
-# type annotation each provider puts on its own `http_client` parameter, and builds
-# `httpx2` wherever that annotation allows it. That follows pydantic-ai automatically,
-# but it means we trust the annotations, and the unit tests above only feed it
-# made-up classes.
-#
-# What the survey adds. It runs the same choice against every real provider class
-# that is installed, and checks the client we build is one the provider declares.
-# Locally that is the providers the `openai` extra brings (~26); CI installs ten
-# backend extras, so there it also covers anthropic, groq, cohere, google, mistral
-# and huggingface (~33). A pydantic-ai upgrade that moves a provider to `httpx2`, or
-# drops legacy `httpx`, then fails here, naming the provider, instead of reaching
-# a user. What it cannot see: a provider whose extra CI doesn't install, or one
-# whose annotation is wrong about what its SDK really accepts.
-
-
-def _installed_providers():
-    """Collect every pydantic-ai provider class importable here that takes an `http_client`.
-
-    Walks the `pydantic_ai.providers` package module by module. A module whose SDK
-    is a backend extra we didn't install raises `ImportError` on import, and is
-    skipped: we can only check what is there. Of what imports, we keep the classes
-    defined in that module (not ones it imported from elsewhere, which would be
-    counted twice) whose constructor has an `http_client` parameter, since those are
-    the only ones `_provider_kwargs` hands a client to.
-
-    Returns:
-        One `pytest.param` per provider class, with the class name as the test id,
-        so a failure reads `...[AnthropicProvider]`.
-    """
-    import pydantic_ai.providers
-
-    found = []
-    for info in pkgutil.iter_modules(pydantic_ai.providers.__path__):
-        try:
-            module = importlib.import_module(f"pydantic_ai.providers.{info.name}")
-        except ImportError:  # its SDK is a backend extra that isn't installed
-            continue
-        found += [
-            pytest.param(cls, id=cls.__name__)
-            for cls in vars(module).values()
-            if inspect.isclass(cls)
-            and cls.__module__ == module.__name__
-            and "http_client" in inspect.signature(cls.__init__).parameters
-        ]
-    return found
-
-
-def _classes(hint):
-    """The classes a type hint names, with unions and Optional unpacked.
-
-    `httpx.AsyncClient | httpx2.AsyncClient | None` becomes the set of the two
-    client classes; `None` and anything else that isn't a class is dropped. This
-    is the "declared" side the survey compares the built client against.
-    """
-    if args := typing.get_args(hint):
-        return {c for a in args for c in _classes(a)}
-    return {hint} if isinstance(hint, type) else set()
-
-
-# Collected once, at import, because pytest needs the list to generate the test ids.
-INSTALLED_PROVIDERS = _installed_providers()
-
-
-def test_the_survey_finds_providers():
-    """Guard the survey against passing by finding nothing.
-
-    If pydantic-ai moved or renamed its providers package, the walk above would find
-    no classes and the parametrized test below would collect zero cases: green, and
-    proving nothing. The `openai` extra alone brings dozens of OpenAI-compatible
-    providers, so fewer than 10 means the walk is broken, not that providers are gone.
-    """
-    assert len(INSTALLED_PROVIDERS) >= 10
-
-
-@pytest.mark.parametrize("provider_class", INSTALLED_PROVIDERS)
-def test_every_installed_provider_accepts_its_ca_bundle_client(provider_class):
-    """The client we build for a real provider is one it declares, and httpx2 when it can be.
-
-    For one provider class, three steps:
-
-    1. Build the client exactly as a `ca_bundle` run would (`_ca_bundle_client`).
-    2. Resolve the provider's `http_client` annotation independently, the same way a
-       type checker would (`typing.get_type_hints`), and unpack it into the client
-       classes it allows.
-    3. Check the built client is an instance of one of them; and when `httpx2` is
-       among them, that we picked it, because the legacy client warns today and is
-       removed in pydantic-ai v3.
-
-    Some providers name `httpx` in an annotation without importing it at runtime
-    (a typing-only import), so their hints can't be resolved and raise `NameError`.
-    `_ca_bundle_client` falls back to legacy `httpx` for those, which every provider
-    still accepts; here we check that fallback happened, and that the raw annotation
-    does mention `httpx`, so the fallback was not a guess about something unrelated.
-    """
-    client = backends._ca_bundle_client(provider_class, certifi.where())
-    try:
-        declared = _classes(typing.get_type_hints(provider_class.__init__)["http_client"])
-    except NameError:  # annotation names a typing-only import: we fall back to legacy httpx
-        annotation = str(inspect.signature(provider_class.__init__).parameters["http_client"].annotation)
-        assert "httpx" in annotation, annotation
-        assert type(client) is httpx.AsyncClient
-        return
-    assert isinstance(client, tuple(declared)), f"built {type(client)}, declared {declared}"
-    if httpx2.AsyncClient in declared:
-        assert type(client) is httpx2.AsyncClient  # the legacy client warns, and goes in v3
-
-
-def test_the_openai_provider_takes_the_ca_bundle_client_without_a_deprecation_warning():
-    """pydantic-ai deprecates a legacy `httpx.AsyncClient` for OpenAI-compatible providers."""
-    pytest.importorskip("openai")
-    cfg = _llm(backend="openai", model="m", api_base="http://127.0.0.1:1/v1", ca_bundle=certifi.where())
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        make_client(cfg)
-
-
-def test_close_shuts_a_real_sdk_client_built_with_a_ca_bundle():
-    """The `httpx` client `ca_bundle` creates is closed through the SDK client that owns it."""
-    pytest.importorskip("openai")
-    cfg = _llm(backend="openai", model="m", api_base="http://127.0.0.1:1/v1", ca_bundle=certifi.where())
-    client = make_client(cfg)
-    http_client = client._model.client._client
-    assert not http_client.is_closed
-    client._loop_for()  # close() is a no-op until a call has started the loop
-    client.close()
-    assert http_client.is_closed
-
-
 def test_one_repair_retry_on_invalid_then_valid_reply():
     """PromptedOutput + Agent(retries=1) retries exactly once on a schema-invalid reply."""
     calls = {"n": 0}
@@ -598,21 +417,6 @@ def test_temperature_and_timeout_reach_the_agent():
     agent = client._agent_for()
     assert agent.model_settings["temperature"] == 0.7
     assert agent.model_settings["timeout"] == 42
-
-
-def test_litellm_ca_bundle_sets_its_ssl_verify(monkeypatch):
-    """Litellm's only CA knob is the module-level `ssl_verify`; an unset bundle leaves it alone."""
-    fake_litellm = types.ModuleType("litellm")
-    fake_litellm.ssl_verify = True
-    fake_bridge = types.ModuleType("pydantic_ai_litellm")
-    fake_bridge.LiteLLMModel = lambda *a, **k: TestModel()
-    monkeypatch.setitem(sys.modules, "litellm", fake_litellm)
-    monkeypatch.setitem(sys.modules, "pydantic_ai_litellm", fake_bridge)
-
-    backends._litellm_model(_llm(backend="litellm", model="m"), {})
-    assert fake_litellm.ssl_verify is True
-    backends._litellm_model(_llm(backend="litellm", model="m", ca_bundle="/etc/ca.pem"), {})
-    assert fake_litellm.ssl_verify == "/etc/ca.pem"
 
 
 def test_timeout_is_a_wall_clock_budget_for_the_whole_call():
@@ -721,37 +525,6 @@ def test_bedrock_builds_with_only_a_region(aws_env):
     )
     assert type(model).__name__ == "BedrockConverseModel"
     assert model.model_name == "anthropic.claude-opus-4-6-v1:0"
-
-
-def test_bedrock_ca_bundle_reaches_the_boto_client(aws_env, monkeypatch):
-    """Bedrock has no `http_client`; the bundle reaches boto via AWS_CA_BUNDLE, then is removed again."""
-    pytest.importorskip("boto3")
-    monkeypatch.delenv("AWS_CA_BUNDLE", raising=False)
-    model = backends._generic_model(
-        _llm(backend="bedrock", model="m", aws={"region": "us-east-1"}, ca_bundle=certifi.where()), {}
-    )
-    assert model.client._endpoint.http_session._verify == certifi.where()
-    assert "AWS_CA_BUNDLE" not in os.environ
-
-
-def test_bedrock_ca_bundle_restores_a_preexisting_variable(monkeypatch):
-    """A caller's own AWS_CA_BUNDLE survives, even when the build fails."""
-    monkeypatch.setenv("AWS_CA_BUNDLE", "/mine.pem")
-    with pytest.raises(RuntimeError), backends._aws_ca_bundle("/ours.pem"):
-        assert os.environ["AWS_CA_BUNDLE"] == "/ours.pem"
-        raise RuntimeError
-    assert os.environ["AWS_CA_BUNDLE"] == "/mine.pem"
-
-
-def test_bedrock_keeps_the_providers_own_setup_with_a_ca_bundle(aws_env, monkeypatch):
-    """A bearer token still works alongside a CA bundle (a pre-built boto client would skip it)."""
-    pytest.importorskip("boto3")
-    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "tok")
-    model = backends._generic_model(
-        _llm(backend="bedrock", model="m", aws={"region": "us-east-1"}, ca_bundle=certifi.where()), {}
-    )
-    assert model.client.meta.config.signature_version == "bearer"
-    assert model.client.meta.config.read_timeout == 300
 
 
 def test_bedrock_falls_back_to_the_aws_region_env_var(aws_env, monkeypatch):

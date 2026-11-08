@@ -7,7 +7,7 @@ or retry loop here.
 
 Any Pydantic AI-native provider goes through one generic path: Pydantic AI's own
 `infer_model` picks the `Model` class, and the provider is built from the constructor
-arguments it actually accepts (`api_key`, `base_url`, `http_client`). Adding a provider
+arguments it actually accepts (`api_key`, `base_url`). Adding a provider
 is a name in `LLMConfig.backend` and a pip extra. A provider with settings of its own
 adds a block under `config/types/` that dumps to its constructor arguments (see
 `LLMConfig.provider_settings`). Two backends override the generic path: `openai` picks
@@ -21,17 +21,20 @@ Pydantic AI's OpenAI integration needs `openai>=3.8` (see `[tool.uv] conflicts`)
 
 Every SDK is imported inside the builder that needs it, so importing this module
 costs nothing on a run that never reaches a model.
+
+TLS trust is the environment's, never ours: each SDK builds its own HTTP client and
+reads `SSL_CERT_FILE`/`SSL_CERT_DIR` (httpx), `AWS_CA_BUNDLE` (boto, for Bedrock) or
+`REQUESTS_CA_BUNDLE` (requests). Handing a provider our own client would override its
+timeouts, retries and auth setup to change one setting the environment already carries.
 """
 
 import asyncio
-import contextlib
 import inspect
 import logging
 import os
-import ssl
 import threading
-from collections.abc import Callable, Iterator, Mapping
-from typing import TYPE_CHECKING, Any, TypeVar, get_args, get_type_hints
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING, Any, TypeVar, get_args
 
 from pydantic import BaseModel
 
@@ -69,59 +72,7 @@ def _provider_kwargs(provider_class: type, cfg: LLMConfig, environ: Mapping[str,
         kwargs["api_key"] = _api_key(cfg, environ)
     if "base_url" in params and cfg.api_base:
         kwargs["base_url"] = cfg.api_base
-    if "http_client" in params and cfg.ca_bundle:
-        kwargs["http_client"] = _ca_bundle_client(provider_class, cfg.ca_bundle)
     return kwargs
-
-
-def _ca_bundle_client(provider_class: type, cafile: str) -> object:
-    """An async HTTP client trusting `cafile`, of the kind the provider takes.
-
-    pydantic-ai is moving to `httpx2`: most providers take either client (and warn on the
-    legacy one), a few take only `httpx2` (anthropic) or only legacy `httpx` (groq, cohere).
-    So read the provider's own annotation, and prefer `httpx2` wherever it is accepted.
-    """
-    verify = ssl.create_default_context(cafile=cafile)
-    try:
-        hint = get_type_hints(provider_class.__init__).get("http_client")
-    except NameError:  # an annotation naming a module the provider imports only for typing
-        hint = None
-    if _mentions(hint, "httpx2"):
-        import httpx2
-
-        return httpx2.AsyncClient(verify=verify)
-    import httpx
-
-    return httpx.AsyncClient(verify=verify)
-
-
-def _mentions(hint: object, module: str) -> bool:
-    """Whether a type hint, unions and Optional unpacked, includes a class from `module`."""
-    if args := get_args(hint):
-        return any(_mentions(a, module) for a in args)
-    return getattr(hint, "__module__", "").split(".")[0] == module
-
-
-@contextlib.contextmanager
-def _aws_ca_bundle(path: str | None) -> Iterator[None]:
-    """Expose `llm.ca_bundle` to boto as `AWS_CA_BUNDLE` while the Bedrock provider builds its client.
-
-    The provider has no `http_client`, and handing it a ready-made boto client would skip its
-    own setup (bearer-token auth, 300s read timeout). boto reads the variable once, at client
-    creation, so it is restored straight after.
-    """
-    if not path:
-        yield
-        return
-    previous = os.environ.get("AWS_CA_BUNDLE")
-    os.environ["AWS_CA_BUNDLE"] = path
-    try:
-        yield
-    finally:
-        if previous is None:
-            del os.environ["AWS_CA_BUNDLE"]
-        else:
-            os.environ["AWS_CA_BUNDLE"] = previous
 
 
 _M = TypeVar("_M", bound=BaseModel)
@@ -152,8 +103,7 @@ def _build_provider(cfg: LLMConfig, environ: Mapping[str, str]) -> "Provider[Any
     if block := cfg.provider_settings:
         # AWS auth itself comes from the environment/IAM (boto3's chain), not an API key.
         kwargs.update(block.model_dump(by_alias=True, exclude_none=True))
-    with _aws_ca_bundle(cfg.ca_bundle if cfg.backend == "bedrock" else None):
-        provider = provider_class(**kwargs)
+    provider = provider_class(**kwargs)
     _apply_max_retries(provider, cfg)
     return provider
 
@@ -182,13 +132,6 @@ def _litellm_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
     from pydantic_ai_litellm import LiteLLMModel  # ty: ignore[unresolved-import]
 
     model_name = _require_model(cfg)
-    if cfg.ca_bundle:
-        import litellm  # ty: ignore[unresolved-import]
-
-        litellm.ssl_verify = (
-            cfg.ca_bundle
-        )  # litellm's only CA knob; a module global, but we are the only caller
-
     return LiteLLMModel(model_name, api_key=_api_key(cfg, environ), api_base=cfg.api_base or None)
 
 
@@ -304,7 +247,7 @@ class PydanticAILLMClient(LLMClient):
         return self._loop
 
     async def _close_sdk_client(self) -> None:
-        """Close the model's SDK client — and with it the `httpx` client `ca_bundle` built."""
+        """Close the model's SDK client and the connections it pooled."""
         client = getattr(self._model, "client", None)
         closer = getattr(client, "aclose", None) or getattr(client, "close", None)
         if closer is not None:

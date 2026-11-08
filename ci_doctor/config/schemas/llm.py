@@ -100,9 +100,6 @@ class LLMConfig(Strict):
         description="Name of the env var holding the LLM API key. Often unset — local servers need no key, "
         "and a hosted backend without this set falls back to its own default env var (e.g. ANTHROPIC_API_KEY).",
     )
-    ca_bundle: str | None = Field(
-        default=None, description="CA bundle for the LLM endpoint, independent of the CI provider's."
-    )
     openai: OpenAiConfig = Field(
         default_factory=OpenAiConfig, description="Settings for backend: openai. Optional."
     )

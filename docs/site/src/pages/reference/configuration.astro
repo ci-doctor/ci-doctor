@@ -52,7 +52,6 @@ llm:
   model: null                    # e.g. "qwen2.5-coder:32b" or "claude-opus-4-8"
   api_base: null                 # OpenAI-compatible / litellm base URL
   api_key_env: null              # optional; local servers often need none
-  ca_bundle: null                # LLM endpoint's own CA, independent of the provider's
   openai:
     api: chat                    # backend: openai; chat (Chat Completions) | responses (Responses API)
   azure: null                    # backend: azure; required there
@@ -163,6 +162,18 @@ redaction:
 
     <h2>Environment variables</h2>
     <Code code={envExample} lang="bash" theme="github-dark" />
+
+    <h2>Custom CA certificates</h2>
+    <p>
+        ci-doctor has no CA setting for the LLM or the matcher registries: each client
+        trusts what its environment says, the way <code>pip</code>, <code>uv</code> and
+        <code>curl</code> do. Point <code>SSL_CERT_FILE</code> (or <code>SSL_CERT_DIR</code>)
+        at a bundle holding your internal CA <em>and</em> the public roots, usually the
+        system one, such as <code>/etc/ssl/certs/ca-certificates.crt</code>. That covers the
+        registry fetches and every LLM SDK built on httpx. Bedrock reads
+        <code>AWS_CA_BUNDLE</code> instead. The GitLab and GitHub clients keep their own
+        <code>ca_bundle</code> / <code>verify_ssl</code> keys below.
+    </p>
 
     <h2>LLM backends</h2>
     <p>

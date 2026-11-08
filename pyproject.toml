@@ -16,9 +16,8 @@ dependencies = [
     "pydantic-ai-slim>=2.40",  # core Agent only; a model SDK comes from a backend extra below
     "pygithub>=2.9.1",
     "requests>=2.32",  # imported directly to fetch GitHub's job-log redirect
-    "httpx>=0.27",  # registry fetches, and the ca_bundle client of providers not yet on httpx2
+    "httpx>=0.27",  # registry fetches
     "google-re2>=1.1",  # RE2: linear-time matching for user/pack regexes — the ReDoS guard
-    "httpx2>=2.7",
 ]
 classifiers = [
     "License :: OSI Approved :: MIT License",
