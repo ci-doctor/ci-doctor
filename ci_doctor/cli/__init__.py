@@ -13,6 +13,7 @@ pipeline's outcome, so it turns its own crashes into exit 0 (`cli/analyze.py`).
 """
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 import typer
@@ -21,7 +22,7 @@ from rich.logging import RichHandler
 
 from ci_doctor import __version__
 from ci_doctor.cli._lib import context, terminal
-from ci_doctor.cli._lib.command import register
+from ci_doctor.cli._lib.command import Command, register
 from ci_doctor.cli.analyze import AnalyzeCommand
 from ci_doctor.cli.config import ConfigCommand
 from ci_doctor.cli.matchers import app as matchers_app
@@ -29,7 +30,7 @@ from ci_doctor.cli.report import ReportCommand
 from ci_doctor.errors import SetupError
 
 log = logging.getLogger("ci_doctor.cli")
-COMMANDS = [AnalyzeCommand(), ConfigCommand(), ReportCommand()]
+COMMANDS: Sequence[Command] = [AnalyzeCommand(), ConfigCommand(), ReportCommand()]
 
 app = typer.Typer(add_completion=False, help="Explain why a CI pipeline failed (read-only postmortem).")
 register(app, COMMANDS)

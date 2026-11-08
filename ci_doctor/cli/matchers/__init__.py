@@ -6,9 +6,11 @@ config touch only its `matchers:` block (`config/edit.py`) and fetch before they
 so a bad registry or name leaves the file as it was.
 """
 
+from collections.abc import Sequence
+
 import typer
 
-from ci_doctor.cli._lib.command import register
+from ci_doctor.cli._lib.command import Command, register
 from ci_doctor.cli.matchers.add import AddCommand
 from ci_doctor.cli.matchers.index import IndexCommand
 from ci_doctor.cli.matchers.info import InfoCommand
@@ -18,7 +20,7 @@ from ci_doctor.cli.matchers.remove import RemoveCommand
 from ci_doctor.cli.matchers.search import SearchCommand
 from ci_doctor.cli.matchers.verify import VerifyCommand
 
-COMMANDS = [
+COMMANDS: Sequence[Command] = [
     IndexCommand(),
     VerifyCommand(),
     AddCommand(),
