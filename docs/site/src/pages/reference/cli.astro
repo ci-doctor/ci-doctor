@@ -93,14 +93,15 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
                     missing config file, an empty <code>matchers.include</code>, an
                     unknown registry or name, a registry that cannot be reached or
                     serves an invalid file, bad CLI usage, a missing log file. Also
-                    any failure of a <code>matchers</code> command, a crash
-                    included.</td
+                    any failure of a command other than <code>analyze</code>
+                    (<code>matchers</code>, <code>config</code>, <code>report</code>),
+                    a crash included.</td
                 ></tr
             >
             <tr
                 ><td><code>0</code></td><td
-                    >Everything else. Once analysis starts, an API error, an LLM
-                    failure or a crash still exits 0, so the analyzer never changes
+                    >Everything else. Once <code>analyze</code> starts, an API error,
+                    an LLM failure or a crash still exits 0, so the analyzer never changes
                     a pipeline's outcome.</td
                 ></tr
             >

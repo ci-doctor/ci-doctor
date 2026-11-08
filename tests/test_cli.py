@@ -9,6 +9,7 @@ from rich.color import ColorSystem
 from ci_doctor import cli
 from ci_doctor.cli._lib import terminal
 from ci_doctor.cli._lib.outputs import pager
+from ci_doctor.cli.analyze import AnalyzeCommand
 from tests import support
 
 
@@ -47,8 +48,22 @@ def _job_log(where, provider):
     return str(path)
 
 
-def test_main_always_exits_zero_on_error(monkeypatch):
-    """Invariant #3: a crash once analysis runs exits 0, so a pipeline outcome never changes."""
+def test_a_crash_inside_analyze_exits_zero(monkeypatch, capsys):
+    """Invariant #3: once analysis runs, a crash exits 0, so a pipeline outcome never changes."""
+
+    def crash(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(AnalyzeCommand, "_analyze", crash)
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "analyze", "123"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 0
+    assert "internal error, exiting 0" in capsys.readouterr().err
+
+
+def test_a_crash_anywhere_else_exits_one(monkeypatch, capsys):
+    """Only analyze holds invariant #3; any other command's crash is reported like any CLI's."""
 
     def crash():
         raise RuntimeError("boom")
@@ -56,7 +71,8 @@ def test_main_always_exits_zero_on_error(monkeypatch):
     monkeypatch.setattr(cli, "app", crash)
     with pytest.raises(SystemExit) as exc:
         cli.main()
-    assert exc.value.code == 0
+    assert exc.value.code == 1
+    assert "internal error: RuntimeError: boom" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

@@ -80,7 +80,7 @@ cli/
   config.py         `ci-doctor config`
   report.py         `ci-doctor report`
   matchers/
-    __init__.py     `ci-doctor matchers`: the group, and _SetupGroup
+    __init__.py     `ci-doctor matchers`: the group and its COMMANDS
     add.py …        `ci-doctor matchers add`, one module per command
     registry/
       __init__.py   `ci-doctor matchers registry`
@@ -91,8 +91,8 @@ cli/
   its docstring is the `--help`, `name` is the command as typed, `run` (marked
   `@override`) is the entry point, and the helpers and table rows it needs are its own
   private members. `test_each_command_module_holds_one_command` pins it. **A group is a
-  package**: its `__init__.py` holds the typer app and calls `register(app)` for each
-  command, one line each. Explicit, not discovered: a scan of the folder would turn a typo into a missing command nobody
+  package**: its `__init__.py` lists its commands, instantiated, in `COMMANDS`, and
+  hands them to its typer app with `register(app, COMMANDS)`. Explicit, not discovered: a scan of the folder would turn a typo into a missing command nobody
   sees, and neither `ty` nor grep could follow it.
 - **No logic in `cli/`.** A command parses its options, calls `service/` (or the package
   that owns the work, like `matchers/`) and prints. Anything an editor, an agent or a
@@ -135,10 +135,10 @@ invariants go on the end. The first three, and #10, are load-bearing:
 3. **Exit 1 only for a broken setup, detected before analysis starts** (config, matcher
    resolution, CLI usage, a registry failing `matchers index --check` / `verify`). Once
    analysis starts, always exit 0: the analyzer must never change a pipeline's outcome.
-   `main()` maps `SetupError` (`ci_doctor/errors.py`) to 1 and every other `BaseException`
-   to 0. Never raise `SetupError` from inside the analysis. The `matchers` commands never
-   analyze, so they turn any crash into a `SetupError` (`_SetupGroup` in `cli/matchers/__init__.py`):
-   a registry check that crashes must not go green.
+   `AnalyzeCommand` holds this: it lets a `SetupError` (`ci_doctor/errors.py`) through
+   to `main()`, which exits 1, and turns every other exception into exit 0. Never raise
+   `SetupError` from inside the analysis. Every other command never analyzes, so `main()`
+   exits 1 on its crash, like any CLI: a registry check that crashes must not go green.
 4. **Nothing reaches the public internet** by default — no telemetry, update checks, or
    runtime downloads of models/rules/schemas.
 5. **Never emit unredacted log content.** Redaction runs on the prompt *and* the report.

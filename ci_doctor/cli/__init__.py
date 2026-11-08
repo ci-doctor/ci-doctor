@@ -7,9 +7,9 @@ holding one :class:`~ci_doctor.cli._lib.command.Command`. What commands share li
 `_lib/`. Nothing here does the work: a command parses, calls `service/` (or the
 package that owns it) and prints.
 
-Invariant #3: the analyzer must never change a pipeline's outcome, so `main()`
-catches everything and exits 0. The one exception is a broken setup
-(:class:`~ci_doctor.errors.SetupError`), which exits 1.
+A broken setup (:class:`~ci_doctor.errors.SetupError`, bad usage) or a crash exits 1,
+like any CLI. Invariant #3 belongs to `analyze` alone: it must never change a
+pipeline's outcome, so it turns its own crashes into exit 0 (`cli/analyze.py`).
 """
 
 import logging
@@ -21,6 +21,7 @@ from rich.logging import RichHandler
 
 from ci_doctor import __version__
 from ci_doctor.cli._lib import context, terminal
+from ci_doctor.cli._lib.command import register
 from ci_doctor.cli.analyze import AnalyzeCommand
 from ci_doctor.cli.config import ConfigCommand
 from ci_doctor.cli.matchers import app as matchers_app
@@ -28,9 +29,10 @@ from ci_doctor.cli.report import ReportCommand
 from ci_doctor.errors import SetupError
 
 log = logging.getLogger("ci_doctor.cli")
+COMMANDS = [AnalyzeCommand(), ConfigCommand(), ReportCommand()]
+
 app = typer.Typer(add_completion=False, help="Explain why a CI pipeline failed (read-only postmortem).")
-for command in (AnalyzeCommand, ConfigCommand, ReportCommand):
-    command.register(app)
+register(app, COMMANDS)
 app.add_typer(matchers_app, name="matchers")
 
 
@@ -84,10 +86,9 @@ def _root(
 def main() -> None:
     """Console-script entry point.
 
-    Invariant #3: a broken setup (a `SetupError`, or bad CLI usage) exits 1, so it
-    is seen; everything else, a crash included, exits 0, so the analyzer can never
-    turn a passing pipeline red. The `matchers` commands raise every crash as a
-    `SetupError` themselves, since they never analyze anything.
+    A broken setup (a `SetupError`, or bad CLI usage) and a crash both exit 1, so
+    they are seen. `analyze` keeps invariant #3 itself: past setup, it exits 0
+    whatever happens.
     """
     # NullHighlighter, not highlighter=None: rich falls back to ReprHighlighter on None.
     # force: replace whatever handler a host process installed, so errors look the same.
@@ -115,6 +116,6 @@ def main() -> None:
         # typer/click exit through SystemExit: 0 for success, non-zero for bad usage,
         # which is a broken setup like any other.
         raise SystemExit(0 if exc.code in (0, None) else 1) from None
-    except BaseException as exc:  # noqa: BLE001 - analyzer must never alter pipeline outcome
-        log.error(f"internal error, exiting 0 to preserve pipeline status: {exc}")
-        raise SystemExit(0) from None
+    except Exception as exc:  # noqa: BLE001 - a crash is one log line and exit 1, not a traceback
+        log.error(f"internal error: {type(exc).__name__}: {exc}")
+        raise SystemExit(1) from None

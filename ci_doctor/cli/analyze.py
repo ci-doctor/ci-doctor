@@ -52,6 +52,22 @@ class AnalyzeCommand(Command):
             help="stdout format. `json` prints the report instead of the rendered panels.",
         ),
     ) -> None:
+        # Invariant #3: a broken setup exits 1 (main() logs it); anything else, a crash
+        # included, exits 0, so the analyzer can never turn a passing pipeline red.
+        try:
+            self._analyze(target, job_id, output_format)
+        except (SetupError, SystemExit):
+            raise
+        except BaseException as exc:  # noqa: BLE001 - analyzer must never alter pipeline outcome
+            log.error(f"internal error, exiting 0 to preserve pipeline status: {exc}")
+            raise SystemExit(0) from None
+
+    def _analyze(self, target: str | None, job_id: str | None, output_format: "OutputFormat") -> None:
+        """Set up, analyze, render and deliver; see the class docstring.
+
+        Raises:
+            SetupError: On a broken setup, detected before analysis starts.
+        """
         cfg = load_config(config_files())
         log.debug(f"ci={cfg.ci} scm={cfg.scm_vendor} target={target} job_id={job_id}")
         if target is None:
