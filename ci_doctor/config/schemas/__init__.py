@@ -1,16 +1,6 @@
-"""Pydantic config model, and the source of truth for the published JSON Schema.
+"""The config model, one module per top-level key; the source of the published JSON Schema.
 
-``extra="forbid"`` everywhere means an unknown key is an error, not a silent typo.
-Scalar defaults live here; the data-heavy baseline (phase map, the official matcher
-registry, noise patterns) ships in ``defaults.yml``.
-
-Every field carries a ``description``: it is the text editors show when completing a
-``.ci-doctor.yml`` against the schema emitted by ``ci-doctor config --schema``, so a
-field added without one ships an undocumented knob.
-
-One module per top-level key of `.ci-doctor.yml` (`llm.py` is `llm:`), the way `cli/`
-mirrors the commands; this package is the document itself, `Config`. Shared field
-types live in the underscored modules.
+Every field needs a `description`: it is what editors show when completing a config.
 """
 
 from pydantic import ConfigDict, Field

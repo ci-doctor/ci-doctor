@@ -1,12 +1,8 @@
-"""Layered config loading: schema defaults < defaults.yml < user file < repo file < env < flags.
+"""Layered config: schema defaults < defaults.yml < user file < repo file < env < flags.
 
-The user file (:func:`user_config`) holds what applies to every repo on the machine,
-and is where `ci-doctor matchers …` writes by default.
-
-Mappings deep-merge; lists and scalars replace, so `matchers.include` in a repo
-file is the whole selection, not an addition to the default one. Unknown
-keys in a config *file* are a hard error (schema uses ``extra="forbid"``). Env vars
-are more permissive by necessity (see :func:`_env_overlay`).
+Mappings deep-merge; lists and scalars replace, so a repo's `matchers.include` is the
+whole selection. Unknown keys in a file are an error; env vars are laxer
+(:func:`_env_overlay`).
 """
 
 import logging
@@ -36,15 +32,7 @@ _DEFAULT_REPO_CONFIG = Path(".ci-doctor.yml")
 
 
 def user_config() -> Path:
-    """The user's own config file, whether or not it exists.
-
-    `~/.config/ci-doctor/config.yml` on Linux (`$XDG_CONFIG_HOME`),
-    `~/Library/Application Support/ci-doctor/` on macOS and `%APPDATA%/ci-doctor/`
-    on Windows: click's `get_app_dir`, already a dependency, knows each platform's place.
-
-    Returns:
-        The path.
-    """
+    """The user's config file (click's per-platform app dir), whether or not it exists."""
     return Path(click.get_app_dir("ci-doctor")) / "config.yml"
 
 
@@ -213,24 +201,13 @@ def load_config(
 ) -> Config:
     """Assemble and validate the effective config from every layer.
 
-    Layers apply lowest to highest: schema defaults, ``defaults.yml``, the user
-    config (when it exists), the repo config file(s), ``CI_DOCTOR_*`` env vars,
-    then ``overrides``.
-
     Args:
-        repo_config: One config file path, or several applied left to right so the
-            last one wins. Defaults to ``./.ci-doctor.yml`` when that exists and
-            none were given; no repo layer at all when it does not.
-        overrides: The CLI-flag layer, applied last and therefore winning.
-        environ: Environment to read. Defaults to :data:`os.environ`; tests pass
-            ``{}`` to get a hermetic load.
-
-    Returns:
-        The validated config.
+        repo_config: Config files, last wins. Defaults to `./.ci-doctor.yml` when it exists.
+        overrides: The CLI-flag layer, applied last.
+        environ: Environment to read; tests pass `{}` for a hermetic load.
 
     Raises:
-        SetupError: If a file is missing, unreadable or not YAML, or the result
-            doesn't validate (an unknown or ill-typed key).
+        SetupError: If a file is missing or unreadable, or the result doesn't validate.
     """
     layers = [_shipped_defaults()]
     try:

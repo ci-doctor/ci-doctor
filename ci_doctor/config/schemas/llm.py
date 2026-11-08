@@ -1,4 +1,4 @@
-"""`llm:`: the optional explanation step, and the settings blocks of the backends that need them."""
+"""`llm:`: the optional explanation step, and each backend's settings block."""
 
 from typing import Literal
 

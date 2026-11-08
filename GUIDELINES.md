@@ -24,13 +24,10 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 
 ```
 ci_doctor/
-  cli/              the command line, laid out like the command tree (§2.1). Parses,
-                    calls service/, prints; exits 0 once analysis starts
-  service/          what each command does, with no terminal in it: analyze (segment,
-                    classify, evidence, report), deliver (artifacts, MR note), setup,
-                    report (`ci-doctor report`'s facts, nothing secret)
-  config/           schemas/ (the pydantic model, §2.2) + defaults.yml + layered loader
-                    (user file < repo file) + dump (yaml, diff) + edit (one top-level block)
+  cli/              the command line, laid out like the command tree (§2.1)
+  service/          what each command does, with no terminal in it: analyze, deliver,
+                    setup, report
+  config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit
   core/             provider-neutral: models, ports, attribution (pure), denoise,
                     extract, budget, redact, analyze
   llm/              Report schema, prompt templates, backends
@@ -66,60 +63,36 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 
 ### 2.1 The command line
 
-`cli/` mirrors the command tree, the way a web framework's `pages/` mirrors its URLs:
+`cli/` mirrors the command tree: `cli/matchers/registry/ping.py` is
+`ci-doctor matchers registry ping`.
 
 ```
 cli/
-  __init__.py       `ci-doctor`: the root app, global options, main()
-  _lib/             what commands share; no command lives here
-    command.py      Command, the base every command derives from
-    context.py      the config read (-f) and written (--write-to, else the user config)
-    terminal.py     --plain, --no-color, the log console
-    outputs/        what a command prints with, one module per kind: message, table, pager
-  analyze.py        `ci-doctor analyze`
-  config.py         `ci-doctor config`
-  report.py         `ci-doctor report`
-  matchers/
-    __init__.py     `ci-doctor matchers`: the group and its COMMANDS
-    add.py …        `ci-doctor matchers add`, one module per command
-    registry/
-      __init__.py   `ci-doctor matchers registry`
-      ping.py …
+  __init__.py       the root app, global options, main()
+  _lib/             what commands share: command.py (the base), context.py (config read
+                    and written), terminal.py (--plain, --no-color), outputs/ (message,
+                    table, pager)
+  analyze.py …      one module per command
+  matchers/         one package per group
 ```
 
-- **A command is a module holding one `Command` subclass** (`PingCommand` in `ping.py`):
-  its docstring is the `--help`, `name` is the command as typed, `run` (marked
-  `@override`) is the entry point, and the helpers and table rows it needs are its own
-  private members. `test_each_command_module_holds_one_command` pins it. **A group is a
-  package**: its `__init__.py` lists its commands, instantiated, in `COMMANDS`, and
-  hands them to its typer app with `register(app, COMMANDS)`. Explicit, not discovered: a scan of the folder would turn a typo into a missing command nobody
-  sees, and neither `ty` nor grep could follow it.
-- **No logic in `cli/`.** A command parses its options, calls `service/` (or the package
-  that owns the work, like `matchers/`) and prints. Anything an editor, an agent or a
-  future `mcp` command would also want belongs outside it. `cli/` imports `service/`,
-  never the reverse, and `service/` imports no typer or click; `tests/test_layout.py`
-  pins both.
-- **Options that mean the same thing everywhere are global**, on the root app: `-f`,
-  `--write-to`, `--plain`, `--no-color`. Read them through `_lib.context` and
-  `_lib.terminal`, never with a per-command flag. Print through `_lib.outputs` (`say`,
-  `done`, `table`, `page`) so `--plain` works; a new kind of output is a new module
-  there. A table's row is a frozen dataclass subclassing `outputs.table.Row`: its fields
-  are the columns and its `line()` is the `--plain` form, so the three can't drift apart.
-- **Commands that edit the config** write the user config (`ci-doctor`'s directory under
-  the platform's config home) unless `--write-to FILE` names another, and change one
-  top-level block through `_lib.context.edit` (`config/edit.py`).
+- **A command is one `Command` subclass in its own module.** Its docstring is the
+  `--help`, `run` (`@override`) the entry point; its helpers and table rows are private
+  members. A group's `__init__.py` lists them in `COMMANDS` and calls `register(app,
+  COMMANDS)`: explicit, so a typo is an import error, not a missing command.
+- **No logic in `cli/`.** A command parses, calls `service/` (or the owning package) and
+  prints. `service/` imports no typer or click; `tests/test_layout.py` pins both.
+- **Global options** (`-f`, `--write-to`, `--plain`, `--no-color`) are read through
+  `_lib.context` and `_lib.terminal`. Print through `_lib.outputs` so `--plain` works; a
+  table row is a frozen dataclass subclassing `Row`, its fields the columns.
+- **Config edits** go to the user config unless `--write-to` names another file.
 
 ### 2.2 The config schema
 
-`config/schemas/` mirrors `.ci-doctor.yml` the way `cli/` mirrors the commands: one
-module per top-level key (`llm.py` is `llm:`, `matchers.py` is `matchers:`), with that
-key's sub-blocks beside it. The package itself, `__init__.py`, is the whole document:
-`Config`. Two files are not keys: `matcher.py` is one registry matcher file, the thing
-`matchers:` selects, and the underscored modules hold what several keys share (`Strict`,
-the `Re2` field). A new top-level key is a new module plus one field on `Config`
-(`test_each_config_key_has_its_own_schema_module` pins it); the
-published JSON Schema is built from these models, so a move must leave
-`ci-doctor config --schema` byte-identical.
+`config/schemas/` has one module per top-level key of `.ci-doctor.yml` (`llm.py` is
+`llm:`); `__init__.py` is `Config`. `matcher.py` is a registry matcher file, not a key,
+and the underscored modules hold shared types. A new key is a new module plus a field
+on `Config`. A refactor here must leave `ci-doctor config --schema` byte-identical.
 
 ## 3. Invariants — do not break these
 
@@ -132,13 +105,11 @@ invariants go on the end. The first three, and #10, are load-bearing:
    literal. Pinned by `test_core_carries_no_vendor_name_in_its_code`, which strips
    comments and docstrings first: prose naming the vendors a port deliberately
    spans is the invariant being honoured, not broken.
-3. **Exit 1 only for a broken setup, detected before analysis starts** (config, matcher
-   resolution, CLI usage, a registry failing `matchers index --check` / `verify`). Once
-   analysis starts, always exit 0: the analyzer must never change a pipeline's outcome.
-   `AnalyzeCommand` holds this: it lets a `SetupError` (`ci_doctor/errors.py`) through
-   to `main()`, which exits 1, and turns every other exception into exit 0. Never raise
-   `SetupError` from inside the analysis. Every other command never analyzes, so `main()`
-   exits 1 on its crash, like any CLI: a registry check that crashes must not go green.
+3. **`analyze` exits 1 only for a broken setup, detected before analysis starts**
+   (config, matcher resolution, CLI usage). Once analysis starts it always exits 0: the
+   analyzer must never change a pipeline's outcome. `AnalyzeCommand` holds this; never
+   raise `SetupError` from inside the analysis. Every other command exits 1 on any
+   failure, a crash included, so a broken registry check never goes green.
 4. **Nothing reaches the public internet** by default — no telemetry, update checks, or
    runtime downloads of models/rules/schemas.
 5. **Never emit unredacted log content.** Redaction runs on the prompt *and* the report.

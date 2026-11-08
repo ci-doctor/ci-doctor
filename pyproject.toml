@@ -8,9 +8,9 @@ requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "typer>=0.12,<0.27",  # 0.27 vendors click and drops the API cli/matchers/__init__.py subclasses
-    "click>=8.0",  # imported directly by cli/ (_SetupGroup, the click context)
-    "typing-extensions>=4.4",  # `override` (PEP 698) on Python 3.11; typing has it from 3.12
+    "typer>=0.12,<0.27",  # 0.27 vendors click; cli/ reads click's context directly
+    "click>=8.0",  # cli/ reads the click context; config/ uses get_app_dir
+    "typing-extensions>=4.4",  # `override` on Python 3.11
     "pydantic>=2.5",
     "pyyaml>=6",
     "python-gitlab>=8.4.0",
@@ -40,9 +40,7 @@ Issues = "https://github.com/ci-doctor/ci-doctor/issues"
 Changelog = "https://github.com/ci-doctor/ci-doctor/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
-# Optional LLM backends (base install stays lean/air-gap-clean). Only providers
-# Pydantic AI itself ships; openai and azure both ride the openai SDK, so one extra
-# covers both backends.
+# LLM backends, one extra per Pydantic AI provider; `openai` also serves azure.
 openai = ["pydantic-ai-slim[openai]>=2.40"]
 anthropic = ["pydantic-ai-slim[anthropic]>=2.40"]
 bedrock = ["pydantic-ai-slim[bedrock]>=2.40"]

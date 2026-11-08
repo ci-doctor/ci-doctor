@@ -35,16 +35,7 @@ class RemoveCommand(Command):
 
     @staticmethod
     def _not_included(ref: str, cfg: MatchersConfig, include: list[str]) -> SetupError:
-        """The error for removing a ref the file does not list, naming the bundle that brings it.
-
-        Args:
-            ref: The ref as typed.
-            cfg: The `matchers:` block, to expand `include` with.
-            include: The file's own `matchers.include`.
-
-        Returns:
-            The error, for the caller to raise.
-        """
+        """The error for removing a ref the file does not list, naming the bundle that brings it."""
         with session(cfg) as http:
             bundle = via(cfg, include, http).get(ref, "direct")
         if bundle != "direct":

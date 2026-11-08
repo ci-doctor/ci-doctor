@@ -1,31 +1,11 @@
-"""LLM backend registry.
+"""LLM backends: one `PydanticAILLMClient` per run, over the model `llm.backend` names.
 
-Every backend builds one `PydanticAILLMClient` wrapping a `pydantic_ai.models.Model`,
-selected by `llm.backend`. Each wraps the caller's output type in `PromptedOutput` per
-call, with one built-in repair retry (`Agent(retries=1)`) — no hand-rolled JSON parsing
-or retry loop here.
+A backend is a provider Pydantic AI ships itself, built through `infer_model` from the
+constructor arguments it accepts; only `openai` overrides that, to pick Chat Completions
+or Responses. Each needs its own pip extra, and its SDK is imported only when used.
 
-Any Pydantic AI-native provider goes through one generic path: Pydantic AI's own
-`infer_model` picks the `Model` class, and the provider is built from the constructor
-arguments it actually accepts (`api_key`, `base_url`). Adding a provider
-is a name in `LLMConfig.backend` and a pip extra. A provider with settings of its own
-adds a block under `config/types/` that dumps to its constructor arguments (see
-`LLMConfig.provider_settings`). One backend overrides the generic path: `openai` picks
-Chat Completions or the Responses API.
-
-By design a backend is a provider Pydantic AI ships itself: no community bridges, whose
-pins and release cadence we would inherit. Pydantic AI has more providers than are
-listed here; one is added when someone needs it.
-
-Every backend needs its own pip extra; there is no default SDK in the base install.
-
-Every SDK is imported inside the builder that needs it, so importing this module
-costs nothing on a run that never reaches a model.
-
-TLS trust is the environment's, never ours: each SDK builds its own HTTP client and
-reads `SSL_CERT_FILE`/`SSL_CERT_DIR` (httpx), `AWS_CA_BUNDLE` (boto, for Bedrock) or
-`REQUESTS_CA_BUNDLE` (requests). Handing a provider our own client would override its
-timeouts, retries and auth setup to change one setting the environment already carries.
+TLS trust comes from the environment (`SSL_CERT_FILE`, `AWS_CA_BUNDLE`): each SDK builds
+its own HTTP client, and ours would override its timeouts, retries and auth.
 """
 
 import asyncio

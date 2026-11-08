@@ -1,4 +1,4 @@
-"""Writing a file the user owns (their config, a registry's `index.yaml`) without ever half-writing it."""
+"""Writing a user's file without ever half-writing it."""
 
 import os
 import stat
@@ -9,19 +9,12 @@ from ci_doctor.errors import SetupError
 
 
 def atomic_write(path: Path, text: str) -> None:
-    """Replace a file's contents in one step, leaving it the same file.
+    """Replace a file's contents in one rename, keeping it the same file.
 
-    A temp file renamed over the target, so nothing ever sees half a file. The
-    rename lands on the real path, so a symlink (a dotfiles `.ci-doctor.yml`) stays
-    a symlink, and the file keeps its mode; a new one gets `0o666 & ~umask` like
-    any file the user's tools create, not `mkstemp`'s 0600.
-
-    Args:
-        path: The file; created if missing.
-        text: Its new contents, written as UTF-8.
+    Writes through a symlink and keeps the mode; a new file gets `0o666 & ~umask`.
 
     Raises:
-        SetupError: If the file can't be written, e.g. its directory is missing.
+        SetupError: If the file can't be written.
     """
     real = path.resolve()
     try:

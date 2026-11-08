@@ -5,39 +5,32 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting. If the problem is a **wrong diagnosis** (blamed the wrong step,
-        missed the real error), use the "Wrong diagnosis" template instead.
-
-        **Logs and configs can hold secrets.** Redact tokens, hostnames and anything private before pasting.
+        Wrong step blamed? Use "Wrong diagnosis" instead. Redact secrets before pasting.
   - type: textarea
     id: what
     attributes:
       label: What happened
-      description: What you ran, what you expected, and what you got instead.
-      placeholder: |
-        I ran `ci-doctor analyze 12345` and expected …, but got …
+      description: What you ran, what you expected, what you got.
     validations:
       required: true
   - type: textarea
     id: repro
     attributes:
       label: How to reproduce
-      description: The smallest steps that show it. A replayable job log (`ci-doctor analyze job.log`) is ideal.
+      description: The smallest steps; a replayable job log is ideal.
     validations:
       required: true
   - type: textarea
     id: output
     attributes:
       label: Output with `-v`
-      description: The full output of the failing command, run with `ci-doctor -v …` for debug logs.
+      description: The failing command's output with `ci-doctor -v`.
       render: text
   - type: textarea
     id: report
     attributes:
       label: "`ci-doctor report`"
-      description: |
-        Versions, platform, a config summary and which CA/proxy variables are set. Run it with the
-        same `-f` files as the failing command. It prints no secrets: variables show as set or unset.
+      description: Run with the same `-f` files. It prints no secrets.
       render: text
     validations:
       required: true

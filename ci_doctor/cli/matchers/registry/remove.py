@@ -13,10 +13,7 @@ from ci_doctor.matchers.models import Ref
 
 
 class RemoveCommand(Command):
-    """Remove registries from the config, unless `include` still uses them.
-
-    Removing an override of a shipped registry (`official`) falls back to its default.
-    """
+    """Remove registries from the config, unless `include` still uses them."""
 
     name = "remove"
 

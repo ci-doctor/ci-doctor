@@ -121,19 +121,10 @@ def fetch_index(alias: str, location: str, client: httpx.Client) -> Index:
 
 @contextlib.contextmanager
 def session(cfg: MatchersConfig, client: httpx.Client | None = None) -> Iterator[httpx.Client]:
-    """The HTTP client for one run: the caller's, or a fresh one closed afterwards.
-
-    Args:
-        cfg: The `matchers:` block, for its timeout and how many fetches run at once.
-        client: A client to reuse (tests pass one over `httpx.MockTransport`).
-
-    Yields:
-        The client.
-    """
+    """The caller's HTTP client, or a fresh one closed afterwards."""
     if client is not None:
         yield client
         return
-    # One connection per worker, so a parallel fetch never queues for the pool.
     limits = httpx.Limits(max_connections=max(cfg.fetch_workers, 10))
     with httpx.Client(timeout=cfg.timeout_seconds, limits=limits) as fresh:
         yield fresh
@@ -143,14 +134,10 @@ def session(cfg: MatchersConfig, client: httpx.Client | None = None) -> Iterator
 class Resolved:
     """Registries read so far, and what `matchers.include` expands to.
 
-    Also the per-command cache of the CLI's lookups: an alias's index is fetched
-    into it once, however many references name that alias.
-
     Attributes:
-        locations: Each referenced registry's directory, by alias.
-        indexes: Each referenced registry's index, by alias.
-        matchers: Every selected `alias/name`, in include order, mapped to how it
-            got in: `"direct"`, or the top-level bundle that pulled it in.
+        locations: Each registry's directory, by alias.
+        indexes: Each registry's index, by alias; fetched once per alias.
+        matchers: Each selected `alias/name`, in include order: `"direct"` or its bundle.
     """
 
     locations: dict[str, str] = field(default_factory=dict)
@@ -312,23 +299,10 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
 
 
 def _prefetch_bundles(refs: list[Ref], out: Resolved, http: httpx.Client, workers: int) -> dict[str, Bundle]:
-    """Fetch every bundle `refs` reach, one nesting level at a time, in parallel.
+    """Fetch every bundle `refs` reach, a nesting level at a time, in parallel.
 
-    Walking them one by one costs a round trip per bundle (13 for `official/all`);
-    this costs one per level. Only fetches and parses: names, cycles and depth are
-    `_expand`'s to report, and a bundle missed here (too deep) it fetches itself.
-
-    Args:
-        refs: The top-level `matchers.include` entries.
-        out: The registries read so far, indexes included.
-        http: The run's HTTP client.
-        workers: How many files to fetch at once.
-
-    Returns:
-        Each bundle reached, by `alias/name`.
-
-    Raises:
-        SetupError: If a bundle file fails to fetch or validate.
+    One round trip per level instead of per bundle. Names, cycles and depth are
+    `_expand`'s to report; a bundle too deep to prefetch it fetches itself.
     """
     fetched: dict[str, Bundle] = {}
     level = refs
@@ -358,27 +332,10 @@ def _expand(
     bundles: dict[str, Bundle],
     http: httpx.Client,
 ) -> tuple[list[str], int]:
-    """The matchers one reference selects, recursing through bundles.
+    """The `alias/name` matchers `ref` selects, and how deep its bundles nest.
 
-    Each bundle is walked once (`walked`): in a diamond, two bundles sharing a
-    third, the paths to the shared one multiply with depth. A memoized bundle
-    reports its own depth, so the caller checks the total once at the top.
-
-    Args:
-        ref: The matcher or bundle to expand.
-        stack: The bundles currently being expanded, outermost first.
-        out: The registries read so far.
-        walked: Bundles already expanded, by `alias/name`: their matchers and depth.
-        bundles: Bundle files already fetched, by `alias/name`.
-        http: The run's HTTP client.
-
-    Returns:
-        Its `alias/name` matchers in include order, deduplicated, and how deep its
-        bundles nest (0 for a matcher).
-
-    Raises:
-        SetupError: On an unknown name, a cycle, nesting over the limit, or a
-            bundle file that fails to fetch or validate.
+    Each bundle is walked once (`walked`), so diamonds don't multiply; a memoized
+    bundle reports its depth and `resolve()` checks the total.
     """
     index, key = out.indexes[ref.alias], str(ref)
     if ref.name in index.matchers:
@@ -387,7 +344,7 @@ def _expand(
         raise _not_served(ref, index)
     if key in stack:
         raise SetupError(f"bundle cycle: {' -> '.join((*stack, key))}")
-    if len(stack) >= MAX_BUNDLE_DEPTH:  # bounds the recursion; resolve() checks memoized depths
+    if len(stack) >= MAX_BUNDLE_DEPTH:
         raise SetupError(f"bundle {stack[0]} nests deeper than {MAX_BUNDLE_DEPTH}")
     if key not in walked:
         bundle = bundles[key] if key in bundles else bundle_from(*_fetch_entry(ref, out, http))
@@ -401,16 +358,7 @@ def _expand(
 
 
 def via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str, str]:
-    """Which top-level entry of `include` brings in each matcher.
-
-    Args:
-        cfg: The `matchers:` block (its registries and fetch settings).
-        include: The refs to expand.
-        http: The run's HTTP client.
-
-    Returns:
-        `alias/name` -> `"direct"` or the bundle; empty when `include` is.
-    """
+    """Which top-level entry of `include` brings in each matcher: `"direct"` or the bundle."""
     if not include:
         return {}
     return resolve(cfg.model_copy(update={"include": include}), http).matchers
@@ -419,28 +367,18 @@ def via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str
 def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[MatcherConfig]:
     """Resolve, fetch and validate every selected matcher, ids renamed to `alias/id`.
 
-    Args:
-        cfg: The `matchers:` config block.
-        client: The run's HTTP client, or None for a fresh one.
-
-    Returns:
-        The matchers, in include order, ready for `build_bundle`.
-
     Raises:
-        SetupError: On anything :func:`resolve` rejects, or a matcher file that
-            can't be fetched or fails a load-time rule.
+        SetupError: On anything `resolve` rejects, or a matcher that fails to load.
     """
     start = time.perf_counter()
     with session(cfg, client) as http:
         resolved = resolve(cfg, http)
         keys = list(resolved.matchers)
-        # One round trip per matcher: in sequence, `official/all` waited ~5s on 38 of them.
         # map() keeps include order, and re-raises the first failure in that order.
         with ThreadPoolExecutor(max_workers=cfg.fetch_workers, thread_name_prefix="ci-doctor-fetch") as pool:
             fetched = list(pool.map(lambda key: fetch_matcher(Ref.parse(key), resolved, http), keys))
     log.debug(
         f"loaded {len(keys)} matchers from {len(resolved.indexes)} registries in {time.perf_counter() - start:.1f}s"
     )
-    # model_copy skips validation: the bare id was checked on fetch, and `alias/id`
-    # is what makes the same bare id from two registries two distinct matchers.
+    # `alias/id` keeps the same bare id from two registries apart.
     return [m.model_copy(update={"id": key}) for key, m in zip(keys, fetched, strict=True)]

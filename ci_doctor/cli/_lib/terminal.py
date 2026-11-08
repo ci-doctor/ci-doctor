@@ -1,7 +1,4 @@
-"""The terminal every command prints to: the global `--plain` and `--no-color`, and the logs.
-
-`--plain` prints one bare line per row for scripts and `grep`, and implies `--no-color`.
-"""
+"""The global `--plain` (implies `--no-color`) and `--no-color`, and the log console."""
 
 import logging
 import os
@@ -11,7 +8,6 @@ from rich.console import Console
 from rich.style import Style
 from rich.theme import Theme
 
-#: `ctx.meta` keys the root callback sets.
 PLAIN = "ci_doctor.plain"
 NO_COLOR = "ci_doctor.no_color"
 
@@ -24,8 +20,7 @@ _LEVEL_COLORS = Theme(
         "logging.level.critical": Style(color="red", bold=True),
     }
 )
-#: Where the logs go: stderr, because stdout carries the report or the JSON meant
-#: to be piped onward. The root callback turns its colour off for --plain/--no-color.
+# stderr: stdout carries the report or JSON meant to be piped.
 LOG_CONSOLE = Console(theme=_LEVEL_COLORS, stderr=True)
 
 
@@ -35,42 +30,22 @@ def _flag(key: str) -> bool:
 
 
 def plain() -> bool:
-    """Whether the global `--plain` was passed.
-
-    Returns:
-        True for bare-text output.
-    """
+    """Whether `--plain` was passed."""
     return _flag(PLAIN)
 
 
 def no_color() -> bool:
-    """Whether colour is off (`--no-color`, or `--plain`).
-
-    Returns:
-        True for uncoloured output.
-    """
+    """Whether colour is off (`--no-color` or `--plain`)."""
     return _flag(NO_COLOR)
 
 
 def console(*, soft_wrap: bool = False) -> Console:
-    """A stdout console honouring `--no-color`; no highlighting, which colours data at random.
-
-    Args:
-        soft_wrap: Never fold long lines (the config's regexes).
-
-    Returns:
-        The console.
-    """
+    """A stdout console honouring `--no-color`. No highlighting: it colours data at random."""
     return Console(highlight=False, no_color=no_color(), soft_wrap=soft_wrap)
 
 
 def configure_logging(verbose: bool, *, colour: bool = True) -> None:
-    """`--verbose` (or CI_DOCTOR_LOG_LEVEL=DEBUG) turns on debug logs across ci_doctor.*.
-
-    Args:
-        verbose: Whether `--verbose` was passed.
-        colour: Colour the level names; off for `--plain` and `--no-color`.
-    """
+    """Set ci_doctor's log level: debug for `--verbose`, else `CI_DOCTOR_LOG_LEVEL` or INFO."""
     LOG_CONSOLE.no_color = not colour or "NO_COLOR" in os.environ
     level_name = os.environ.get("CI_DOCTOR_LOG_LEVEL", "").upper()
     level = logging.DEBUG if verbose else getattr(logging, level_name, logging.INFO)

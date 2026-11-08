@@ -1,4 +1,4 @@
-"""Rows of output: a table, or under `--plain` one bare line per row."""
+"""Rows: a table, or one bare line each under `--plain`."""
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
@@ -12,33 +12,23 @@ from rich.text import Text
 
 from ci_doctor.cli._lib.terminal import console, plain
 
-#: A cell: plain text, or a `Text` that keeps its style in the table.
 Cell = str | Text
 
 
 @dataclass(frozen=True)
 class Row(ABC):
-    """One table row, subclassed as a frozen dataclass: its fields are the columns, in order.
-
-    The header is each field name, capitalised (`classification` -> Classification).
-    """
+    """A row, subclassed as a frozen dataclass: its fields are the columns."""
 
     @abstractmethod
     def line(self) -> str:
-        """The row under `--plain`: one bare line for scripts and `grep`."""
+        """The row under `--plain`."""
 
 
 R = TypeVar("R", bound=Row)
 
 
 def table(kind: type[R], rows: Iterable[R], *, header: bool = True) -> None:
-    """Print rows as a table, or under `--plain` as one `row.line()` each.
-
-    Args:
-        kind: The row type; its fields name the columns.
-        rows: The rows; a `Text` cell keeps its style in the table.
-        header: Show the column names; off for a key-value listing.
-    """
+    """Print rows as a table headed by `kind`'s field names, or `row.line()` each under `--plain`."""
     if plain():
         for row in rows:
             typer.echo(row.line())

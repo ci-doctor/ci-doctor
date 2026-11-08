@@ -1,4 +1,4 @@
-"""`ci-doctor config`: the effective config after every layer is merged."""
+"""`ci-doctor config`."""
 
 import typer
 from typing_extensions import override
@@ -12,12 +12,7 @@ from ci_doctor.service.setup import validate as validate_setup
 
 
 class ConfigCommand(Command):
-    """Show the effective config after every layer is merged.
-
-    Useful for answering "why is it doing that" — the answer is almost always a
-    layer you forgot was applied. Pages the output on a terminal; pipe it (or pass
-    the global `--plain`) to get the raw text back.
-    """
+    """Show the effective config after every layer is merged."""
 
     name = "config"
 

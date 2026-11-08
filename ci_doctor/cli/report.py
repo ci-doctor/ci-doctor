@@ -12,11 +12,7 @@ from ci_doctor.service.report import build
 
 
 class ReportCommand(Command):
-    """Print what a bug report needs: versions, platform, config and environment.
-
-    Paste the output into the issue. It holds no secrets: environment variables
-    show as set or unset, and config files and endpoints are named, not shown.
-    """
+    """Print versions, platform, config and environment for a bug report. No secrets."""
 
     name = "report"
 

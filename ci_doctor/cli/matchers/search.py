@@ -52,16 +52,7 @@ class SearchCommand(Command):
         table(self._Hit, rows)
 
     def _hits(self, alias: str, served: Index, needle: str) -> Iterator["SearchCommand._Hit"]:
-        """The matchers and bundles of one registry that match the search.
-
-        Args:
-            alias: The registry's alias, prefixed to each name.
-            served: Its index.
-            needle: The lowercased search term.
-
-        Yields:
-            A row for each entry whose name, description or classification contains `needle`.
-        """
+        """The matchers and bundles of one registry that match the search."""
         for kind, entries in (("matcher", served.matchers), ("bundle", served.bundles)):
             for name, e in entries.items():
                 if needle in " ".join([name, e.description, *e.classification]).lower():

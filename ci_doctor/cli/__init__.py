@@ -1,16 +1,4 @@
-"""ci-doctor's command line: one module per command, one package per command group.
-
-The tree mirrors the commands: `cli/analyze.py` is `ci-doctor analyze`,
-`cli/matchers/registry/ping.py` is `ci-doctor matchers registry ping`. A group's
-`__init__.py` holds its typer app and registers its commands; a command is a module
-holding one :class:`~ci_doctor.cli._lib.command.Command`. What commands share lives in
-`_lib/`. Nothing here does the work: a command parses, calls `service/` (or the
-package that owns it) and prints.
-
-A broken setup (:class:`~ci_doctor.errors.SetupError`, bad usage) or a crash exits 1,
-like any CLI. Invariant #3 belongs to `analyze` alone: it must never change a
-pipeline's outcome, so it turns its own crashes into exit 0 (`cli/analyze.py`).
-"""
+"""ci-doctor's command line, laid out like the command tree (GUIDELINES §2.1)."""
 
 import logging
 from collections.abc import Sequence
@@ -38,14 +26,6 @@ app.add_typer(matchers_app, name="matchers")
 
 
 def _version_callback(value: bool) -> None:
-    """Print the version and exit, before any other option is processed.
-
-    Args:
-        value: Whether `--version` was passed.
-
-    Raises:
-        typer.Exit: Always, when `value` is true.
-    """
     if value:
         typer.echo(__version__)
         raise typer.Exit()
@@ -85,14 +65,8 @@ def _root(
 
 
 def main() -> None:
-    """Console-script entry point.
-
-    A broken setup (a `SetupError`, or bad CLI usage) and a crash both exit 1, so
-    they are seen. `analyze` keeps invariant #3 itself: past setup, it exits 0
-    whatever happens.
-    """
-    # NullHighlighter, not highlighter=None: rich falls back to ReprHighlighter on None.
-    # force: replace whatever handler a host process installed, so errors look the same.
+    """Console-script entry point. Any failure exits 1; `analyze` keeps invariant #3 itself."""
+    # NullHighlighter: rich falls back to ReprHighlighter on highlighter=None.
     logging.basicConfig(
         level=logging.INFO,
         format="%(message)s",
@@ -114,8 +88,6 @@ def main() -> None:
         log.error(exc)
         raise SystemExit(1) from None
     except SystemExit as exc:
-        # typer/click exit through SystemExit: 0 for success, non-zero for bad usage,
-        # which is a broken setup like any other.
         raise SystemExit(0 if exc.code in (0, None) else 1) from None
     except Exception as exc:  # noqa: BLE001 - a crash is one log line and exit 1, not a traceback
         log.error(f"internal error: {type(exc).__name__}: {exc}")

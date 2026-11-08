@@ -1,31 +1,12 @@
 # Security policy
 
-## Reporting a vulnerability
+Don't open a public issue. Email **work@cidoc.dev** with what's wrong, how to reproduce
+it, and the output of `ci-doctor report`. You'll get a reply within 5 working days.
+Please wait for the fix before disclosing.
 
-Please **don't open a public issue**. Email **work@cidoc.dev** with:
+Only the latest release gets security fixes.
 
-- what the problem is and what an attacker could do with it,
-- the steps or a proof of concept that shows it,
-- the output of `ci-doctor report` (versions and platform; it prints no secrets) and how you run it (pip, Docker image, CI job).
-
-You'll get a reply within 5 working days. We'll keep you updated while we work on a fix,
-and credit you in the release notes unless you'd rather stay anonymous. Please give us
-a chance to ship the fix before you disclose it publicly.
-
-## Supported versions
-
-ci-doctor is in alpha. Only the latest release gets security fixes. Upgrade before
-reporting if you can.
-
-## What's in scope
-
-ci-doctor reads untrusted input: CI job logs, and matcher files fetched from registries.
-We especially want to hear about:
-
-- secrets from a log reaching the report, the MR/PR note or an LLM prompt unredacted,
-- a registry file escaping its folder, or a fetch going somewhere it shouldn't,
-- anything that makes ci-doctor write to your CI or git host beyond its single MR/PR note,
-- a crafted log or matcher that makes ci-doctor hang, crash the job, or change its exit code.
-
-Matcher files themselves (a regex that misfires) belong to
-[ci-doctor/matchers](https://github.com/ci-doctor/matchers).
+In scope: secrets reaching the report, the MR note or an LLM prompt unredacted; a
+registry fetch escaping its folder or host; any write beyond the single MR/PR note; a
+crafted log or matcher that hangs ci-doctor or changes a job's exit code. A misfiring
+matcher belongs to [ci-doctor/matchers](https://github.com/ci-doctor/matchers).

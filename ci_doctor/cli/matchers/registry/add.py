@@ -17,8 +17,7 @@ from ci_doctor.matchers.registry import fetch_index, redact, registry_dir, sessi
 class AddCommand(Command):
     """Add or override registries, after checking each serves a valid index.yaml.
 
-    A relative path is stored absolute, resolved against the cwd where it was typed:
-    the config it lands in (by default the user's) usually lives elsewhere.
+    A relative path is stored absolute, resolved against the current directory.
     """
 
     name = "add"

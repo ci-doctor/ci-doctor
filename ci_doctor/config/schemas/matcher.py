@@ -1,8 +1,4 @@
-"""One matcher: a registry's `matcher.yaml`, as validated when it loads.
-
-Not a key of `.ci-doctor.yml`. The config only selects matchers (`matchers.py`); this
-is the file each selection fetches, and what `core/extract.py` runs.
-"""
+"""One registry `matcher.yaml`, as validated on load. Not a config key: `matchers:` selects these."""
 
 from typing import Annotated, Literal
 

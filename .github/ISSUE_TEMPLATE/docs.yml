@@ -6,13 +6,13 @@ body:
     id: page
     attributes:
       label: Page
-      description: The docs.cidoc.dev URL, or the file in the repo (README, GUIDELINES …).
+      description: The docs.cidoc.dev URL, or the repo file.
     validations:
       required: true
   - type: textarea
     id: problem
     attributes:
       label: What's wrong or missing
-      description: Quote the part that's off, and say what you expected to find.
+      description: Quote the part that's off.
     validations:
       required: true

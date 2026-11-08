@@ -1,9 +1,7 @@
-"""What `ci-doctor report` shows: the facts a bug report needs, and nothing secret.
+"""What `ci-doctor report` shows.
 
-Pasted into a public issue, so every value is one a stranger may read. Environment
-variables are listed by name when set, never by value. Config files and endpoints
-are named, not shown: a path carries a username, an `api_base` an internal host.
-One line per topic: a report nobody reads to the end helps nobody.
+Pasted into public issues, so nothing secret: variables by name only, files by
+basename, `api_base` as set/unset.
 """
 
 import os
@@ -19,7 +17,6 @@ from ci_doctor.config.loader import load_config, user_config
 from ci_doctor.errors import SetupError
 
 _DIST = "ci-doctorr"
-#: Variables that change how ci-doctor connects or prints, listed when set.
 _ENV = (
     "SSL_CERT_FILE",
     "SSL_CERT_DIR",
@@ -36,26 +33,14 @@ _NAME = re.compile(r"[A-Za-z0-9._-]+")
 
 @dataclass(frozen=True)
 class Section:
-    """One block of the report.
-
-    Attributes:
-        title: Its heading.
-        fields: `(key, value)` pairs, in display order.
-    """
+    """One block of the report: a title and `(key, value)` lines."""
 
     title: str
     fields: list[tuple[str, str]]
 
 
 def build(paths: list[Path]) -> list[Section]:
-    """Gather the report.
-
-    Args:
-        paths: The `-f` files, as `analyze` would read them.
-
-    Returns:
-        The sections: ci-doctor and Python, packages, config, environment.
-    """
+    """The report's sections for the given `-f` files."""
     return [_runtime(), _packages(), _config(paths), _environment()]
 
 
@@ -77,11 +62,7 @@ def _runtime() -> Section:
 
 
 def _packages() -> Section:
-    """Our direct dependencies' versions, then each installed LLM SDK's.
-
-    Both come from the installed metadata: the dependencies from ours, the SDKs from
-    what Pydantic AI adds for our backend extras, so neither list needs upkeep.
-    """
+    """Dependency and LLM SDK versions, both read from installed metadata."""
     requires = metadata.requires(_DIST) or []
     deps = [_pinned(name) for r in requires if "extra ==" not in r and (name := _name(r))]
     extras = metadata.metadata(_DIST).get_all("Provides-Extra") or []

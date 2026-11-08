@@ -1,4 +1,4 @@
-"""The setup dry run: every step `analyze` takes before analysis starts."""
+"""The setup dry run behind `ci-doctor config --validate`."""
 
 from pathlib import Path
 
@@ -8,13 +8,7 @@ from ci_doctor.matchers.registry import load as load_matchers
 
 
 def validate(paths: list[Path]) -> str:
-    """Load the config, then resolve, fetch and validate every selected matcher.
-
-    Args:
-        paths: The `-f` files, lowest precedence first.
-
-    Returns:
-        A one-line summary of the setup.
+    """Load the config and every selected matcher; return a one-line summary.
 
     Raises:
         SetupError: On the first setup problem.

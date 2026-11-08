@@ -1,10 +1,4 @@
-"""`ci-doctor matchers …`: the registry author's commands and the user's `matchers:` editor.
-
-Every command exits 1 on failure, a crash included, so a registry's CI step goes red on
-a stale index and a user typo never silently edits the config. Commands that change the
-config touch only its `matchers:` block (`config/edit.py`) and fetch before they write,
-so a bad registry or name leaves the file as it was.
-"""
+"""`ci-doctor matchers …`."""
 
 from collections.abc import Sequence
 
