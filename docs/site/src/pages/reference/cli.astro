@@ -176,6 +176,15 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         the <a href="https://github.com/ci-doctor/matchers">matchers repo</a>.
     </p>
 
+    <h2>Reporting a bug</h2>
+    <p>
+        <code>ci-doctor report</code> prints what an issue needs: the ci-doctor, Python and
+        dependency versions, the installed LLM SDKs, the platform, a summary of the config,
+        and which proxy and CA variables are set. Paste it into the issue. It holds no
+        secrets: environment variables show as set or unset, and config files and
+        endpoints are named, not shown. Pass the same <code>-f</code> files you run with.
+    </p>
+
     <h2>Debugging with <code>--verbose</code></h2>
     <p>
         Turn on debug logs across the whole pipeline (or set <code

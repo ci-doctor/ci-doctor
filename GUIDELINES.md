@@ -27,7 +27,8 @@ ci_doctor/
   cli/              the command line, laid out like the command tree (§2.1). Parses,
                     calls service/, prints; exits 0 once analysis starts
   service/          what each command does, with no terminal in it: analyze (segment,
-                    classify, evidence, report), deliver (artifacts, MR note), setup
+                    classify, evidence, report), deliver (artifacts, MR note), setup,
+                    report (`ci-doctor report`'s facts, nothing secret)
   config/           schemas/ (the pydantic model, §2.2) + defaults.yml + layered loader
                     (user file < repo file) + dump (yaml, diff) + edit (one top-level block)
   core/             provider-neutral: models, ports, attribution (pure), denoise,

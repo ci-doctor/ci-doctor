@@ -24,11 +24,12 @@ from ci_doctor.cli._lib import context, terminal
 from ci_doctor.cli.analyze import AnalyzeCommand
 from ci_doctor.cli.config import ConfigCommand
 from ci_doctor.cli.matchers import app as matchers_app
+from ci_doctor.cli.report import ReportCommand
 from ci_doctor.errors import SetupError
 
 log = logging.getLogger("ci_doctor.cli")
 app = typer.Typer(add_completion=False, help="Explain why a CI pipeline failed (read-only postmortem).")
-for command in (AnalyzeCommand, ConfigCommand):
+for command in (AnalyzeCommand, ConfigCommand, ReportCommand):
     command.register(app)
 app.add_typer(matchers_app, name="matchers")
 
