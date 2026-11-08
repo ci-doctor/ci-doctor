@@ -12,14 +12,15 @@ def _fields(sections):
     return {s.title: dict(s.fields) for s in sections}
 
 
-def test_environment_values_never_appear(monkeypatch):
-    """A proxy URL or a CA path carries hosts and usernames: only set/unset is reported."""
+def test_environment_variables_are_named_never_shown(monkeypatch):
+    """A proxy URL or a CA path carries hosts and usernames: only the name is reported."""
     monkeypatch.setenv("HTTPS_PROXY", "http://user:hunter2@proxy.corp:3128")
     monkeypatch.setenv("CI_DOCTOR_GITLAB_TOKEN", "glpat-secret")
-    report = _fields(build([]))
-    assert report["environment"]["HTTPS_PROXY"] == "set"
-    assert report["environment"]["CI_DOCTOR_*"] == "CI_DOCTOR_GITLAB_TOKEN"
-    text = repr(report)
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    named = _fields(build([]))["environment"]["set"].split(", ")
+    assert "HTTPS_PROXY" in named and "CI_DOCTOR_GITLAB_TOKEN" in named
+    assert "SSL_CERT_FILE" not in named
+    text = repr(build([]))
     assert "hunter2" not in text and "glpat-secret" not in text
 
 
@@ -29,9 +30,8 @@ def test_config_is_named_not_shown(tmp_path, monkeypatch):
     cfg = tmp_path / "team.yml"
     cfg.write_text("llm:\n  model: qwen\n  api_base: http://gpu.internal:8000/v1\n")
     config = _fields(build([cfg]))["config"]
-    assert config["-f files"] == "team.yml"
-    assert config["llm"] == "openai, model qwen"
-    assert config["llm api_base"] == "set"
+    assert config["files"] == "team.yml"
+    assert config["llm"] == "openai, model qwen, api_base set"
     assert str(tmp_path) not in repr(config) and "gpu.internal" not in repr(config)
 
 
@@ -51,3 +51,4 @@ def test_the_command_prints_every_section(monkeypatch, capsys):
     assert exc.value.code == 0
     assert f"  version: {__version__}" in out
     assert {"ci-doctor", "packages", "config", "environment"} <= set(out.splitlines())
+    assert len(out.splitlines()) <= 16
