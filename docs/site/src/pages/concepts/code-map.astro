@@ -182,7 +182,7 @@ const packages = [
             {
                 path: "backends.py",
                 entry: "—",
-                role: "`openai`, `litellm`, `claude_code`. All prompt-and-parse; the caller validates the JSON against the schema.",
+                role: "One `PydanticAILLMClient` over any provider Pydantic AI ships, picked by `llm.backend`; `openai` alone chooses Chat Completions or Responses. Replies are validated against the report schema.",
             },
             {
                 path: "schema.py",

@@ -82,19 +82,15 @@ class LLMConfig(Strict):
         "cohere",
         "xai",
         "huggingface",
-        "litellm",
     ] = Field(
         default="openai",
         description=(
             "Which provider to call. openai: any OpenAI-compatible endpoint (needs api_base). "
-            "azure, bedrock, bedrock-mantle, google-cloud: cloud auth plus their own settings. "
-            "litellm: any other provider, by its model string, e.g. vertex_ai/gemini-1.5-pro."
+            "azure, bedrock, bedrock-mantle, google-cloud: cloud auth plus their own settings."
         ),
     )
     model: str | None = Field(default=None, description='Model identifier, e.g. "qwen2.5-coder:32b".')
-    api_base: str | None = Field(
-        default=None, description="Base URL of the OpenAI-compatible / litellm endpoint."
-    )
+    api_base: str | None = Field(default=None, description="Base URL of the OpenAI-compatible endpoint.")
     api_key_env: str | None = Field(
         default=None,
         description="Name of the env var holding the LLM API key. Often unset — local servers need no key, "
@@ -128,8 +124,8 @@ class LLMConfig(Strict):
         default=1,
         ge=0,
         description="HTTP-transport retries per request, set on the provider's SDK client. Applies to "
-        "providers whose SDK has the setting (openai, azure, anthropic, groq, ...); bedrock and "
-        "litellm keep their own. Kept low: Pydantic AI's own Agent already retries once on a "
+        "providers whose SDK has the setting (openai, azure, anthropic, groq, ...); bedrock "
+        "keeps its own. Kept low: Pydantic AI's own Agent already retries once on a "
         "schema-invalid reply, and the two multiply.",
     )
 

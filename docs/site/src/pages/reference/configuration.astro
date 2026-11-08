@@ -48,9 +48,9 @@ github:                          # used when github is the ci or the scm
 llm:
   enabled: true                  # false => deterministic-only report
   backend: openai                # openai | anthropic | azure | bedrock | bedrock-mantle | google |
-                                 # google-cloud | groq | mistral | cohere | xai | huggingface | litellm
+                                 # google-cloud | groq | mistral | cohere | xai | huggingface
   model: null                    # e.g. "qwen2.5-coder:32b" or "claude-opus-4-8"
-  api_base: null                 # OpenAI-compatible / litellm base URL
+  api_base: null                 # OpenAI-compatible base URL
   api_key_env: null              # optional; local servers often need none
   openai:
     api: chat                    # backend: openai; chat (Chat Completions) | responses (Responses API)
@@ -65,7 +65,7 @@ llm:
   max_input_tokens: 12000
   temperature: 0.1
   timeout_seconds: 120           # wall-clock budget for one call, retries included
-  max_retries: 1                 # SDK retries (not bedrock/litellm); Pydantic AI's own Agent retries once more on an invalid reply
+  max_retries: 1                 # SDK retries (not bedrock); Pydantic AI's own Agent retries once more on an invalid reply
 
 analysis:
   include_allowed_failures: false   # allow_failure jobs are noise by default
@@ -283,18 +283,6 @@ redaction:
                     ><code>model</code>; <code>api_key_env</code> or <code>HF_TOKEN</code>; <code>pip install ci-doctorr[huggingface]</code></td
                 ></tr
             >
-            <tr
-                ><td><code>litellm</code></td><td
-                    >Whatever else <a href="https://docs.litellm.ai/">litellm</a>
-                    reaches — Vertex, Cohere, watsonx, custom proxies, ~100
-                    providers total</td
-                ><td
-                    ><code>model</code> in litellm's own
-                    <code>provider/model</code> form; <code
-                        >pip install ci-doctorr[litellm]</code
-                    ></td
-                ></tr
-            >
         </tbody>
     </table>
     <div class="note">
@@ -308,15 +296,10 @@ redaction:
         provider you're using.
     </div>
     <div class="note">
-        <strong><code>openai</code>/<code>azure</code>/<code>bedrock-mantle</code> and <code>litellm</code>
-        are mutually exclusive installs, not a menu to combine.</strong> litellm
-        hard-pins <code>openai&lt;3.0</code>, while Pydantic AI's own OpenAI
-        integration needs <code>openai&gt;=3.8</code> — the two cannot be installed
-        in one environment. Pick whichever track covers your provider;
-        Every other native backend is unaffected either way.
-        <code>litellm</code> may
-        also pull <code>tiktoken</code>, which fetches vocab at runtime, so it is
-        unfit for a strict air gap. When the LLM is disabled or unavailable,
+        <strong>Only Pydantic AI's own providers.</strong> Every backend is a provider
+        <a href="https://ai.pydantic.dev/models/overview/">Pydantic AI</a> ships itself,
+        so the extras install side by side. Pydantic AI supports more providers than the
+        ones listed here; ask for one you need. When the LLM is disabled or unavailable,
         ci-doctor emits the deterministic report instead of failing.
     </div>
     <div class="note">

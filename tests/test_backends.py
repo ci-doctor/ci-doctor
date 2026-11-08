@@ -7,10 +7,8 @@ schema is covered end-to-end in tests/test_report.py.
 """
 
 import asyncio
-import sys
 import threading
 import time
-import types
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import ClassVar
@@ -229,9 +227,8 @@ def test_google_cloud_passes_project_and_location(fake_pydantic_ai):
 
 @pytest.mark.parametrize("backend", sorted(_KNOWN))
 def test_make_client_builds_a_client_for_every_backend(backend, monkeypatch, fake_pydantic_ai):
-    """Every name the config accepts builds a PydanticAILLMClient (litellm's bridge faked too)."""
-    for overridden in ("openai", "litellm"):
-        monkeypatch.setitem(backends._OVERRIDES, overridden, lambda cfg, environ: TestModel())
+    """Every name the config accepts builds a PydanticAILLMClient."""
+    monkeypatch.setitem(backends._OVERRIDES, "openai", lambda cfg, environ: TestModel())
     fake_pydantic_ai["provider_class"] = _AnyProvider
     kwargs = {
         "backend": backend,
@@ -433,24 +430,7 @@ def test_timeout_is_a_wall_clock_budget_for_the_whole_call():
     assert time.monotonic() - started < 5
 
 
-def test_litellm_model_string_reaches_litellm_model(monkeypatch):
-    """Litellm's own model-string convention passes straight through (fake module: the real one conflicts)."""
-    captured = {}
-
-    class _FakeLiteLLMModel:
-        def __init__(self, model_name, *, api_key=None, api_base=None):
-            captured["model_name"] = model_name
-
-    fake_module = types.ModuleType("pydantic_ai_litellm")
-    fake_module.LiteLLMModel = _FakeLiteLLMModel
-    monkeypatch.setitem(sys.modules, "pydantic_ai_litellm", fake_module)
-
-    backends._litellm_model(_llm(backend="litellm", model="vertex_ai/gemini-1.5-pro"), {})
-    assert captured["model_name"] == "vertex_ai/gemini-1.5-pro"
-
-
 # Real construction: needs each provider's SDK, so each test skips when it is absent.
-# (openai/azure/bedrock-mantle conflict with litellm — see pyproject.toml.)
 _REAL = [
     ("openai", "openai", "OpenAIChatModel", {"api_base": "http://stub"}),
     (

@@ -54,7 +54,7 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | Something every provider needs | `providers/<shared>.py` | Provider-neutral, but does I/O, so not `core/` (see `git_origin.py`). |
 | Blame/classification logic | `core/attribution.py` | Pure function. No I/O, network, or clock. |
 | Evidence selection | `core/{denoise,extract,budget}.py` | Config-driven where possible. |
-| An LLM backend | `llm/backends.py` | Lazy-import the SDK inside the client. |
+| An LLM backend | `llm/backends.py` + a pip extra | Only a provider Pydantic AI ships; lazy-import the SDK inside the client. |
 | A command or subcommand | `cli/<group…>/<command>.py` (surface) + `service/` or the owning package (work) | See §2.1. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |

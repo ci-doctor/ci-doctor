@@ -10,14 +10,14 @@ Any Pydantic AI-native provider goes through one generic path: Pydantic AI's own
 arguments it actually accepts (`api_key`, `base_url`). Adding a provider
 is a name in `LLMConfig.backend` and a pip extra. A provider with settings of its own
 adds a block under `config/types/` that dumps to its constructor arguments (see
-`LLMConfig.provider_settings`). Two backends override the generic path: `openai` picks
-Chat Completions or the Responses API, and `litellm` is the community `pydantic-ai-litellm`
-bridge, which routes in-process to ~100 providers by litellm's own model-string
-convention (`vertex_ai/gemini-1.5-pro`).
+`LLMConfig.provider_settings`). One backend overrides the generic path: `openai` picks
+Chat Completions or the Responses API.
+
+By design a backend is a provider Pydantic AI ships itself: no community bridges, whose
+pins and release cadence we would inherit. Pydantic AI has more providers than are
+listed here; one is added when someone needs it.
 
 Every backend needs its own pip extra; there is no default SDK in the base install.
-`openai`/`azure` and `litellm` are mutually exclusive — litellm pins `openai<3.0`,
-Pydantic AI's OpenAI integration needs `openai>=3.8` (see `[tool.uv] conflicts`).
 
 Every SDK is imported inside the builder that needs it, so importing this module
 costs nothing on a run that never reaches a model.
@@ -83,7 +83,7 @@ def _apply_max_retries(provider: object, cfg: LLMConfig) -> None:
 
     The openai/anthropic/groq SDKs retry 429s, 5xxs and connection errors themselves
     (default 2); leaving that alone would multiply with the Agent's own repair retry.
-    Providers without a `max_retries` client attribute (bedrock via boto, litellm) keep
+    Providers without a `max_retries` client attribute (bedrock via boto) keep
     their own retry behavior.
     """
     client = getattr(provider, "client", None)
@@ -127,17 +127,8 @@ def _openai_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
     return model_class(model_name, provider=provider)
 
 
-def _litellm_model(cfg: LLMConfig, environ: Mapping[str, str]) -> "Model":
-    """Anything litellm reaches that the native providers can't."""
-    from pydantic_ai_litellm import LiteLLMModel  # ty: ignore[unresolved-import]
-
-    model_name = _require_model(cfg)
-    return LiteLLMModel(model_name, api_key=_api_key(cfg, environ), api_base=cfg.api_base or None)
-
-
 _OVERRIDES: dict[str, Callable[[LLMConfig, Mapping[str, str]], "Model"]] = {
     "openai": _openai_model,
-    "litellm": _litellm_model,
 }
 
 #: What a backend needs before a call is worth attempting; the default is just a model.
