@@ -20,7 +20,17 @@ _TOP_LEVEL = re.compile(r"^[^\s#]")
 
 
 def _read(path: Path) -> tuple[str, dict]:
-    """The file's text and parsed mapping; an absent file is empty."""
+    """The file's text and parsed mapping; an absent file is empty.
+
+    Args:
+        path: The config file.
+
+    Returns:
+        The text and its top-level mapping.
+
+    Raises:
+        SetupError: If the file is unreadable or not a YAML mapping.
+    """
     if not path.exists():
         return "", {}
     try:
@@ -34,12 +44,29 @@ def _read(path: Path) -> tuple[str, dict]:
 
 
 def read_block(path: Path, key: str) -> dict:
-    """A copy of the file's own `key:` block, `{}` when absent."""
+    """A copy of the file's own `key:` block, `{}` when absent.
+
+    Args:
+        path: The config file, which may not exist.
+        key: A top-level config key.
+
+    Returns:
+        A copy of the block, `{}` when absent.
+    """
     return copy.deepcopy(_read(path)[1].get(key) or {})
 
 
 def _splice(text: str, key: str, dumped: str) -> str:
-    """Replace the `key:` block in `text` with `dumped`, or append it."""
+    """Replace the `key:` block in `text` with `dumped`, or append it.
+
+    Args:
+        text: The file's current text.
+        key: The top-level key.
+        dumped: The new block, ending in a newline.
+
+    Returns:
+        The new file text.
+    """
     lines = text.splitlines(keepends=True)
     key_line = re.compile(rf"^{re.escape(key)}\s*:")
     start = next((i for i, ln in enumerate(lines) if key_line.match(ln)), None)
@@ -57,9 +84,14 @@ def _splice(text: str, key: str, dumped: str) -> str:
 def edit_block(path: Path, key: str, mutate: Callable[[dict], None]) -> None:
     """Apply `mutate` to the file's `key:` block and write it back.
 
+    Args:
+        path: The config file; created if missing.
+        key: The top-level key to edit.
+        mutate: Changes the mapping in place.
+
     Raises:
-        SetupError: If the file is unreadable, or the result would change more than `key`
-            or not validate. The file is then untouched.
+        SetupError: If the file is unreadable, or the edit would change anything but
+            `key` or produce an invalid config. The file is then untouched.
     """
     text, data = _read(path)
     block = copy.deepcopy(data.get(key) or {})

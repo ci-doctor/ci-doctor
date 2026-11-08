@@ -51,7 +51,16 @@ class InfoCommand(Command):
             table(self._Member, map(self._Member, members), header=False)
 
     def _fields(self, ref: Ref, seen: Resolved, http: httpx.Client) -> list["InfoCommand._Field"]:
-        """What `info` shows about one served matcher or bundle."""
+        """What `info` shows about one served matcher or bundle.
+
+        Args:
+            ref: A ref its registry serves, already checked.
+            seen: Registries already read, holding `ref`'s.
+            http: The command's HTTP client, to fetch a matcher's role.
+
+        Returns:
+            The rows, in display order.
+        """
         served = seen.indexes[ref.alias]
         entry = served.matchers.get(ref.name) or served.bundles[ref.name]
         pairs = [("description", entry.description)]

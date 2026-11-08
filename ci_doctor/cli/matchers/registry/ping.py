@@ -54,7 +54,16 @@ class PingCommand(Command):
             raise SetupError(f"{down} registr{'y' if down == 1 else 'ies'} unreachable or invalid")
 
     def _ping(self, cfg: MatchersConfig, alias: str, http: httpx.Client) -> "PingCommand._Ping":
-        """Fetch one registry's index, timing it."""
+        """Fetch one registry's index, timing it.
+
+        Args:
+            cfg: The `matchers:` block.
+            alias: The registry.
+            http: The command's HTTP client.
+
+        Returns:
+            Its row: the counts, or the error.
+        """
         start = time.perf_counter()
         try:
             served = index_for(cfg, alias, http, Resolved())

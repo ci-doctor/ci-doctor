@@ -26,6 +26,14 @@ app.add_typer(matchers_app, name="matchers")
 
 
 def _version_callback(value: bool) -> None:
+    """Print the version and exit, before any other option is processed.
+
+    Args:
+        value: Whether `--version` was passed.
+
+    Raises:
+        typer.Exit: Always, when `value` is true.
+    """
     if value:
         typer.echo(__version__)
         raise typer.Exit()

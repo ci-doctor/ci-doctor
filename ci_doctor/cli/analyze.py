@@ -57,6 +57,11 @@ class AnalyzeCommand(Command):
             raise SystemExit(0) from None
 
     def _analyze(self, target: str | None, job_id: str | None, output_format: "OutputFormat") -> None:
+        """Set up, analyze, render and deliver; see the class docstring.
+
+        Raises:
+            SetupError: On a broken setup, detected before analysis starts.
+        """
         cfg = load_config(config_files())
         log.debug(f"ci={cfg.ci} scm={cfg.scm_vendor} target={target} job_id={job_id}")
         if target is None:
@@ -85,7 +90,12 @@ class AnalyzeCommand(Command):
             typer.echo(note, err=True)
 
     def _render(self, results: list[JobResult], run: Run | None) -> None:
-        """The report panels on stdout: a pipeline view for a multi-job live run."""
+        """The report panels on stdout: a pipeline view for a multi-job live run.
+
+        Args:
+            results: One :class:`~ci_doctor.service.analyze.JobResult` per analyzed job.
+            run: The analyzed run, or None for offline replay.
+        """
         from ci_doctor.render.terminal import render_pipeline, render_terminal
 
         if run is not None and len(results) > 1:
@@ -97,5 +107,13 @@ class AnalyzeCommand(Command):
 
     @staticmethod
     def _looks_like_a_path(target: str) -> bool:
-        """Whether a missing `analyze` target was meant as a log file, not a run id."""
+        """Whether a missing `analyze` target was meant as a log file, not a run id.
+
+        Args:
+            target: The positional argument as typed.
+
+        Returns:
+            True for anything carrying a separator or a suffix, so a typo'd path
+            reports "no such log file" instead of being fetched as a pipeline id.
+        """
         return os.sep in target or "/" in target or bool(Path(target).suffix)

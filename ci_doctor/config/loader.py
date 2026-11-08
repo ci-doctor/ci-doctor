@@ -32,7 +32,11 @@ _DEFAULT_REPO_CONFIG = Path(".ci-doctor.yml")
 
 
 def user_config() -> Path:
-    """The user's config file (click's per-platform app dir), whether or not it exists."""
+    """The user's config file (click's per-platform app dir), whether or not it exists.
+
+    Returns:
+        The path.
+    """
     return Path(click.get_app_dir("ci-doctor")) / "config.yml"
 
 
@@ -202,12 +206,19 @@ def load_config(
     """Assemble and validate the effective config from every layer.
 
     Args:
-        repo_config: Config files, last wins. Defaults to `./.ci-doctor.yml` when it exists.
-        overrides: The CLI-flag layer, applied last.
-        environ: Environment to read; tests pass `{}` for a hermetic load.
+        repo_config: One config file path, or several applied left to right so the
+            last one wins. Defaults to ``./.ci-doctor.yml`` when that exists and
+            none were given; no repo layer at all when it does not.
+        overrides: The CLI-flag layer, applied last and therefore winning.
+        environ: Environment to read. Defaults to :data:`os.environ`; tests pass
+            ``{}`` to get a hermetic load.
+
+    Returns:
+        The validated config.
 
     Raises:
-        SetupError: If a file is missing or unreadable, or the result doesn't validate.
+        SetupError: If a file is missing, unreadable or not YAML, or the result
+            doesn't validate (an unknown or ill-typed key).
     """
     layers = [_shipped_defaults()]
     try:

@@ -14,7 +14,13 @@ from ci_doctor.cli._lib.terminal import console, no_color, plain
 
 
 def page(text: str, lexer: str, *, force: bool = False) -> None:
-    """Page `text` highlighted as `lexer`; echo it raw under `--plain` or when piped."""
+    """Page `text` highlighted as `lexer`; echo it raw under `--plain` or when piped.
+
+    Args:
+        text: The document.
+        lexer: How to highlight it (`yaml`, `json`, `diff`).
+        force: Page even when stdout is not a terminal.
+    """
     if plain() or (not force and not sys.stdout.isatty()):
         typer.echo(text)  # not rich: it would pad every line to the terminal width
         return
@@ -27,7 +33,11 @@ class LessPager(Pager):
     """`$PAGER`, else `less -R`. Not rich's pager: pydoc prefers `$MANPAGER`, which may strip escapes."""
 
     def show(self, content: str) -> None:
-        """Page `content`, or print it when the pager isn't installed."""
+        """Page `content`, or print it when the pager isn't installed.
+
+        Args:
+            content: The rendered text, escapes included.
+        """
         cmd = shlex.split(os.environ.get("PAGER") or "less")
         if not cmd or not shutil.which(cmd[0]):
             sys.stdout.write(content)

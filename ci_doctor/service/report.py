@@ -33,14 +33,26 @@ _NAME = re.compile(r"[A-Za-z0-9._-]+")
 
 @dataclass(frozen=True)
 class Section:
-    """One block of the report: a title and `(key, value)` lines."""
+    """One block of the report: a title and `(key, value)` lines.
+
+    Attributes:
+        title: Its heading.
+        fields: `(key, value)` pairs, in display order.
+    """
 
     title: str
     fields: list[tuple[str, str]]
 
 
 def build(paths: list[Path]) -> list[Section]:
-    """The report's sections for the given `-f` files."""
+    """The report's sections for the given `-f` files.
+
+    Args:
+        paths: The `-f` files, as `analyze` would read them.
+
+    Returns:
+        The sections: ci-doctor and Python, packages, config, environment.
+    """
     return [_runtime(), _packages(), _config(paths), _environment()]
 
 

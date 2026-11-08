@@ -13,8 +13,12 @@ def atomic_write(path: Path, text: str) -> None:
 
     Writes through a symlink and keeps the mode; a new file gets `0o666 & ~umask`.
 
+    Args:
+        path: The file; created if missing.
+        text: Its new contents, written as UTF-8.
+
     Raises:
-        SetupError: If the file can't be written.
+        SetupError: If the file can't be written, e.g. its directory is missing.
     """
     real = path.resolve()
     try:

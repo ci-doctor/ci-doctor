@@ -121,7 +121,15 @@ def fetch_index(alias: str, location: str, client: httpx.Client) -> Index:
 
 @contextlib.contextmanager
 def session(cfg: MatchersConfig, client: httpx.Client | None = None) -> Iterator[httpx.Client]:
-    """The caller's HTTP client, or a fresh one closed afterwards."""
+    """The caller's HTTP client, or a fresh one closed afterwards.
+
+    Args:
+        cfg: The `matchers:` block, for its timeout and how many fetches run at once.
+        client: A client to reuse (tests pass one over `httpx.MockTransport`).
+
+    Yields:
+        The client.
+    """
     if client is not None:
         yield client
         return
@@ -135,9 +143,10 @@ class Resolved:
     """Registries read so far, and what `matchers.include` expands to.
 
     Attributes:
-        locations: Each registry's directory, by alias.
-        indexes: Each registry's index, by alias; fetched once per alias.
-        matchers: Each selected `alias/name`, in include order: `"direct"` or its bundle.
+        locations: Each referenced registry's directory, by alias.
+        indexes: Each referenced registry's index, by alias.
+        matchers: Every selected `alias/name`, in include order, mapped to how it
+            got in: `"direct"`, or the top-level bundle that pulled it in.
     """
 
     locations: dict[str, str] = field(default_factory=dict)
@@ -303,6 +312,18 @@ def _prefetch_bundles(refs: list[Ref], out: Resolved, http: httpx.Client, worker
 
     One round trip per level instead of per bundle. Names, cycles and depth are
     `_expand`'s to report; a bundle too deep to prefetch it fetches itself.
+
+    Args:
+        refs: The top-level `matchers.include` entries.
+        out: The registries read so far, indexes included.
+        http: The run's HTTP client.
+        workers: How many files to fetch at once.
+
+    Returns:
+        Each bundle reached, by `alias/name`.
+
+    Raises:
+        SetupError: If a bundle file fails to fetch or validate.
     """
     fetched: dict[str, Bundle] = {}
     level = refs
@@ -336,6 +357,22 @@ def _expand(
 
     Each bundle is walked once (`walked`), so diamonds don't multiply; a memoized
     bundle reports its depth and `resolve()` checks the total.
+
+    Args:
+        ref: The matcher or bundle to expand.
+        stack: The bundles currently being expanded, outermost first.
+        out: The registries read so far.
+        walked: Bundles already expanded, by `alias/name`: their matchers and depth.
+        bundles: Bundle files already fetched, by `alias/name`.
+        http: The run's HTTP client.
+
+    Returns:
+        Its `alias/name` matchers in include order, deduplicated, and how deep its
+        bundles nest (0 for a matcher).
+
+    Raises:
+        SetupError: On an unknown name, a cycle, nesting over the limit, or a
+            bundle file that fails to fetch or validate.
     """
     index, key = out.indexes[ref.alias], str(ref)
     if ref.name in index.matchers:
@@ -358,7 +395,16 @@ def _expand(
 
 
 def via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str, str]:
-    """Which top-level entry of `include` brings in each matcher: `"direct"` or the bundle."""
+    """Which top-level entry of `include` brings in each matcher: `"direct"` or the bundle.
+
+    Args:
+        cfg: The `matchers:` block (its registries and fetch settings).
+        include: The refs to expand.
+        http: The run's HTTP client.
+
+    Returns:
+        `alias/name` -> `"direct"` or the bundle; empty when `include` is.
+    """
     if not include:
         return {}
     return resolve(cfg.model_copy(update={"include": include}), http).matchers
@@ -367,8 +413,16 @@ def via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str
 def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[MatcherConfig]:
     """Resolve, fetch and validate every selected matcher, ids renamed to `alias/id`.
 
+    Args:
+        cfg: The `matchers:` config block.
+        client: The run's HTTP client, or None for a fresh one.
+
+    Returns:
+        The matchers, in include order, ready for `build_bundle`.
+
     Raises:
-        SetupError: On anything `resolve` rejects, or a matcher that fails to load.
+        SetupError: On anything :func:`resolve` rejects, or a matcher file that
+            can't be fetched or fails a load-time rule.
     """
     start = time.perf_counter()
     with session(cfg, client) as http:

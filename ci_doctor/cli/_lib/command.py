@@ -19,6 +19,11 @@ class Command(ABC):
 
 
 def register(app: typer.Typer, commands: Sequence[Command]) -> None:
-    """Add `commands` to `app`, in `--help` order."""
+    """Add `commands` to `app`, in `--help` order.
+
+    Args:
+        app: The root app or a group's.
+        commands: The group's commands, in `--help` order.
+    """
     for command in commands:
         app.command(command.name, help=inspect.getdoc(command))(command.run)

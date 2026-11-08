@@ -28,7 +28,13 @@ R = TypeVar("R", bound=Row)
 
 
 def table(kind: type[R], rows: Iterable[R], *, header: bool = True) -> None:
-    """Print rows as a table headed by `kind`'s field names, or `row.line()` each under `--plain`."""
+    """Print rows as a table headed by `kind`'s field names, or `row.line()` each under `--plain`.
+
+    Args:
+        kind: The row type; its fields name the columns.
+        rows: The rows; a `Text` cell keeps its style in the table.
+        header: Show the column names; off for a key-value listing.
+    """
     if plain():
         for row in rows:
             typer.echo(row.line())

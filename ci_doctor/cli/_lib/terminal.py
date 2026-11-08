@@ -30,22 +30,42 @@ def _flag(key: str) -> bool:
 
 
 def plain() -> bool:
-    """Whether `--plain` was passed."""
+    """Whether `--plain` was passed.
+
+    Returns:
+        True for bare-text output.
+    """
     return _flag(PLAIN)
 
 
 def no_color() -> bool:
-    """Whether colour is off (`--no-color` or `--plain`)."""
+    """Whether colour is off (`--no-color` or `--plain`).
+
+    Returns:
+        True for uncoloured output.
+    """
     return _flag(NO_COLOR)
 
 
 def console(*, soft_wrap: bool = False) -> Console:
-    """A stdout console honouring `--no-color`. No highlighting: it colours data at random."""
+    """A stdout console honouring `--no-color`. No highlighting: it colours data at random.
+
+    Args:
+        soft_wrap: Never fold long lines (the config's regexes).
+
+    Returns:
+        The console.
+    """
     return Console(highlight=False, no_color=no_color(), soft_wrap=soft_wrap)
 
 
 def configure_logging(verbose: bool, *, colour: bool = True) -> None:
-    """Set ci_doctor's log level: debug for `--verbose`, else `CI_DOCTOR_LOG_LEVEL` or INFO."""
+    """Set ci_doctor's log level: debug for `--verbose`, else `CI_DOCTOR_LOG_LEVEL` or INFO.
+
+    Args:
+        verbose: Whether `--verbose` was passed.
+        colour: Colour the level names; off for `--plain` and `--no-color`.
+    """
     LOG_CONSOLE.no_color = not colour or "NO_COLOR" in os.environ
     level_name = os.environ.get("CI_DOCTOR_LOG_LEVEL", "").upper()
     level = logging.DEBUG if verbose else getattr(logging, level_name, logging.INFO)
