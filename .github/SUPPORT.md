@@ -6,4 +6,4 @@
 - **A matcher is missing or misfires?** That's the [matchers registry](https://github.com/ci-doctor/matchers/issues).
 - **Security problem?** Don't open an issue. See [SECURITY.md](../SECURITY.md).
 
-When you ask, include `ci-doctor --version` and how you run it. Redact secrets from any log or config you share.
+When you ask, include the output of `ci-doctor report`: versions, platform and a config summary, with no secrets in it. Redact secrets from any log or config you share.

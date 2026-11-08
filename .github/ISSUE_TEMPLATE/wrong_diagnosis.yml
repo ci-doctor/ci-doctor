@@ -28,28 +28,11 @@ body:
     attributes:
       label: Job log
       description: Attach the raw log file (drag it in), or paste the relevant part.
-  - type: input
-    id: version
+  - type: textarea
+    id: report
     attributes:
-      label: Version
-      description: Output of `ci-doctor --version`.
+      label: "`ci-doctor report`"
+      description: Run it with the same `-f` files. It shows the version, CI system and LLM backend, and prints no secrets.
+      render: text
     validations:
       required: true
-  - type: dropdown
-    id: ci
-    attributes:
-      label: CI system
-      options:
-        - GitLab
-        - GitHub Actions
-        - Other
-    validations:
-      required: true
-  - type: dropdown
-    id: llm
-    attributes:
-      label: LLM
-      description: Was an LLM backend configured?
-      options:
-        - No (deterministic report)
-        - "Yes"

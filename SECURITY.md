@@ -6,7 +6,7 @@ Please **don't open a public issue**. Email **work@cidoc.dev** with:
 
 - what the problem is and what an attacker could do with it,
 - the steps or a proof of concept that shows it,
-- the version (`ci-doctor --version`) and how you run it (pip, Docker image, CI job).
+- the output of `ci-doctor report` (versions and platform; it prints no secrets) and how you run it (pip, Docker image, CI job).
 
 You'll get a reply within 5 working days. We'll keep you updated while we work on a fix,
 and credit you in the release notes unless you'd rather stay anonymous. Please give us

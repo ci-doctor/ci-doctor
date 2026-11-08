@@ -29,41 +29,15 @@ body:
     id: output
     attributes:
       label: Output with `-v`
-      description: The full output of the failing command, run with `-v` for debug logs.
+      description: The full output of the failing command, run with `ci-doctor -v …` for debug logs.
       render: text
-  - type: input
-    id: version
-    attributes:
-      label: Version
-      description: Output of `ci-doctor --version`.
-      placeholder: 0.0.1a12
-    validations:
-      required: true
-  - type: dropdown
-    id: install
-    attributes:
-      label: How you run it
-      options:
-        - pip / uv
-        - Docker image
-        - GitHub Action
-        - GitLab CI job
-        - Other
-    validations:
-      required: true
-  - type: dropdown
-    id: ci
-    attributes:
-      label: CI system
-      options:
-        - GitLab
-        - GitHub Actions
-        - Other / not relevant
-    validations:
-      required: true
   - type: textarea
-    id: config
+    id: report
     attributes:
-      label: Config
-      description: Output of `ci-doctor config --diff`, redacted.
-      render: yaml
+      label: "`ci-doctor report`"
+      description: |
+        Versions, platform, a config summary and which CA/proxy variables are set. Run it with the
+        same `-f` files as the failing command. It prints no secrets: variables show as set or unset.
+      render: text
+    validations:
+      required: true
