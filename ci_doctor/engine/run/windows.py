@@ -1,17 +1,17 @@
-"""Run matchers over a log: every anchor becomes a window carrying its role's rank.
+"""Plan × lines → windows: every anchor of every variant, with the lines it keeps.
 
 Anchored windows catch causes that print *before* a framework's summary, so a
 tail-only view would miss them.
 """
 
+from bisect import bisect_right
 from dataclasses import dataclass
 
-from ci_doctor.engine.spec.legacy import MatcherConfig
-from ci_doctor.engine.spec.roles import ROLE_RANK
-from ci_doctor.regex import pattern_set
-
-#: Shared by every line no pattern hits, so a long log costs no set per line.
-_NO_HITS: frozenset[int] = frozenset()
+from ci_doctor.engine.plan import Plan, WindowPlan
+from ci_doctor.engine.run.anchors import Evaluator
+from ci_doctor.engine.run.relations import blocks
+from ci_doctor.engine.run.scan import scan
+from ci_doctor.engine.spec.roles import RANK
 
 
 @dataclass
@@ -21,59 +21,90 @@ class Window:
     Attributes:
         start: First line index, inclusive.
         end: Last line index, exclusive.
-        rank: `ROLE_RANK` of the matcher that produced it, `TAIL` for the tail.
+        rank: `RANK` of the output that produced it, `TAIL` for the tail.
             Survives merging as the max of the merged windows, so a tool window
             never loses rank by touching a wrapper's.
+        output: Index into `Plan.outputs`; -1 for the tail.
+        anchor: The line that anchored it; -1 for the tail.
+        variant: The variant that anchored it.
     """
 
     start: int
     end: int  # exclusive
     rank: int
+    output: int = -1
+    anchor: int = -1
+    variant: str = ""
 
 
-def windows_for(lines: list[str], matchers: list[MatcherConfig]) -> list[Window]:
-    """Run every matcher over the log and collect the windows they anchor.
-
-    Every regex of every matcher goes into one RE2 set, so each line is matched
-    once, not once per pattern — see `ci_doctor/regex.py` for why that matters.
+def _downwards(ev: Evaluator, anchors: list[int], window: WindowPlan) -> list[tuple[int, int]]:
+    """Each kept anchor and the last line its window reaches.
 
     Args:
-        lines: The denoised log lines.
-        matchers: The evidence matchers, loaded from the configured registries.
+        ev: The log's evaluator.
+        anchors: The anchor lines, ascending.
+        window: What to keep below each.
 
     Returns:
-        One window per hit, unsorted and possibly overlapping. Empty when nothing
-        matched — which is why a pack that never fires fails *silently*, and why
+        `(anchor, last)` pairs, `last` inclusive. An anchor inside an earlier `until` /
+        `while` window of the same variant is skipped, so those windows never nest.
+    """
+    n = ev.n
+    if window.until is not None:
+        return blocks(anchors, ev.sorted(window.until), window.max_lines, n)
+    if window.while_ is None:
+        return [(i, min(n - 1, i + window.after)) for i in anchors]
+    cont, cap = ev.lines(window.while_), window.max_lines or n
+    out, resume = [], 0
+    for i in anchors:
+        if i < resume:
+            continue
+        last = i
+        while last + 1 < n and last + 2 - i <= cap and last + 1 in cont:
+            last += 1
+        out.append((i, last))
+        resume = last + 1
+    return out
+
+
+def _upwards(ev: Evaluator, anchor: int, window: WindowPlan) -> int:
+    """The first line an anchor's window keeps.
+
+    Args:
+        ev: The log's evaluator.
+        anchor: The anchor line.
+        window: What to keep above it.
+
+    Returns:
+        The nearest `from_` line within reach (the anchor itself when none), or
+        `before` lines up, clamped to the log.
+    """
+    if window.from_ is None:
+        return max(0, anchor - window.before)
+    heads = ev.sorted(window.from_)
+    k = bisect_right(heads, anchor) - 1
+    return heads[k] if k >= 0 and heads[k] >= anchor - window.from_within else anchor
+
+
+def run(plan: Plan, lines: list[str]) -> list[Window]:
+    """Find every anchor of every output and the window it keeps.
+
+    Args:
+        plan: The compiled matchers.
+        lines: The denoised log lines.
+
+    Returns:
+        One window per anchor, unsorted and possibly overlapping. Empty when nothing
+        matched — which is why a matcher that never fires fails *silently*, and why
         each one needs positive fixtures under `ci-doctor matchers verify`.
     """
-    regexes: list[str] = []
-
-    def add(rx: str) -> int:
-        regexes.append(rx)
-        return len(regexes) - 1
-
-    plans: list[tuple[MatcherConfig, int, set[int], int | None]] = []
-    for m in matchers:
-        exclude = {add(rx) for rx in m.exclude}
-        if m.pattern:
-            plans.append((m, add(m.pattern), exclude, None))
-        elif m.start and m.end:
-            plans.append((m, add(m.start), exclude, add(m.end)))
-    match = pattern_set(regexes)
-    hits = [frozenset(h) if (h := match(line)) else _NO_HITS for line in lines]
-
-    wins: list[Window] = []
-    for m, anchor, exclude, end in plans:
-        rank = ROLE_RANK[m.role]
-        anchored = [i for i, hit in enumerate(hits) if anchor in hit and not hit & exclude]
-        if end is None:
-            wins += [Window(max(0, i - m.before), min(len(lines), i + m.after + 1), rank) for i in anchored]
-            continue
-        resume = 0  # a block's scan resumes after its end, so blocks never nest
-        for i in anchored:
-            if i < resume:
-                continue
-            j = next((k for k in range(i + 1, len(lines)) if end in hits[k]), len(lines))
-            resume = min(len(lines), j + 1)
-            wins.append(Window(i, resume, rank))
+    if not plan.outputs or not lines:
+        return []
+    ev = Evaluator(scan(plan, lines), len(lines))
+    wins = []
+    for o, out in enumerate(plan.outputs):
+        rank = RANK[out.output.role]
+        for v in out.variants:
+            for anchor, last in _downwards(ev, ev.sorted(v.match), v.window):
+                wins.append(Window(_upwards(ev, anchor, v.window), last + 1, rank, o, anchor, v.name))
     return wins

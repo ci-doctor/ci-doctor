@@ -1,7 +1,7 @@
 """Shedding: under budget pressure the least valuable windows go first."""
 
-from ci_doctor.engine import estimate_tokens, extract
-from tests.engine.support import budgeted, matcher
+from ci_doctor.engine import estimate_tokens
+from tests.engine.support import budgeted, extract, matcher
 
 
 # Why roles exist: `budget.fit` alone keeps the tail, but npm reports the child

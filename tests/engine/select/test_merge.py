@@ -1,7 +1,6 @@
 """Merging: adjacent windows fuse and keep the highest rank."""
 
-from ci_doctor.engine import extract
-from tests.engine.support import budgeted, matcher
+from tests.engine.support import budgeted, extract, matcher
 
 
 def test_overlapping_windows_merge_to_contiguous():

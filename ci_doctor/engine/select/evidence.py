@@ -1,29 +1,24 @@
-"""Select the lines worth showing: a tail window plus anchored context windows.
+"""Windows → evidence: add the tail, merge, shed to the budget, render the gaps."""
 
-Overlapping windows merge. Every gap between selected windows is marked with an
-explicit elision count — never a silent cut.
-"""
-
-from ci_doctor.engine.run.windows import Window, windows_for
+from ci_doctor.engine.run.windows import Window
 from ci_doctor.engine.select.merge import merge
 from ci_doctor.engine.select.render import render
 from ci_doctor.engine.select.shed import shed
-from ci_doctor.engine.spec.legacy import MatcherConfig
 
 #: The tail window ranks below every matcher.
 TAIL = -1
 
 
-def extract(
-    lines: list[str], matchers: list[MatcherConfig], tail_lines: int, max_tokens: int | None = None
+def select(
+    lines: list[str], windows: list[Window], tail_lines: int, max_tokens: int | None = None
 ) -> list[str]:
     """Reduce a log to the lines worth showing.
 
     Args:
         lines: The denoised log lines.
-        matchers: The evidence matchers, loaded from the configured registries.
+        windows: What `run` anchored in them.
         tail_lines: How many trailing lines to always keep, ranked below every
-            matcher. Pass 0 to test a pack in isolation — otherwise the tail masks
+            matcher. Pass 0 to test a matcher in isolation — otherwise the tail masks
             a matcher that never fired.
         max_tokens: Evidence budget. When given, the lowest-ranked windows are
             dropped before rendering rather than left for `budget.fit` to cut
@@ -33,7 +28,7 @@ def extract(
         The selected lines with "… [N lines elided] …" markers where content was
         dropped. Falls back to every line when nothing matched and there is no tail.
     """
-    wins = windows_for(lines, matchers)
+    wins = [Window(w.start, w.end, w.rank) for w in windows]  # merge mutates; keep the caller's intact
     if tail_lines > 0 and lines:
         wins.append(Window(max(0, len(lines) - tail_lines), len(lines), TAIL))
     merged = merge(wins)

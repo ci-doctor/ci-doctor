@@ -1,7 +1,6 @@
 """Anchors: the window each matcher form keeps around a hit, and what `exclude` filters."""
 
-from ci_doctor.engine import extract
-from tests.engine.support import matcher
+from tests.engine.support import extract, matcher
 
 
 def test_anchored_window_context():

@@ -104,6 +104,30 @@ jobs:
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           GITLEAKS_CONFIG: .gitleaks.toml
 
+  # The contract (GUIDELINES §3, #11): ci-doctor at HEAD still compiles and verifies the
+  # official registry. A PR that breaks a released matcher schema fails here, before release.
+  # MATCHERS_REF names a registry branch while a migration PR there is in review.
+  contract:
+    runs-on: ubuntu-latest
+    env:
+      MATCHERS_REF: main
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: ci-doctor/matchers
+          ref: ${{ env.MATCHERS_REF }}
+          path: registry
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: verify the official registry
+        run: uv run --locked ci-doctor matchers verify registry
+
   # Fork PRs get no secrets, so they skip the job (a job-level `if` cannot read `secrets`).
   sonar:
     if: ${{ !github.event.pull_request.head.repo.fork }}
@@ -126,7 +150,7 @@ jobs:
   # Skipped passes: only a fork's `sonar` skips on its own; any other skip follows a failure.
   all-green:
     if: always()
-    needs: [test, lint, docs, leaks, sonar]
+    needs: [test, lint, docs, leaks, contract, sonar]
     runs-on: ubuntu-latest
     steps:
       - name: Every job succeeded

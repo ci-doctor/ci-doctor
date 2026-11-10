@@ -1,22 +1,20 @@
-"""Which matchers have an anchor in the final evidence, in log order."""
+"""Which outputs have an anchor in the final evidence, in log order."""
 
-from ci_doctor.engine.run.windows import windows_for
-from ci_doctor.engine.spec.legacy import MatcherConfig
+from ci_doctor.engine.plan import Output, Plan
+from ci_doctor.engine.run.windows import run
 
 
-def fired(lines: list[str], matchers: list[MatcherConfig]) -> list[str]:
-    """Name the packs that anchor in these lines — asked of the final evidence.
+def fired(plan: Plan, lines: list[str]) -> list[Output]:
+    """Name the outputs that anchor in these lines — asked of the final evidence.
 
     Args:
+        plan: The compiled matchers.
         lines: The evidence as it will be sent, after every cut.
-        matchers: The evidence matchers, loaded from the configured registries.
 
     Returns:
-        Ids of the matchers with at least one anchor in `lines`, in log order.
+        The outputs with at least one anchor in `lines`, ordered by their first anchor.
     """
-    first = {}
-    for m in matchers:
-        # before=0: a window then starts on its anchor, which is what log order means here
-        if wins := windows_for(lines, [m.model_copy(update={"before": 0})]):
-            first[m.id] = min(w.start for w in wins)
-    return sorted(first, key=first.__getitem__)
+    first: dict[int, int] = {}
+    for w in run(plan, lines):
+        first[w.output] = min(first.get(w.output, w.anchor), w.anchor)
+    return [plan.outputs[o].output for o in sorted(first, key=lambda o: (first[o], o))]

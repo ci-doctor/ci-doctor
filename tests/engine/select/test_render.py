@@ -1,6 +1,6 @@
 """Rendering: every gap in the evidence is announced, never a silent cut."""
 
-from ci_doctor.engine import extract
+from tests.engine.support import extract
 
 
 def test_tail_window_only():

@@ -1,7 +1,8 @@
 """Fired: which packs anchor in the evidence actually sent."""
 
-from ci_doctor.engine import estimate_tokens, extract, fired
-from tests.engine.support import matcher
+from ci_doctor.engine import estimate_tokens
+from tests.engine.support import extract, matcher
+from tests.engine.support import fired_ids as fired
 
 
 def test_fired_names_the_packs_anchored_in_the_final_lines_in_log_order():

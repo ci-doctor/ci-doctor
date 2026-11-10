@@ -13,7 +13,7 @@ from ci_doctor.config.schemas import Config
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.denoise import denoise
 from ci_doctor.core.models import SYNTHETIC_SECTIONS, Job, Phase, Section, walk_sections
-from ci_doctor.engine import MatcherConfig, estimate_tokens, extract, fired, fit
+from ci_doctor.engine import Output, Spec, compile_plan, estimate_tokens, fired, fit, run, select
 
 log = logging.getLogger("ci_doctor.analyze")
 
@@ -30,7 +30,7 @@ class EvidenceBundle:
         token_estimate: Approximate prompt cost of the whole bundle.
         truncated: Whether the budget dropped lines. Always surfaced in the
             report — a silent truncation would be a lie about the evidence.
-        matchers: The packs whose windows made it into `blamed_lines`, in log
+        matchers: The outputs whose anchors made it into `blamed_lines`, in log
             order — the model's only context for a tool it has never seen.
     """
 
@@ -40,7 +40,7 @@ class EvidenceBundle:
     metadata: dict
     token_estimate: int
     truncated: bool = False
-    matchers: list[MatcherConfig] = field(default_factory=list)
+    matchers: list[Output] = field(default_factory=list)
 
 
 def _blamed_section(sections: list[Section], phase: Phase) -> Section | None:
@@ -59,7 +59,7 @@ def _blamed_section(sections: list[Section], phase: Phase) -> Section | None:
 
 
 def build_bundle(
-    job: Job, attr: Attribution, sections: list[Section], cfg: Config, matchers: list[MatcherConfig]
+    job: Job, attr: Attribution, sections: list[Section], cfg: Config, matchers: list[Spec]
 ) -> EvidenceBundle:
     """Denoise, window and budget the blamed section into a bundle.
 
@@ -89,10 +89,10 @@ def build_bundle(
     blamed_budget = int(cfg.llm.max_input_tokens * 0.7)
     # Budget the *selection* by matcher rank first; `fit` is the last resort
     # that cuts inside whatever survives.
-    excerpt = extract(clean, matchers, cfg.extraction.tail_lines, blamed_budget)
+    plan = compile_plan(matchers, cfg.matchers.exclude)
+    excerpt = select(clean, run(plan, clean), cfg.extraction.tail_lines, blamed_budget)
     fitted, truncated = fit(excerpt, blamed_budget)
-    by_id = {m.id: m for m in matchers}
-    used = [by_id[i] for i in fired(fitted, matchers)]
+    used = fired(plan, fitted)
     log.debug(
         f"blamed phase {attr.phase}: denoise {len(raw)}->{len(clean)}, extract ->{len(excerpt)}, fit ->{len(fitted)} lines (truncated={truncated})",
     )
