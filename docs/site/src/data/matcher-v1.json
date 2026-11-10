@@ -1,0 +1,191 @@
+{
+  "matcher": [
+    {
+      "field": "schema",
+      "required": true,
+      "description": "The format version this file is written in."
+    },
+    {
+      "field": "id",
+      "required": true,
+      "description": "Matcher id: bare in a registry file (`ruff`), `alias/id` once loaded. Equals its folder name."
+    },
+    {
+      "field": "description",
+      "required": true,
+      "description": "With one output, the prompt text. With `outputs`, a one-line summary for people."
+    },
+    {
+      "field": "tags",
+      "required": true,
+      "description": "1-5 tags, for search and filters."
+    },
+    {
+      "field": "define",
+      "required": false,
+      "description": "Named pattern pieces: `$NAME` in a template, `%{NAME}` in a regex."
+    },
+    {
+      "field": "outputs",
+      "required": false,
+      "description": "The outputs, when there are several."
+    },
+    {
+      "field": "role",
+      "required": false,
+      "description": "One output only. Default `tool`."
+    },
+    {
+      "field": "match",
+      "required": false,
+      "description": "One output only: finds the anchor lines."
+    },
+    {
+      "field": "variants",
+      "required": false,
+      "description": "One output only: one spelling each."
+    },
+    {
+      "field": "window",
+      "required": false,
+      "description": "One output only: lines kept around the anchor."
+    }
+  ],
+  "output": [
+    {
+      "field": "description",
+      "required": true,
+      "description": "What the evidence means; prompt text. 20-250 printable ASCII."
+    },
+    {
+      "field": "role",
+      "required": false,
+      "description": "Ranks the window under budget pressure and tells the model how to read it."
+    },
+    {
+      "field": "match",
+      "required": false,
+      "description": "Finds the anchor lines. Set this or `variants`."
+    },
+    {
+      "field": "variants",
+      "required": false,
+      "description": "One spelling each. Set this or `match`."
+    },
+    {
+      "field": "window",
+      "required": false,
+      "description": "Which lines around the anchor become evidence."
+    }
+  ],
+  "variant": [
+    {
+      "field": "match",
+      "required": true,
+      "description": "Finds this spelling."
+    },
+    {
+      "field": "window",
+      "required": false,
+      "description": "Only when this spelling needs a different window."
+    }
+  ],
+  "window": [
+    {
+      "field": "before",
+      "required": false,
+      "description": "Lines kept above the anchor, 0-100."
+    },
+    {
+      "field": "after",
+      "required": false,
+      "description": "Lines kept below the anchor, 0-100."
+    },
+    {
+      "field": "from",
+      "required": false,
+      "description": "Start at the nearest matching line above, looking `within` lines up."
+    },
+    {
+      "field": "until",
+      "required": false,
+      "description": "End at the next matching line, inclusive."
+    },
+    {
+      "field": "while",
+      "required": false,
+      "description": "Keep extending while the next line matches."
+    },
+    {
+      "field": "max_lines",
+      "required": false,
+      "description": "Lines from the anchor down, at most; required with `until` and `while`. 1-500."
+    }
+  ],
+  "near": [
+    {
+      "field": "within",
+      "required": true,
+      "description": "How many lines to look, 1-500."
+    }
+  ],
+  "block": [
+    {
+      "field": "start",
+      "required": true,
+      "description": "Opens a block."
+    },
+    {
+      "field": "end",
+      "required": true,
+      "description": "Closes it, on the first match after `start`."
+    },
+    {
+      "field": "max_lines",
+      "required": true,
+      "description": "Closes it after this many lines if `end` never comes."
+    }
+  ],
+  "node": [
+    {
+      "field": "regex",
+      "required": false,
+      "description": "RE2, matched anywhere in the line. `%{NAME}` inserts a `define`."
+    },
+    {
+      "field": "template",
+      "required": false,
+      "description": "The line as it looks in the log: `$NAME` inserts a `define`, `...` is anything, `$$` is a `$`, and everything else is literal text. Matched anywhere in the line."
+    },
+    {
+      "field": "all",
+      "required": false,
+      "description": "The line matches every item."
+    },
+    {
+      "field": "any",
+      "required": false,
+      "description": "The line matches at least one item."
+    },
+    {
+      "field": "not",
+      "required": false,
+      "description": "The line doesn't match this."
+    },
+    {
+      "field": "inside",
+      "required": false,
+      "description": "The line sits inside such a block."
+    },
+    {
+      "field": "preceded_by",
+      "required": false,
+      "description": "A matching line is among the `within` lines above."
+    },
+    {
+      "field": "followed_by",
+      "required": false,
+      "description": "A matching line is among the `within` lines below."
+    }
+  ]
+}

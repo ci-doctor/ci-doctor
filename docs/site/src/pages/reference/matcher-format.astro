@@ -1,0 +1,149 @@
+---
+import { Code } from "astro:components";
+import Base from "../../layouts/Base.astro";
+import { url } from "../../lib/url";
+import fields from "../../data/matcher-v1.json";
+
+const tables = [
+    { key: "matcher", title: "On a matcher", note: "A matcher with one output puts role, match (or variants) and window at the top level; with several, they go on each entry of outputs." },
+    { key: "output", title: "On an output", note: "Each entry of outputs. Its id is <matcher>.<key>." },
+    { key: "variant", title: "On a variant", note: "Each entry of variants. Its key is the name verify and try report." },
+    { key: "node", title: "In a match", note: "Each node is a mapping with exactly one of these keys." },
+    { key: "near", title: "In preceded_by, followed_by and window.from", note: "A match node written inline, plus within." },
+    { key: "block", title: "In inside", note: "" },
+    { key: "window", title: "In a window", note: "before excludes from; after excludes until and while." },
+] as const;
+
+const template = `define:
+  FILE: '[\\w./-]+\\.py'
+  LINE: '\\d+'
+  RULE: '[A-Z]+[0-9]+'
+
+regex:    '%{FILE}:%{LINE}:%{LINE}: %{RULE} '
+template: '$FILE:$LINE:$LINE: $RULE '`;
+
+const relations = `# PHPStan's footer, kept away from Maven's [ERROR] lines by PHPStan's own table above it
+match:
+  all:
+    - template: ' [ERROR] Found ... error'
+    - preceded_by: { regex: '^ -+ +-+', within: 300 }
+
+# A JVM exception and its Caused by: chain, which has no closing line
+match: { regex: '^Exception in thread ' }
+window:
+  while: { regex: '^\\s+at |^\\s+\\.\\.\\. \\d+ more|^Caused by: ' }
+  max_lines: 150`;
+
+const editor = `# yaml-language-server: $schema=https://github.com/ci-doctor/ci-doctor/releases/latest/download/matcher-v1.schema.json
+schema: 1
+id: mytool`;
+---
+
+<Base
+    title="Matcher format v1"
+    description="Every field of a schema 1 matcher file: outputs, variants, the match nodes, templates and windows, and the limits each is held to."
+>
+    <h1>Matcher format v1</h1>
+    <p class="lead">
+        Every key a <code>schema: 1</code> matcher file may hold. What matchers,
+        outputs and roles are for is on <a href={url("/concepts/matchers/")}>Matchers</a>.
+    </p>
+    <p>
+        The tables below are generated from the models ci-doctor validates with, and
+        <code>ci-doctor matchers schema</code> prints the same format as JSON Schema.
+        Each release attaches it as <code>matcher-v1.schema.json</code>, so an editor
+        can complete and check a file:
+    </p>
+    <Code code={editor} lang="yaml" theme="github-dark" />
+
+    {
+        tables.map((t) => (
+            <>
+                <h2>{t.title}</h2>
+                {t.note && <p>{t.note}</p>}
+                <table>
+                    <thead><tr><th>Key</th>{t.key !== "node" && <th>Required</th>}<th>Its job</th></tr></thead>
+                    <tbody>
+                        {fields[t.key].map((f) => (
+                            <tr>
+                                <td><code>{f.field}</code></td>
+                                {t.key !== "node" && <td>{f.required ? "yes" : "no"}</td>}
+                                <td>{f.description}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </>
+        ))
+    }
+
+    <h2>Templates</h2>
+    <p>
+        A template is the line as it looks in the log. ci-doctor turns it into a
+        regex when it loads the matcher. The same pattern, written both ways:
+    </p>
+    <Code code={template} lang="yaml" theme="github-dark" />
+    <ul>
+        <li>Everything except a placeholder and <code>...</code> is literal, so <code>.</code>, <code>(</code>, <code>[</code> and <code>|</code> need no escaping.</li>
+        <li><code>$NAME</code> (uppercase) inserts that <code>define</code> entry, and <code>%{"{NAME}"}</code> does the same in a regex. An undefined name is a load error.</li>
+        <li><code>...</code> matches anything on the same line, and <code>$$</code> writes a <code>$</code>.</li>
+        <li>Like a regex, a template matches anywhere in the line.</li>
+    </ul>
+    <p>
+        The placeholders belong to the matcher, not to ci-doctor: what
+        <code>$FILE</code> means is the file's own <code>define</code>, so a change
+        to it is a change to that matcher, proven by its fixtures.
+    </p>
+
+    <h2>Relations and windows</h2>
+    <p>
+        The match inside a relation, inside <code>inside</code>, and inside a
+        window's <code>from</code>, <code>until</code> and <code>while</code> may
+        only use <code>regex</code>, <code>template</code>, <code>all</code>,
+        <code>any</code> and <code>not</code>. That keeps every evaluation linear.
+    </p>
+    <Code code={relations} lang="yaml" theme="github-dark" />
+    <table>
+        <thead><tr><th>Construct</th><th>Holds, or keeps</th></tr></thead>
+        <tbody>
+            <tr><td><code>preceded_by</code></td><td>A matching line is among the <code>within</code> lines above. The line itself doesn't count.</td></tr>
+            <tr><td><code>followed_by</code></td><td>A matching line is among the <code>within</code> lines below.</td></tr>
+            <tr><td><code>inside</code></td><td>The line is in a block that opens on <code>start</code> and closes on the first <code>end</code> after it, or after <code>max_lines</code>. Both ends count, and blocks don't nest.</td></tr>
+            <tr><td><code>from</code></td><td>The window starts at the nearest matching line at most <code>within</code> lines up, or at the anchor.</td></tr>
+            <tr><td><code>until</code></td><td>The window ends at the next matching line, inclusive, or after <code>max_lines</code>. An anchor inside an open window starts nothing new.</td></tr>
+            <tr><td><code>while</code></td><td>The window extends while the next line matches, up to <code>max_lines</code>.</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Limits</h2>
+    <table>
+        <thead><tr><th>What</th><th>Limit</th></tr></thead>
+        <tbody>
+            <tr><td>Outputs per matcher</td><td>20</td></tr>
+            <tr><td>Variants per output</td><td>10</td></tr>
+            <tr><td>Nodes in one <code>match</code></td><td>32</td></tr>
+            <tr><td>Nesting depth</td><td>4</td></tr>
+            <tr><td><code>within</code>, <code>max_lines</code></td><td>1–500</td></tr>
+            <tr><td><code>define</code> entries</td><td>20</td></tr>
+            <tr><td>A regex, after expanding defines</td><td>500 characters and 1,000 RE2 instructions</td></tr>
+            <tr><td>A <code>match</code></td><td>must not hold on an empty line</td></tr>
+            <tr><td><code>tags</code></td><td>1–5</td></tr>
+            <tr><td><code>description</code></td><td>One line of 20–250 printable ASCII characters</td></tr>
+        </tbody>
+    </table>
+    <p>
+        RE2 has no lookaround (use <code>not</code>), no backreferences, uses
+        <code>\z</code> not <code>\Z</code>, and its <code>\d \s \w \b</code> are
+        ASCII-only. An error names its place in the file, for example
+        <code>ruff › outputs.check › variants.full › match.all[1].followed_by: FILE is not defined</code>.
+    </p>
+
+    <h2>Versions</h2>
+    <p>
+        A released schema version never changes how it compiles: a change is a new
+        version, and every ci-doctor compiles every version it knows. A file with no
+        <code>schema</code> key is the pre-1 format (<code>pattern</code>, or
+        <code>start</code> and <code>end</code>), still read while registries
+        migrate.
+    </p>
+</Base>

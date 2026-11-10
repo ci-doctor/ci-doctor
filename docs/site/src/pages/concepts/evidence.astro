@@ -41,7 +41,7 @@ error: could not compile \`ledger\``;
 
     <h2>Matcher, window, role</h2>
     <p>
-        A matcher is a regex that recognises one tool's failure output. Where it
+        A matcher recognises one tool's failure output. Where one of its outputs
         fires, it anchors a <strong>window</strong> — the run of lines actually worth
         showing. Overlapping windows merge; the space between them is replaced by
         an explicit count.
@@ -49,8 +49,9 @@ error: could not compile \`ledger\``;
     <Code code={windowExample} lang="text" theme="github-dark" />
     <p>
         <strong>Role</strong> decides who survives when the evidence exceeds the
-        budget: a <code>tool</code>'s window outranks a <code>wrapper</code>'s, which
-        outranks the <code>fallback</code>. <code>npm ERR!</code> always trails the
+        budget: an <code>issue</code> (a full disk) outranks the <code>tool</code>
+        it broke, which outranks a <code>gate</code>, a <code>wrapper</code> and the
+        <code>fallback</code>, in that order. <code>npm ERR!</code> always trails the
         compiler errors that caused it, so it must lose to <code>tsc</code>. ci-doctor
         ships no matchers: where they come from, and how a run selects them, is on
         <a href={url("/concepts/matchers/")}>Matchers</a>; the official catalogue is

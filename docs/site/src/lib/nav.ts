@@ -50,7 +50,7 @@ export const nav: NavSection[] = [
       { href: '/concepts/pipeline/', label: 'The pipeline', blurb: 'Ten stages, one pass, no loops — and the config that tunes each one.' },
       { href: '/concepts/attribution/', label: 'Sections & attribution', blurb: 'Sections, phases, the shipped phase map, and the rule ladder that picks the blame.' },
       { href: '/concepts/evidence/', label: 'Evidence', blurb: 'Denoising, matcher windows, the token budget, redaction, and the bundle the report sees.' },
-      { href: '/concepts/matchers/', label: 'Matchers', blurb: 'What a matcher and a bundle are, the roles that rank them, and the registries they come from.' },
+      { href: '/concepts/matchers/', label: 'Matchers', blurb: 'Matchers, outputs and variants, the five roles that rank them, bundles, and the registries they come from.' },
       { href: '/concepts/code-map/', label: 'Code map', blurb: 'Package by package: what every file decides, and the function to open first.' },
     ],
   },
@@ -69,8 +69,10 @@ export const nav: NavSection[] = [
     label: 'Reference',
     blurb: 'Every command, flag and config key, with its default.',
     pages: [
-      { href: '/reference/cli/', label: 'CLI', blurb: 'analyze, config and matchers: arguments, flags, exit codes, and --verbose output.' },
+      { href: '/reference/cli/', label: 'CLI', blurb: 'analyze, config and matchers (try, verify, schema …): arguments, flags, exit codes, and --verbose output.' },
       { href: '/reference/configuration/', label: 'Configuration', blurb: 'How the five layers combine, the env-var form, LLM backends, and every key.' },
+      { href: '/reference/matcher-format/', label: 'Matcher format v1', blurb: 'Every key of a schema 1 matcher file: outputs, variants, match nodes, templates, windows, limits.' },
+      { href: '/reference/registry/', label: 'Hosting a registry', blurb: 'The registry layout, fixtures, verify and index, and where to host it.' },
     ],
   },
 ];

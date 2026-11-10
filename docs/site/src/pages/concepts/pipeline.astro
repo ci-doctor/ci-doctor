@@ -50,7 +50,7 @@ const stages = [
         n: 7,
         name: "Budget",
         mod: "engine/select/",
-        what: "Shed the lowest-ranked windows (fallback, then wrapper, then tool), then trim what survives to the token budget.",
+        what: "Shed the lowest-ranked windows (fallback, wrapper, gate, tool, then issue), then trim what survives to the token budget.",
         cfg: "llm.max_input_tokens",
     },
     {
