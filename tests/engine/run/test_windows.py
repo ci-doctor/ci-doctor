@@ -22,11 +22,11 @@ def test_start_end_block():
 
 def test_exclude_disqualifies_an_anchor_line():
     """`exclude` is RE2's stand-in for a negative lookahead."""
-    lines = ["FAIL src/cart.test.ts", "FAIL\texample.com/pkg\t0.038s"]
+    lines = ["FAIL src/cart.test.ts", "FAIL\tacme/cart\t0.038s"]
     m = matcher(pattern=r"^FAIL\s+\S+", exclude=[r"\d+\.\d+s$"])
     out = extract(lines, [m], tail_lines=0)
     assert "FAIL src/cart.test.ts" in out
-    assert not any("example.com" in line for line in out)
+    assert "FAIL\tacme/cart\t0.038s" not in out
 
 
 def test_exclude_does_not_apply_to_a_blocks_end():
