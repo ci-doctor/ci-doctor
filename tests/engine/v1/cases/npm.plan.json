@@ -1,0 +1,112 @@
+{
+  "type": "Plan",
+  "leaves": [
+    "A complete log of this run",
+    "^npm ERR! code (ERESOLVE|E404|ETARGET)",
+    "^npm error code (ERESOLVE|E404|ETARGET)",
+    "^npm ERR! (code ELIFECYCLE|Lifecycle script)",
+    "^npm error (Lifecycle script|command failed)"
+  ],
+  "outputs": [
+    {
+      "type": "OutputPlan",
+      "output": {
+        "type": "Output",
+        "id": "npm.install",
+        "role": "tool",
+        "description": "npm refusing to install - ERESOLVE (a peer dependency conflict), E404 or ETARGET (a package or version that does not exist). This is the cause."
+      },
+      "variants": [
+        {
+          "type": "VariantPlan",
+          "name": "legacy",
+          "match": {
+            "type": "Leaf",
+            "index": 1
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 0,
+            "from_": null,
+            "from_within": 0,
+            "until": {
+              "type": "Leaf",
+              "index": 0
+            },
+            "while_": null,
+            "max_lines": 60
+          }
+        },
+        {
+          "type": "VariantPlan",
+          "name": "current",
+          "match": {
+            "type": "Leaf",
+            "index": 2
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 0,
+            "from_": null,
+            "from_within": 0,
+            "until": {
+              "type": "Leaf",
+              "index": 0
+            },
+            "while_": null,
+            "max_lines": 60
+          }
+        }
+      ]
+    },
+    {
+      "type": "OutputPlan",
+      "output": {
+        "type": "Output",
+        "id": "npm.run",
+        "role": "wrapper",
+        "description": "npm reporting that a package.json script exited non-zero. A wrapper - the script's own output above it is the cause."
+      },
+      "variants": [
+        {
+          "type": "VariantPlan",
+          "name": "legacy",
+          "match": {
+            "type": "Leaf",
+            "index": 3
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 0,
+            "from_": null,
+            "from_within": 0,
+            "until": null,
+            "while_": null,
+            "max_lines": null
+          }
+        },
+        {
+          "type": "VariantPlan",
+          "name": "current",
+          "match": {
+            "type": "Leaf",
+            "index": 4
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 0,
+            "from_": null,
+            "from_within": 0,
+            "until": null,
+            "while_": null,
+            "max_lines": null
+          }
+        }
+      ]
+    }
+  ]
+}

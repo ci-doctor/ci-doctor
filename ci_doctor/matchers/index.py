@@ -1,7 +1,10 @@
 """The author's side of a registry: building and checking its `index.yaml`.
 
 The index is generated, committed, and checked in the registry's CI (`--check`),
-so it never ships stale. Generation is deterministic — sorted entries, one block
+so it never ships stale. So is one bundle per ecosystem folder
+(`bundles/<ecosystem>.yaml`, everything under `matchers/<ecosystem>/`), so a new
+matcher can't be left out of its bundle; curated bundles (`all`, a team's pick)
+stay hand-written and may not take an ecosystem's name. Generation is deterministic — sorted entries, one block
 each — so two PRs touching different matchers merge cleanly, and a conflict is
 fixed by rerunning the command.
 """
@@ -11,9 +14,10 @@ from pathlib import Path
 
 import yaml
 
+from ci_doctor.engine import MatcherConfig, MatcherV1, Spec
 from ci_doctor.errors import SetupError
 from ci_doctor.files import atomic_write
-from ci_doctor.matchers.models import BUNDLE_GLOB, INDEX, MAX_BUNDLE_DEPTH, Bundle, Index
+from ci_doctor.matchers.models import BUNDLE_GLOB, GENERATED, INDEX, MAX_BUNDLE_DEPTH, Bundle, Index
 from ci_doctor.matchers.validate import load_bundle, load_matcher, matcher_files
 
 
@@ -26,26 +30,62 @@ _IndexDumper.add_representer(
 )
 
 
-def _entry(root: Path, path: Path, description: str, classification: list[str] | None = None) -> dict:
-    """One index entry for a file.
+def _entry(root: Path, path: Path, description: str) -> dict:
+    """One index entry for a file: where it is and what it says it is.
 
     Args:
         root: The registry directory.
         path: The file.
         description: Its description.
-        classification: Its tags, for a matcher.
 
     Returns:
         The entry, in index key order.
     """
-    entry = {
+    return {
         "path": path.relative_to(root).as_posix(),
         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "description": description,
     }
-    if classification is not None:
-        entry["classification"] = classification
+
+
+def _matcher_entry(root: Path, path: Path, m: Spec) -> dict:
+    """A matcher's index entry: what a client needs to choose and skip it without fetching it.
+
+    Args:
+        root: The registry directory.
+        path: Its `matcher.yaml`.
+        m: The loaded matcher.
+
+    Returns:
+        The entry, in index key order.
+    """
+    entry = _entry(root, path, m.description or "")
+    if isinstance(m, MatcherConfig):
+        entry["tags"] = list(m.classification)
+    else:
+        entry["schema"] = m.schema_version
+        entry["tags"] = list(m.tags)
+    entry["ecosystem"] = path.parent.parent.name
+    if isinstance(m, MatcherV1) and m.outputs is not None:
+        entry["outputs"] = list(m.outputs)
     return entry
+
+
+def _generated(ecosystems: dict[str, list[str]]) -> dict[str, str]:
+    """One bundle per ecosystem folder, as the text `matchers index` writes.
+
+    Args:
+        ecosystems: Each ecosystem folder's matcher names.
+
+    Returns:
+        `bundles/<ecosystem>.yaml` text, by ecosystem.
+    """
+    out = {}
+    for eco, names in sorted(ecosystems.items()):
+        doc = {"id": eco, "description": f"Every matcher in the {eco} ecosystem.", "include": sorted(names)}
+        body = yaml.dump(doc, Dumper=_IndexDumper, sort_keys=False, default_flow_style=False, width=4096)
+        out[eco] = GENERATED.format(ecosystem=eco) + "\n" + body
+    return out
 
 
 def _bundle_problems(bundles: dict[str, Bundle], matchers: set[str]) -> list[str]:
@@ -97,15 +137,15 @@ def _nesting_problems(bundles: dict[str, Bundle]) -> list[str]:
     return problems
 
 
-def build_index(root: Path) -> tuple[str, Index]:
+def build_index(root: Path) -> tuple[str, Index, dict[str, str]]:
     """Validate every matcher and bundle in a registry and render its `index.yaml`.
 
     Args:
         root: The registry directory.
 
     Returns:
-        The index text, and the index it parses back to. The same tree always
-        gives the same bytes.
+        The index text, the index it parses back to, and each generated ecosystem
+        bundle's text by ecosystem. The same tree always gives the same bytes.
 
     Raises:
         SetupError: Listing every file or cross-file rule that fails.
@@ -113,8 +153,7 @@ def build_index(root: Path) -> tuple[str, Index]:
     paths = matcher_files(root)
     problems: list[str] = []
     matchers: dict[str, dict] = {}
-    bundles: dict[str, Bundle] = {}
-    bundle_entries: dict[str, dict] = {}
+    ecosystems: dict[str, list[str]] = {}
 
     for path in paths:
         try:
@@ -124,9 +163,26 @@ def build_index(root: Path) -> tuple[str, Index]:
             continue
         if m.id in matchers:
             problems.append(f"{path}: matcher name {m.id!r} is used twice")
-        matchers[m.id] = _entry(root, path, m.description or "", list(m.classification))
+        matchers[m.id] = _matcher_entry(root, path, m)
+        ecosystems.setdefault(path.parent.parent.name, []).append(m.id)
+
+    generated = _generated(ecosystems)
+    bundles: dict[str, Bundle] = {}
+    bundle_entries: dict[str, dict] = {}
+    for eco, text in generated.items():
+        path = root / "bundles" / f"{eco}.yaml"
+        if eco in matchers:
+            problems.append(f"ecosystem {eco!r} has the same name as a matcher")
+        bundles[eco] = Bundle.model_validate(yaml.safe_load(text))
+        bundle_entries[eco] = {
+            "path": path.relative_to(root).as_posix(),
+            "sha256": hashlib.sha256(text.encode()).hexdigest(),
+            "description": bundles[eco].description,
+        }
 
     for path in sorted(root.glob(BUNDLE_GLOB)):
+        if path.stem in generated or path.read_text(encoding="utf-8").startswith(GENERATED.split("{")[0]):
+            continue  # generated: rewritten above, or stale and deleted on write
         try:
             b = load_bundle(path, author=True)
         except SetupError as err:
@@ -147,11 +203,30 @@ def build_index(root: Path) -> tuple[str, Index]:
         "bundles": dict(sorted(bundle_entries.items())),
     }
     index = Index.model_validate(doc)  # what we write, ci-doctor must be able to read back
-    return yaml.dump(doc, Dumper=_IndexDumper, sort_keys=False, default_flow_style=False, width=4096), index
+    text = yaml.dump(doc, Dumper=_IndexDumper, sort_keys=False, default_flow_style=False, width=4096)
+    return text, index, generated
+
+
+def _stale_generated(root: Path, generated: dict[str, str]) -> list[Path]:
+    """Generated bundles whose ecosystem folder is gone.
+
+    Args:
+        root: The registry directory.
+        generated: The bundles this run generates, by ecosystem.
+
+    Returns:
+        Their paths.
+    """
+    marker = GENERATED.split("{")[0]
+    return [
+        p
+        for p in sorted(root.glob(BUNDLE_GLOB))
+        if p.stem not in generated and p.read_text(encoding="utf-8").startswith(marker)
+    ]
 
 
 def write_index(root: Path, *, check: bool = False) -> int:
-    """Write `index.yaml`, or with `check` verify the committed one is current.
+    """Write `index.yaml` and the ecosystem bundles, or with `check` verify they are current.
 
     Args:
         root: The registry directory.
@@ -161,13 +236,22 @@ def write_index(root: Path, *, check: bool = False) -> int:
         The number of entries in the index.
 
     Raises:
-        SetupError: If the registry is invalid, or `check` finds the index stale.
+        SetupError: If the registry is invalid, or `check` finds a file stale.
     """
-    text, index = build_index(root)
-    target = root / INDEX
+    text, index, generated = build_index(root)
+    files = {root / INDEX: text} | {root / "bundles" / f"{eco}.yaml": body for eco, body in generated.items()}
+    stale = _stale_generated(root, generated)
     if check:
-        if not target.is_file() or target.read_text(encoding="utf-8") != text:
-            raise SetupError(f"{target} is out of date. Run `ci-doctor matchers index {root}`")
+        out_of_date = [
+            p for p, body in files.items() if not p.is_file() or p.read_text(encoding="utf-8") != body
+        ]
+        if out_of_date or stale:
+            names = ", ".join(str(p.relative_to(root)) for p in [*out_of_date, *stale])
+            raise SetupError(f"out of date: {names}. Run `ci-doctor matchers index {root}`")
     else:
-        atomic_write(target, text)
+        (root / "bundles").mkdir(exist_ok=True)
+        for path, body in files.items():
+            atomic_write(path, body)
+        for path in stale:
+            path.unlink()
     return len(index.matchers) + len(index.bundles)

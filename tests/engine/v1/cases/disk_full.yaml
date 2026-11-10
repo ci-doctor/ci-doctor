@@ -1,0 +1,12 @@
+schema: 1
+id: disk_full
+role: issue
+description: >-
+  The runner ran out of disk - No space left on device / ENOSPC. The step
+  that hit it is a victim of the runner, not the cause.
+tags: [infra, disk]
+match:
+  any:
+    - template: 'No space left on device'
+    - template: 'ENOSPC'
+window: { before: 3, after: 3 }

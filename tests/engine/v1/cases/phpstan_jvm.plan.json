@@ -1,0 +1,141 @@
+{
+  "type": "Plan",
+  "leaves": [
+    " \\[ERROR\\] Found .* error",
+    "^ -+ +-+",
+    "^Exception in thread ",
+    "^\\s+at |^\\s+\\.\\.\\. \\d+ more|^Caused by: ",
+    "\\.go:.*: ",
+    "^=== RUN",
+    "^--- (PASS|FAIL)",
+    "^# "
+  ],
+  "outputs": [
+    {
+      "type": "OutputPlan",
+      "output": {
+        "type": "Output",
+        "id": "phpstan_jvm.phpstan",
+        "role": "tool",
+        "description": "PHPStan's footer, kept away from Maven's [ERROR] lines by its own table above."
+      },
+      "variants": [
+        {
+          "type": "VariantPlan",
+          "name": "",
+          "match": {
+            "type": "AllOf",
+            "items": [
+              {
+                "type": "Leaf",
+                "index": 0
+              },
+              {
+                "type": "PrecededBy",
+                "node": {
+                  "type": "Leaf",
+                  "index": 1
+                },
+                "within": 300
+              }
+            ]
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 0,
+            "from_": null,
+            "from_within": 0,
+            "until": null,
+            "while_": null,
+            "max_lines": null
+          }
+        }
+      ]
+    },
+    {
+      "type": "OutputPlan",
+      "output": {
+        "type": "Output",
+        "id": "phpstan_jvm.jvm",
+        "role": "tool",
+        "description": "A JVM exception and its Caused by chain, which has no closing line."
+      },
+      "variants": [
+        {
+          "type": "VariantPlan",
+          "name": "",
+          "match": {
+            "type": "Leaf",
+            "index": 2
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 0,
+            "from_": null,
+            "from_within": 0,
+            "until": null,
+            "while_": {
+              "type": "Leaf",
+              "index": 3
+            },
+            "max_lines": 150
+          }
+        }
+      ]
+    },
+    {
+      "type": "OutputPlan",
+      "output": {
+        "type": "Output",
+        "id": "phpstan_jvm.go",
+        "role": "tool",
+        "description": "A go build error with its package header above it, and a block relation."
+      },
+      "variants": [
+        {
+          "type": "VariantPlan",
+          "name": "",
+          "match": {
+            "type": "AllOf",
+            "items": [
+              {
+                "type": "Leaf",
+                "index": 4
+              },
+              {
+                "type": "Not",
+                "item": {
+                  "type": "Inside",
+                  "start": {
+                    "type": "Leaf",
+                    "index": 5
+                  },
+                  "end": {
+                    "type": "Leaf",
+                    "index": 6
+                  },
+                  "max_lines": 200
+                }
+              }
+            ]
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 0,
+            "from_": {
+              "type": "Leaf",
+              "index": 7
+            },
+            "from_within": 20,
+            "until": null,
+            "while_": null,
+            "max_lines": null
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -294,3 +294,27 @@ def test_the_system_prompt_explains_every_role(role):
     """A role the model was never told about is a label it will guess at."""
     job, attr, bundle, _cfg = _pipeline(_SIMPLE_LOG)
     assert f"`{role}`" in _render_prompt(job, attr, bundle).split("\n---\n")[0]
+
+
+def test_the_prompt_names_the_output_that_fired_not_the_matcher():
+    """A schema 1 matcher with two outputs: only the one in the evidence reaches the prompt, by its dotted id."""
+    from ci_doctor.engine import MatcherV1
+    from ci_doctor.llm.report import _packs
+
+    desc = "An output description long enough for the rules."
+    ruff = MatcherV1.model_validate(
+        {
+            "schema": 1,
+            "id": "fx/ruff",
+            "description": "Ruff, the Python linter and formatter, in a test.",
+            "tags": ["python"],
+            "outputs": {
+                "check": {"description": desc, "match": {"regex": "^F401 "}},
+                "format": {"description": desc, "role": "gate", "match": {"regex": "^Would reformat: "}},
+            },
+        }
+    )
+    log = "section_start:1:step_script\n$ ruff check\nF401 unused import\nsection_end:2:step_script\nERROR: Job failed: exit code 1\n"
+    _, _, bundle, _ = _pipeline(log, matchers=[ruff])
+    assert [m.id for m in bundle.matchers] == ["fx/ruff.check"]
+    assert '"id": "fx/ruff.check", "role": "tool"' in _packs(bundle)

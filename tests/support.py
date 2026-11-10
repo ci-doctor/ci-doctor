@@ -23,7 +23,7 @@ import yaml
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.core.models import Section
-from ci_doctor.engine import MatcherConfig
+from ci_doctor.engine import MatcherConfig, Spec
 from ci_doctor.matchers.index import write_index
 from ci_doctor.matchers.registry import load
 from ci_doctor.providers.registry import SEGMENTERS, segmenter_for
@@ -184,8 +184,8 @@ def write_registry(
 
     Args:
         root: Where to write it; created if missing.
-        matchers: `{name: matcher fields}`, without `id`. The first
-            classification tag is the ecosystem directory.
+        matchers: `{name: matcher fields}`, without `id`. The first tag
+            (`classification` or `tags`) picks the ecosystem directory.
         bundles: `{name: [included names]}`.
         fixtures: `{matcher name: {stem: log text}}`, written as
             `fixtures/<stem>.log` next to the matcher for `matchers verify`. No
@@ -196,7 +196,7 @@ def write_registry(
         and a current `index.yaml`.
     """
     for name, fields in matchers.items():
-        path = root / "matchers" / fields["classification"][0] / name / "matcher.yaml"
+        path = root / "matchers" / (fields.get("classification") or fields["tags"])[0] / name / "matcher.yaml"
         path.parent.mkdir(parents=True)
         path.write_text(_dump({"id": name, **fields}))
         for stem, log in (fixtures or {}).get(name, {}).items():
@@ -224,7 +224,7 @@ def py_registry(root: Path) -> Path:
     return write_registry(root, PY_MATCHERS, PY_BUNDLES)
 
 
-def registry_matchers(root: Path, *refs: str) -> list[MatcherConfig]:
+def registry_matchers(root: Path, *refs: str) -> list[Spec]:
     """Load matchers from a registry, as `analyze` would from a real one.
 
     Args:

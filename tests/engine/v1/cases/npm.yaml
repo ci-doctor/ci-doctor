@@ -1,0 +1,29 @@
+schema: 1
+id: npm
+description: >-
+  npm, the Node.js package manager - install failures and package.json
+  scripts that exited non-zero.
+tags: [js, node, deps]
+
+outputs:
+  install:
+    description: >-
+      npm refusing to install - ERESOLVE (a peer dependency conflict), E404 or
+      ETARGET (a package or version that does not exist). This is the cause.
+    window:
+      until: { template: 'A complete log of this run' }
+      max_lines: 60
+    variants:
+      legacy:
+        match: { regex: '^npm ERR! code (ERESOLVE|E404|ETARGET)' }
+      current:
+        match: { regex: '^npm error code (ERESOLVE|E404|ETARGET)' }
+
+  run:
+    role: wrapper
+    description: >-
+      npm reporting that a package.json script exited non-zero. A wrapper -
+      the script's own output above it is the cause.
+    variants:
+      legacy: { match: { regex: '^npm ERR! (code ELIFECYCLE|Lifecycle script)' } }
+      current: { match: { regex: '^npm error (Lifecycle script|command failed)' } }

@@ -111,10 +111,11 @@ def test_a_slash_in_the_file_id_is_rejected_even_though_the_model_allows_it(regi
         load_matcher(_edit(registry, PYTEST, id="acme/pytest"))
 
 
-def test_the_ecosystem_must_match_its_directory(registry):
-    """Author time: the first tag is the directory under `matchers/`."""
-    with pytest.raises(SetupError, match="must equal its ecosystem directory 'python'"):
-        load_matcher(_edit(registry, PYTEST, classification=["js", "test"]), author=True)
+def test_tags_are_free_the_folder_is_the_ecosystem(registry):
+    """Tags are for search: no tag has to name the directory the matcher sits in."""
+    assert load_matcher(_edit(registry, PYTEST, classification=["test"]), author=True).classification == [
+        "test"
+    ]
 
 
 def test_a_brand_new_ecosystem_is_accepted(registry):

@@ -1,6 +1,6 @@
 """Builders shared by the engine tests."""
 
-from ci_doctor.engine import MatcherConfig, Spec, compile_plan, estimate_tokens, fired, run, select
+from ci_doctor.engine import MatcherConfig, MatcherV1, Spec, compile_plan, estimate_tokens, fired, run, select
 
 
 def matcher(**kw: object) -> MatcherConfig:
@@ -25,3 +25,14 @@ def budgeted(lines: list[str], matchers: list[Spec]) -> str:
     return "\n".join(
         extract(lines, matchers, tail_lines=0, max_tokens=estimate_tokens("\n".join(lines)) // 2)
     )
+
+
+def v1(**kw: object) -> MatcherV1:
+    """A one-output schema 1 matcher with every required field filled, overridden by kwargs."""
+    base = {
+        "schema": 1,
+        "id": "x",
+        "description": "A test matcher with a long enough description.",
+        "tags": ["t"],
+    }
+    return MatcherV1.model_validate(base | kw)

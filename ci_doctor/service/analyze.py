@@ -16,7 +16,7 @@ from ci_doctor.config.schemas import Config
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
-from ci_doctor.engine import MatcherConfig
+from ci_doctor.engine import Spec
 from ci_doctor.llm.schema import Report
 from ci_doctor.providers.registry import make_ci_provider, make_segmenter, segmenter_for_log
 
@@ -40,7 +40,7 @@ class JobResult(NamedTuple):
 def process_job(
     job: Job,
     cfg: Config,
-    matchers: list[MatcherConfig],
+    matchers: list[Spec],
     segmenter: LogSegmenter | None = None,
     client: LLMClient | None = None,
 ) -> JobResult:
@@ -102,7 +102,7 @@ def _ordered(jobs: list[Job]) -> list[Job]:
 
 
 def analyze_run(
-    run_id: str, cfg: Config, matchers: list[MatcherConfig], job_id: str | None = None
+    run_id: str, cfg: Config, matchers: list[Spec], job_id: str | None = None
 ) -> tuple[Run, CIProvider, list[JobResult]]:
     """Fetch a run from the provider and analyze its failed jobs.
 
@@ -134,7 +134,7 @@ def analyze_run(
 
 
 def _analyze(
-    jobs: list[Job], cfg: Config, matchers: list[MatcherConfig], segmenter: LogSegmenter | None = None
+    jobs: list[Job], cfg: Config, matchers: list[Spec], segmenter: LogSegmenter | None = None
 ) -> list[JobResult]:
     """Analyze every job, concurrently when the config allows it.
 
@@ -168,7 +168,7 @@ def _analyze(
             client.close()
 
 
-def analyze_log(path: Path, cfg: Config, matchers: list[MatcherConfig]) -> list[JobResult]:
+def analyze_log(path: Path, cfg: Config, matchers: list[Spec]) -> list[JobResult]:
     """Analyze a captured job log offline.
 
     Args:

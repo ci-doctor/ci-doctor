@@ -23,7 +23,7 @@ import httpx
 from pydantic import ValidationError
 
 from ci_doctor.config.schemas.matchers import MatchersConfig, unqualified
-from ci_doctor.engine import MatcherConfig
+from ci_doctor.engine import SCHEMAS, Spec, compile_plan
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
 from ci_doctor.matchers.transports import redact, transport_for
@@ -251,7 +251,7 @@ def _fetch_entry(ref: Ref, seen: Resolved, http: httpx.Client) -> tuple[Any, str
     return parse_yaml(text, where), where
 
 
-def fetch_matcher(ref: Ref, seen: Resolved, http: httpx.Client) -> MatcherConfig:
+def fetch_matcher(ref: Ref, seen: Resolved, http: httpx.Client) -> Spec:
     """Fetch and validate one matcher its registry serves, still under its bare id.
 
     Args:
@@ -304,7 +304,33 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
             via = "direct" if depth == 0 else str(ref)
             for key in keys:
                 out.matchers.setdefault(key, via)
+    _drop_unreadable(out)
     return out
+
+
+def _drop_unreadable(out: Resolved) -> None:
+    """Skip matchers in a schema version this ci-doctor doesn't know, judged from the index.
+
+    A bundle is someone else's list, so a newer matcher in it is skipped with a
+    warning and the rest still load. A matcher the user named directly is one they
+    asked for, so that fails setup instead (invariant #3: before analysis starts).
+
+    Args:
+        out: The expansion so far; unreadable matchers are removed from it.
+
+    Raises:
+        SetupError: For an unreadable matcher included by name.
+    """
+    for key, via in list(out.matchers.items()):
+        ref = Ref.parse(key)
+        version = out.indexes[ref.alias].matchers[ref.name].schema_version
+        if version is None or version in SCHEMAS:
+            continue
+        message = f"{key} needs a newer ci-doctor (schema {version})"
+        if via == "direct":
+            raise SetupError(message)
+        log.warning(f"{message}; skipped from {via}")
+        del out.matchers[key]
 
 
 def _prefetch_bundles(refs: list[Ref], out: Resolved, http: httpx.Client, workers: int) -> dict[str, Bundle]:
@@ -410,7 +436,7 @@ def via(cfg: MatchersConfig, include: list[str], http: httpx.Client) -> dict[str
     return resolve(cfg.model_copy(update={"include": include}), http).matchers
 
 
-def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[MatcherConfig]:
+def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[Spec]:
     """Resolve, fetch and validate every selected matcher, ids renamed to `alias/id`.
 
     Args:
@@ -421,8 +447,9 @@ def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[Matche
         The matchers, in include order, ready for `build_bundle`.
 
     Raises:
-        SetupError: On anything :func:`resolve` rejects, or a matcher file that
-            can't be fetched or fails a load-time rule.
+        SetupError: On anything :func:`resolve` rejects, a matcher file that
+            can't be fetched or fails a load-time rule, or a `matchers.exclude`
+            entry that names no output of an included matcher.
     """
     start = time.perf_counter()
     with session(cfg, client) as http:
@@ -435,4 +462,28 @@ def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[Matche
         f"loaded {len(keys)} matchers from {len(resolved.indexes)} registries in {time.perf_counter() - start:.1f}s"
     )
     # `alias/id` keeps the same bare id from two registries apart.
-    return [m.model_copy(update={"id": key}) for key, m in zip(keys, fetched, strict=True)]
+    specs = [m.model_copy(update={"id": key}) for key, m in zip(keys, fetched, strict=True)]
+    _check_exclude(cfg.exclude, specs)
+    return specs
+
+
+def _check_exclude(exclude: list[str], specs: list[Spec]) -> None:
+    """Make every `matchers.exclude` entry name a loaded output, so a typo isn't a silent no-op.
+
+    Args:
+        exclude: The configured entries.
+        specs: The loaded matchers, ids already `alias/id`.
+
+    Raises:
+        SetupError: Naming each entry that matches nothing, with the closest output.
+    """
+    if not exclude:
+        return
+    known = [o.output.id for o in compile_plan(specs).outputs]
+    problems = []
+    for ref in exclude:
+        if ref not in known:
+            hint = difflib.get_close_matches(ref, known, n=1)
+            problems.append(f"{ref}" + (f" (did you mean {hint[0]}?)" if hint else ""))
+    if problems:
+        raise SetupError("matchers.exclude names no output of an included matcher: " + ", ".join(problems))

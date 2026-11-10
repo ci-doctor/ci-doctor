@@ -20,16 +20,19 @@ from ci_doctor.engine.run.windows import Window, run
 from ci_doctor.engine.select.budget import estimate_tokens, fit
 from ci_doctor.engine.select.evidence import select
 from ci_doctor.engine.select.fired import fired
-from ci_doctor.engine.spec import Spec
+from ci_doctor.engine.spec import SCHEMAS, Spec, load, schema_of
 from ci_doctor.engine.spec.legacy import MatcherConfig
 from ci_doctor.engine.spec.roles import RANK, Role
 from ci_doctor.engine.spec.text import Description, Tag
+from ci_doctor.engine.spec.v1 import Matcher as MatcherV1
 
 __all__ = [
     "RANK",
+    "SCHEMAS",
     "CompileError",
     "Description",
     "MatcherConfig",
+    "MatcherV1",
     "Output",
     "Plan",
     "Role",
@@ -41,7 +44,9 @@ __all__ = [
     "estimate_tokens",
     "fired",
     "fit",
+    "load",
     "run",
+    "schema_of",
     "select",
     "to_json",
 ]

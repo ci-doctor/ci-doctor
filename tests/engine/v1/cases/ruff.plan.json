@@ -1,0 +1,100 @@
+{
+  "type": "Plan",
+  "leaves": [
+    "(?:[\\w./-]+\\.pyi?):(?:\\d+):(?:\\d+): (?:[A-Z]+[0-9]+) ",
+    "^(?:[A-Z]+[0-9]+) ",
+    "--> (?:[\\w./-]+\\.pyi?):(?:\\d+):(?:\\d+)",
+    "^Would reformat: "
+  ],
+  "outputs": [
+    {
+      "type": "OutputPlan",
+      "output": {
+        "type": "Output",
+        "id": "ruff.check",
+        "role": "tool",
+        "description": "ruff check lint violations. Each names a rule code (F401, E501) and the file:line it fired on. The code breaks a lint rule; ruff itself is fine."
+      },
+      "variants": [
+        {
+          "type": "VariantPlan",
+          "name": "concise",
+          "match": {
+            "type": "Leaf",
+            "index": 0
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 0,
+            "from_": null,
+            "from_within": 0,
+            "until": null,
+            "while_": null,
+            "max_lines": null
+          }
+        },
+        {
+          "type": "VariantPlan",
+          "name": "full",
+          "match": {
+            "type": "AllOf",
+            "items": [
+              {
+                "type": "Leaf",
+                "index": 1
+              },
+              {
+                "type": "FollowedBy",
+                "node": {
+                  "type": "Leaf",
+                  "index": 2
+                },
+                "within": 2
+              }
+            ]
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 8,
+            "from_": null,
+            "from_within": 0,
+            "until": null,
+            "while_": null,
+            "max_lines": null
+          }
+        }
+      ]
+    },
+    {
+      "type": "OutputPlan",
+      "output": {
+        "type": "Output",
+        "id": "ruff.format",
+        "role": "gate",
+        "description": "ruff format --check listing the files it would reformat. Formatting only: running ruff format fixes it."
+      },
+      "variants": [
+        {
+          "type": "VariantPlan",
+          "name": "",
+          "match": {
+            "type": "Leaf",
+            "index": 3
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 0,
+            "from_": null,
+            "from_within": 0,
+            "until": null,
+            "while_": null,
+            "max_lines": null
+          }
+        }
+      ]
+    }
+  ]
+}

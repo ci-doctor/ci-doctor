@@ -46,7 +46,7 @@ def test_check_fails_on_a_stale_index_and_write_fixes_it(registry):
     """Editing a matcher without regenerating is caught; regenerating fixes it."""
     path = registry / PYTEST
     path.write_text(path.read_text().replace("short summary.", "short test summary line."))
-    with pytest.raises(SetupError, match="index.yaml is out of date"):
+    with pytest.raises(SetupError, match="out of date: index.yaml"):
         write_index(registry, check=True)
     write_index(registry)
     write_index(registry, check=True)
@@ -64,7 +64,10 @@ def test_the_cli_exits_one_on_a_stale_index_and_zero_when_current(registry, monk
     [
         (lambda r: _bundle(r, "pytest", ["python_traceback"]), "already a matcher"),
         (lambda r: _bundle(r, "go", ["go_test"]), "unknown names \\['go_test'\\]"),
-        (lambda r: _bundle(r, "python", ["pytest", "all"]), "bundle cycle"),
+        (
+            lambda r: _bundle(r, "curated", ["pytest", "all"]) or _bundle(r, "all", ["curated"]),
+            "bundle cycle",
+        ),
         (
             lambda r: [_bundle(r, f"b{i}", [f"b{i + 1}"]) for i in range(5)] + [_bundle(r, "b5", ["pytest"])],
             "nests 6 deep, over 5",
@@ -76,12 +79,6 @@ def test_the_cli_exits_one_on_a_stale_index_and_zero_when_current(registry, monk
         (
             lambda r: (r / PYTEST).write_text((r / PYTEST).read_text().replace("id: pytest", "id: pytest_x")),
             "must equal its directory name",
-        ),
-        (
-            lambda r: (r / PYTEST).write_text(
-                (r / PYTEST).read_text().replace("[python, test]", "[js, test]")
-            ),
-            "must equal its ecosystem directory",
         ),
     ],
 )

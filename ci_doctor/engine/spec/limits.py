@@ -5,3 +5,15 @@
 MAX_PATTERN_CHARS = 500
 MAX_PROGRAM_SIZE = 1000
 DESCRIPTION_CHARS = (20, 250)
+
+# Schema 1. Starting points, set wide enough for every row on the Matchers page.
+MAX_OUTPUTS = 20
+MAX_VARIANTS = 10
+#: Nodes in one `match` tree, relations' inner nodes included.
+MAX_NODES = 32
+#: How deep `all` / `any` / `not` / relations may nest.
+MAX_DEPTH = 4
+#: `within` and `max_lines`.
+MAX_REACH = 500
+MAX_DEFINES = 20
+MAX_TAGS = 5

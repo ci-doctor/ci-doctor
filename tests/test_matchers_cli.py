@@ -176,7 +176,7 @@ def test_info_on_a_matcher(cfg, monkeypatch, capsys):
     assert code == 0
     for text in (
         "(matcher)",
-        "classification: python, test",
+        "tags: python, test",
         "role: ",
         "matchers/python/pytest/matcher.yaml",
     ):
@@ -387,7 +387,7 @@ def test_the_default_output_is_a_table(cfg, monkeypatch, capsys):
     _, out, _ = _run(monkeypatch, capsys, "add", "official/pytest", plain=False)
     assert "✓ added official/pytest" in out
     _, out, _ = _run(monkeypatch, capsys, "list", plain=False)
-    assert out.split()[:3] == ["Matcher", "Via", "Classification"]
+    assert out.split()[:3] == ["Matcher", "Via", "Tags"]
     assert "official/pytest" in out
 
 

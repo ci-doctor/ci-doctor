@@ -15,7 +15,7 @@ from ci_doctor.matchers.registry import Resolved, index_for, session
 
 
 class SearchCommand(Command):
-    """Search matcher and bundle names, descriptions and classifications."""
+    """Search matcher and bundle names, descriptions and tags."""
 
     name = "search"
 
@@ -60,9 +60,9 @@ class SearchCommand(Command):
             needle: The lowercased search term.
 
         Yields:
-            A row for each entry whose name, description or classification contains `needle`.
+            A row for each entry whose name, description or tags contain `needle`.
         """
         for kind, entries in (("matcher", served.matchers), ("bundle", served.bundles)):
             for name, e in entries.items():
-                if needle in " ".join([name, e.description, *e.classification]).lower():
-                    yield self._Hit(f"{alias}/{name}", kind, ", ".join(e.classification), e.description)
+                if needle in " ".join([name, e.description, *e.tags]).lower():
+                    yield self._Hit(f"{alias}/{name}", kind, ", ".join(e.tags), e.description)

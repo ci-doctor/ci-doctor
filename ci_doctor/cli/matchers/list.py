@@ -13,7 +13,7 @@ from ci_doctor.matchers.registry import resolve, session
 
 
 class ListCommand(Command):
-    """List what `matchers.include` resolves to, and how each matcher got in."""
+    """List what `matchers.include` resolves to, how each matcher got in, and what `matchers.exclude` drops."""
 
     name = "list"
 
@@ -21,10 +21,10 @@ class ListCommand(Command):
     class _Included(Row):
         matcher: str
         via: str
-        classification: str
+        tags: str
 
         def line(self) -> str:
-            return f"{self.matcher}  via {self.via}  [{self.classification}]"
+            return f"{self.matcher}  via {self.via}  [{self.tags}]"
 
     @override
     def run(self) -> None:
@@ -37,6 +37,10 @@ class ListCommand(Command):
         rows = []
         for key, via in resolved.matchers.items():
             ref = Ref.parse(key)
-            tags = ", ".join(resolved.indexes[ref.alias].matchers[ref.name].classification)
+            tags = ", ".join(resolved.indexes[ref.alias].matchers[ref.name].tags)
             rows.append(self._Included(key, via, tags))
         table(self._Included, rows)
+        if cfg.exclude:
+            say("excluded outputs:", "bold")
+            for ref in cfg.exclude:
+                say(f"  {ref}")
