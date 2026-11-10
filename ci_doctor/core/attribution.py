@@ -24,7 +24,7 @@ from ci_doctor.core.models import (
     Section,
     walk_sections,
 )
-from ci_doctor.core.regex import pattern_set
+from ci_doctor.regex import pattern_set
 
 #: "Did anything in this *section* fail?" — which *lines* are the evidence is the
 #: matchers' job (registry matchers). Stays runner-level, no vendor tokens:

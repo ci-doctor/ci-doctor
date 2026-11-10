@@ -1,18 +1,18 @@
-"""One registry `matcher.yaml`, as validated on load. Not a config key: `matchers:` selects these."""
+"""Today's `matcher.yaml` format, as validated on load: `pattern` or `start`/`end`.
 
-from typing import Annotated, Literal
+The format every registry matcher is written in until `schema: 1` lands. Not a
+config key: `matchers:` in `.ci-doctor.yml` selects these.
+"""
 
-from pydantic import AfterValidator, Field, StringConstraints, ValidationInfo, model_validator
+from typing import Annotated
 
-from ci_doctor.config.schemas._base import Strict
-from ci_doctor.config.schemas._regex import Re2
-from ci_doctor.core.regex import compile_user, programsize
+from pydantic import AfterValidator, Field, ValidationInfo, model_validator
 
-#: Caps on what a matcher may cost, set from the 38 that once shipped, with headroom: the
-#: largest RE2 program was 109, the longest pattern 104 characters.
-MAX_PATTERN_CHARS = 500
-MAX_PROGRAM_SIZE = 1000
-DESCRIPTION_CHARS = (20, 250)
+from ci_doctor.engine.spec.base import Strict
+from ci_doctor.engine.spec.limits import MAX_PATTERN_CHARS, MAX_PROGRAM_SIZE
+from ci_doctor.engine.spec.roles import Role
+from ci_doctor.engine.spec.text import Description, Tag
+from ci_doctor.regex import Re2, compile_user, programsize
 
 
 def _matcher_re2(pattern: str, info: ValidationInfo) -> str:
@@ -58,42 +58,10 @@ def _anchor(pattern: str, info: ValidationInfo) -> str:
     return pattern
 
 
-def _description(text: str, info: ValidationInfo) -> str:
-    """Collapse to one line, then hold it to what is safe to put in a prompt.
-
-    A newline could forge a prompt section; a non-ASCII character could hide text
-    from a reviewer (zero-width, bidi) without hiding it from the model.
-
-    Args:
-        text: The description as written.
-        info: Validation context carrying the matcher's `id`.
-
-    Returns:
-        The text on one line.
-
-    Raises:
-        ValueError: On a length outside the range, or a non-printable-ASCII character.
-    """
-    owner = info.data.get("id")
-    text = " ".join(text.split())
-    low, high = DESCRIPTION_CHARS
-    if not low <= len(text) <= high:
-        raise ValueError(f"{owner!r}: description is {len(text)} characters, outside {low}-{high}")
-    if not (text.isascii() and text.isprintable()):
-        raise ValueError(f"{owner!r}: description must be printable ASCII, got {text!a}")
-    return text
-
-
 #: A matcher regex: RE2, and bounded in length and program size.
 MatcherRe2 = Annotated[Re2, AfterValidator(_matcher_re2)]
 #: A matcher's anchor (`pattern`, `start`, `end`): additionally never matches an empty line.
 Anchor = Annotated[MatcherRe2, AfterValidator(_anchor)]
-#: A classification tag: lowercase, digits and dashes.
-Tag = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
-#: A description: one line of printable ASCII, safe to put in a prompt.
-Description = Annotated[str, AfterValidator(_description)]
-#: What a matcher's output is; ranks its windows (`extract.ROLE_RANK`).
-Role = Literal["tool", "wrapper", "fallback"]
 
 
 class MatcherConfig(Strict):

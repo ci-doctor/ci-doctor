@@ -42,14 +42,14 @@ const stages = [
     {
         n: 6,
         name: "Extract",
-        mod: "core/extract.py",
+        mod: "engine/",
         what: "Run every selected matcher over the blamed section and keep the windows they anchor, plus the section's tail. Every gap is marked.",
         cfg: "matchers, extraction.tail_lines",
     },
     {
         n: 7,
         name: "Budget",
-        mod: "core/budget.py",
+        mod: "engine/select/",
         what: "Shed the lowest-ranked windows (fallback, then wrapper, then tool), then trim what survives to the token budget.",
         cfg: "llm.max_input_tokens",
     },

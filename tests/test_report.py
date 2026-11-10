@@ -10,11 +10,11 @@ from typing import get_args
 import pytest
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.config.schemas.matcher import MatcherConfig, Role
 from ci_doctor.core.analyze import EvidenceBundle, build_bundle
 from ci_doctor.core.attribution import attribute
 from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.phases import assign_phases
+from ci_doctor.engine import MatcherConfig, Role
 from ci_doctor.llm.report import _packs, _render_prompt, produce_report
 from tests import support
 

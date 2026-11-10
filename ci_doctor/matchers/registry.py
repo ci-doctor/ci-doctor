@@ -22,8 +22,8 @@ from typing import Any
 import httpx
 from pydantic import ValidationError
 
-from ci_doctor.config.schemas.matcher import MatcherConfig
 from ci_doctor.config.schemas.matchers import MatchersConfig, unqualified
+from ci_doctor.engine import MatcherConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
 from ci_doctor.matchers.transports import redact, transport_for

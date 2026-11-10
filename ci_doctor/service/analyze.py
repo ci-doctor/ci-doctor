@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import NamedTuple
 
 from ci_doctor.config.schemas import Config
-from ci_doctor.config.schemas.matcher import MatcherConfig
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
+from ci_doctor.engine import MatcherConfig
 from ci_doctor.llm.schema import Report
 from ci_doctor.providers.registry import make_ci_provider, make_segmenter, segmenter_for_log
 

@@ -20,6 +20,11 @@ const packages = [
                 role: "What each command does, with no terminal in it: `analyze` (segment → assign phases → attribute → build bundle → report, over a live run or a log file), `deliver` (artifacts, MR note), `setup` (the dry run).",
             },
             {
+                path: "regex.py",
+                entry: "pattern_set()",
+                role: "RE2 for every regex a user or a pack supplies: linear time by construction, so no pattern can hang a job. `pattern_set` matches a whole list in one pass per line. Shared by `engine/`, `core/` and `config/`.",
+            },
+            {
                 path: "errors.py",
                 entry: "SetupError",
                 role: "The one error allowed to change the exit code. Raised only before analysis starts: a bad config, an empty include, a registry that cannot be read.",
@@ -82,16 +87,6 @@ const packages = [
                 role: "Strip ANSI, collapse `\\r` progress rewrites to their final state, optionally drop the timestamp prefix, drop configured noise, then fold runs of identical lines into one with a count.",
             },
             {
-                path: "extract.py",
-                entry: "extract()",
-                role: "Runs the matchers, turns hits into windows, merges what overlaps, sheds the lowest-ranked windows under budget pressure, and renders the gaps as explicit elision markers.",
-            },
-            {
-                path: "budget.py",
-                entry: "fit()",
-                role: "The last-resort cap: trims *inside* the surviving evidence, keeping the tail, and announces how much it dropped. Token counting is a 4-chars-per-token estimate — no tokenizer is loaded.",
-            },
-            {
                 path: "analyze.py",
                 entry: "build_bundle()",
                 role: "The orchestrator for the evidence: picks the last section carrying the blamed phase, then denoise → extract → fit into one `EvidenceBundle`.",
@@ -100,6 +95,37 @@ const packages = [
                 path: "redact.py",
                 entry: "redact()",
                 role: "The secret scrubber. Run on the prompt and again on the finished report.",
+            },
+        ],
+    },
+    {
+        dir: "engine/",
+        blurb: "Matcher files and log lines in, evidence out. Pure, and layered: each layer imports only the ones below it, and outside code imports only `ci_doctor.engine`.",
+        files: [
+            {
+                path: "spec/",
+                entry: "MatcherConfig",
+                role: "What a matcher file may say, validated on load: the model, its caps (`limits.py`), tags and the prompt-safe description (`text.py`), and the roles with their ranks (`roles.py`).",
+            },
+            {
+                path: "run/windows.py",
+                entry: "windows_for()",
+                role: "Runs every matcher over the log in one RE2 pass and turns each anchor into a window carrying its role's rank.",
+            },
+            {
+                path: "select/extract.py",
+                entry: "extract()",
+                role: "Adds the tail window, merges what overlaps (`merge.py`), sheds the lowest-ranked windows under budget pressure (`shed.py`), and renders the gaps as explicit elision markers (`render.py`).",
+            },
+            {
+                path: "select/fired.py",
+                entry: "fired()",
+                role: "Names the matchers that anchor in the final evidence, in log order: the packs the prompt describes to the model.",
+            },
+            {
+                path: "select/budget.py",
+                entry: "fit()",
+                role: "The last-resort cap: trims *inside* the surviving evidence, keeping the tail, and announces how much it dropped. Token counting is a 4-chars-per-token estimate — no tokenizer is loaded.",
             },
         ],
     },

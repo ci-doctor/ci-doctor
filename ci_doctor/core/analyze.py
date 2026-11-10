@@ -10,12 +10,10 @@ import logging
 from dataclasses import dataclass, field
 
 from ci_doctor.config.schemas import Config
-from ci_doctor.config.schemas.matcher import MatcherConfig
 from ci_doctor.core.attribution import Attribution
-from ci_doctor.core.budget import estimate_tokens, fit
 from ci_doctor.core.denoise import denoise
-from ci_doctor.core.extract import extract, fired
 from ci_doctor.core.models import SYNTHETIC_SECTIONS, Job, Phase, Section, walk_sections
+from ci_doctor.engine import MatcherConfig, estimate_tokens, extract, fired, fit
 
 log = logging.getLogger("ci_doctor.analyze")
 

@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from ci_doctor.config.schemas.matcher import MatcherConfig
+from ci_doctor.engine import MatcherConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import MATCHER_GLOB, Bundle, RegistryMatcher
 

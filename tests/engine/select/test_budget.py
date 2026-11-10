@@ -1,6 +1,6 @@
 """Token budgeting: fits under the cap, keeps the tail, never truncates silently."""
 
-from ci_doctor.core.budget import estimate_tokens, fit
+from ci_doctor.engine import estimate_tokens, fit
 
 
 def test_fit_noop_when_under_budget():

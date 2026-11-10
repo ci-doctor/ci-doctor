@@ -29,7 +29,11 @@ ci_doctor/
                     setup, report
   config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit
   core/             provider-neutral: models, ports, attribution (pure), denoise,
-                    extract, budget, redact, analyze
+                    redact, analyze
+  engine/           the matching engine, pure (§2.3): spec/ (matcher files), run/
+                    (matchers × lines → windows), select/ (windows → evidence, budget)
+  regex.py          RE2 for every user- or pack-supplied regex, shared by engine/,
+                    core/ and config/
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
   matchers/         matcher registries: file formats (models), validate, index and
@@ -51,7 +55,7 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | Provider failure-reason mapping | `providers/<name>/reasons.py` | Maps vendor strings → `FailureReason`. |
 | Something every provider needs | `providers/<shared>.py` | Provider-neutral, but does I/O, so not `core/` (see `git_origin.py`). |
 | Blame/classification logic | `core/attribution.py` | Pure function. No I/O, network, or clock. |
-| Evidence selection | `core/{denoise,extract,budget}.py` | Config-driven where possible. |
+| Evidence selection | `core/denoise.py`, `engine/` | Config-driven where possible; `engine/` stays pure (§2.3). |
 | An LLM backend | `llm/backends.py` + a pip extra | Only a provider Pydantic AI ships; lazy-import the SDK inside the client. |
 | A command or subcommand | `cli/<group…>/<command>.py` (surface) + `service/` or the owning package (work) | See §2.1. |
 | Output format | `render/` | Implements the `Renderer` port. |
@@ -90,9 +94,28 @@ cli/
 ### 2.2 The config schema
 
 `config/schemas/` has one module per top-level key of `.ci-doctor.yml` (`llm.py` is
-`llm:`); `__init__.py` is `Config`. `matcher.py` is a registry matcher file, not a key,
-and the underscored modules hold shared types. A new key is a new module plus a field
-on `Config`. A refactor here must leave `ci-doctor config --schema` byte-identical.
+`llm:`); `__init__.py` is `Config`, and the underscored modules hold shared types. A
+registry matcher file is not a key: its model lives in `engine/spec/`. A new key is a
+new module plus a field on `Config`. A refactor here must leave `ci-doctor config --schema` byte-identical.
+
+### 2.3 The engine
+
+`engine/` turns matcher files and log lines into evidence. It is pure: no I/O, no
+YAML, no config, no providers. Its layers, bottom first:
+
+| Layer | Holds |
+|---|---|
+| `spec/` | What a matcher file may say: the pydantic models, their caps (`limits.py`), roles and ranks |
+| `run/` | Matchers × lines → windows, every regex in one RE2 pass |
+| `select/` | Windows → evidence: `merge`, `shed`, `render`, `fired`, and the token `budget` |
+
+`tests/test_layout.py` pins four rules:
+
+1. `engine/` imports nothing from `ci_doctor` but `ci_doctor.regex`; third-party, only
+   pydantic.
+2. A layer imports only the layers below it.
+3. Code outside `engine/` imports `ci_doctor.engine`, never a submodule.
+4. `config/` imports nothing from `core/`.
 
 ## 3. Invariants — do not break these
 
@@ -217,14 +240,14 @@ two runner/wrong-tool traps in §7 before choosing a regex.
 
 Windows are `before`/`after` lines around the anchor.
 
-Every regex is **RE2** (`core/regex.py`), compiled when the config loads: no lookaround
+Every regex is **RE2** (`ci_doctor/regex.py`), compiled when the config loads: no lookaround
 (use `exclude`), no backreferences, `\z` not `\Z`, repeats of at most 1000, and
 `\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). A pattern is at most 500
 characters and 1,000 RE2 instructions, and an anchor (`pattern`/`start`/`end`) must not
 match an empty line.
 
-**Ranking.** When the evidence exceeds the token budget, `extract.py` sheds whole windows
-by `(role, position)` before `budget.py` truncates what is left: `fallback` first, then
+**Ranking.** When the evidence exceeds the token budget, `engine/select/shed.py` sheds whole
+windows by `(role, position)` before `budget.py` truncates what is left: `fallback` first, then
 `wrapper`, then `tool`, and within a role the earliest first. `role` says what the output
 *is*: a `tool` prints the failure itself (tsc, pytest, a traceback); a `wrapper` reports
 that a child process failed (npm, make, gradle, BuildKit) and prints *after* it, so a
