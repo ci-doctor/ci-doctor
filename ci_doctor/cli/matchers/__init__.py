@@ -11,12 +11,16 @@ from ci_doctor.cli.matchers.info import InfoCommand
 from ci_doctor.cli.matchers.list import ListCommand
 from ci_doctor.cli.matchers.registry import app as registry_app
 from ci_doctor.cli.matchers.remove import RemoveCommand
+from ci_doctor.cli.matchers.schema import SchemaCommand
 from ci_doctor.cli.matchers.search import SearchCommand
+from ci_doctor.cli.matchers.try_ import TryCommand
 from ci_doctor.cli.matchers.verify import VerifyCommand
 
 COMMANDS: Sequence[Command] = [
     IndexCommand(),
     VerifyCommand(),
+    TryCommand(),
+    SchemaCommand(),
     AddCommand(),
     RemoveCommand(),
     ListCommand(),

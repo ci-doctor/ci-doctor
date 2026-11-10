@@ -95,6 +95,11 @@ jobs:
         if: steps.gate.outputs.release == 'true'
         run: uv run --locked ci-doctor config --schema > ci-doctor.schema.json
 
+      # Matcher files resolve it the same way: /releases/latest/download/matcher-v1.schema.json.
+      - name: Generate the matcher JSON Schema
+        if: steps.gate.outputs.release == 'true'
+        run: uv run --locked ci-doctor matchers schema --version 1 > matcher-v1.schema.json
+
       # Runtime deps only: what a user installs.
       - name: Generate the SBOM
         if: steps.gate.outputs.release == 'true'
@@ -141,7 +146,7 @@ jobs:
           gh release create "v$VERSION" \
             --title "v$VERSION" \
             --generate-notes \
-            dist/* "ci-doctor-$VERSION-image.tar.gz" ci-doctor.schema.json ci-doctor.sbom.json
+            dist/* "ci-doctor-$VERSION-image.tar.gz" ci-doctor.schema.json matcher-v1.schema.json ci-doctor.sbom.json
 
       # The PyPI publisher is bound to this repo and this file name.
       - name: Publish distributions to PyPI
