@@ -1,6 +1,6 @@
 # https://docs.astral.sh/uv/guides/integration/docker/ — the runtime image gets only the venv.
 # Both stages must use the same Python image: the venv links to its interpreter.
-FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
 
 FROM python:3.14-slim AS builder
 COPY --from=uv /uv /bin/
