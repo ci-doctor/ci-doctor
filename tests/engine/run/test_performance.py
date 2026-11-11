@@ -64,4 +64,4 @@ def test_every_feature_on_a_big_log_stays_fast():
     start = time.perf_counter()
     wins = run(plan, lines)
     assert wins
-    assert time.perf_counter() - start < 10  # ~1 s on a laptop; generous for a loaded CI runner
+    assert time.perf_counter() - start < 10  # headroom for a loaded CI runner

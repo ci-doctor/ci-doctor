@@ -13,7 +13,7 @@ from ci_doctor.config.schemas import Config
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.denoise import denoise
 from ci_doctor.core.models import SYNTHETIC_SECTIONS, Job, Phase, Section, walk_sections
-from ci_doctor.engine import Output, Spec, compile_plan, estimate_tokens, fired, fit, run, select
+from ci_doctor.engine import Output, Plan, estimate_tokens, fired, fit, run, select
 
 log = logging.getLogger("ci_doctor.analyze")
 
@@ -59,7 +59,7 @@ def _blamed_section(sections: list[Section], phase: Phase) -> Section | None:
 
 
 def build_bundle(
-    job: Job, attr: Attribution, sections: list[Section], cfg: Config, matchers: list[Spec]
+    job: Job, attr: Attribution, sections: list[Section], cfg: Config, plan: Plan
 ) -> EvidenceBundle:
     """Denoise, window and budget the blamed section into a bundle.
 
@@ -72,7 +72,7 @@ def build_bundle(
         attr: The classifier's verdict.
         sections: The job's sections, phases already assigned.
         cfg: Config supplying the denoise, extraction and budget knobs.
-        matchers: The evidence matchers, loaded from the configured registries.
+        plan: The run's compiled matchers, `matchers.exclude` already applied.
 
     Returns:
         The bundle the report step consumes.
@@ -89,12 +89,12 @@ def build_bundle(
     blamed_budget = int(cfg.llm.max_input_tokens * 0.7)
     # Budget the *selection* by matcher rank first; `fit` is the last resort
     # that cuts inside whatever survives.
-    plan = compile_plan(matchers, cfg.matchers.exclude)
-    excerpt = select(clean, run(plan, clean), cfg.extraction.tail_lines, blamed_budget)
-    fitted, truncated = fit(excerpt, blamed_budget)
-    used = fired(plan, fitted)
+    windows = run(plan, clean)
+    excerpt = select(clean, windows, cfg.extraction.tail_lines, blamed_budget)
+    evidence = fit(excerpt, blamed_budget)
+    used = fired(plan, windows, evidence)
     log.debug(
-        f"blamed phase {attr.phase}: denoise {len(raw)}->{len(clean)}, extract ->{len(excerpt)}, fit ->{len(fitted)} lines (truncated={truncated})",
+        f"blamed phase {attr.phase}: denoise {len(raw)}->{len(clean)}, extract ->{len(excerpt.lines)}, fit ->{len(evidence.lines)} lines (truncated={evidence.truncated})",
     )
 
     secondary = [f"{phase}: warnings present (non-causal)" for phase in attr.secondary_phases]
@@ -113,5 +113,9 @@ def build_bundle(
         "terminal_evidence": attr.terminal_evidence,
     }
     descriptions = "".join(m.description or "" for m in used)
-    token_estimate = estimate_tokens("\n".join(fitted) + "\n".join(secondary) + str(metadata) + descriptions)
-    return EvidenceBundle(attr.phase, fitted, secondary, metadata, token_estimate, truncated, used)
+    token_estimate = estimate_tokens(
+        "\n".join(evidence.lines) + "\n".join(secondary) + str(metadata) + descriptions
+    )
+    return EvidenceBundle(
+        attr.phase, evidence.lines, secondary, metadata, token_estimate, evidence.truncated, used
+    )

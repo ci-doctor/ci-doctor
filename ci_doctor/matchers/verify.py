@@ -19,7 +19,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ci_doctor.engine import Plan, Spec, compile_plan, run, select
+from ci_doctor.engine import Plan, Spec, Window, compile_plan, run, select
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.logs import read_fixture
 from ci_doctor.matchers.validate import load_matcher, matcher_files
@@ -56,23 +56,23 @@ class Policy:
     cross_fire: bool = False
 
 
-def selection(lines: list[str], plan: Plan) -> str:
-    """What a Plan alone selects, in `.expected` form.
+def selection(lines: list[str], windows: list[Window]) -> str:
+    """What these windows select, in `.expected` form.
 
     `select` falls back to the whole log when nothing matched, which would make a
     negative fixture compare against the log itself; no window means empty here.
 
     Args:
         lines: The fixture, from :func:`read_fixture`.
-        plan: The output (or outputs) under test.
+        windows: One output's windows on it.
 
     Returns:
         The selected lines with elision markers, newline-terminated, or "" when
         nothing anchored.
     """
-    if not (windows := run(plan, lines)):
+    if not windows:
         return ""
-    return "\n".join(select(lines, windows, tail_lines=0)) + "\n"
+    return "\n".join(select(lines, windows, tail_lines=0).lines) + "\n"
 
 
 def golden(log: Path, output_id: str, matcher_id: str) -> Path:
@@ -172,46 +172,63 @@ def _fixtures(root: Path, path: Path, report: Report) -> dict[Path, list[str]]:
 def _goldens(root: Path, m: _Matcher, report: Report, *, update: bool) -> None:
     """Compare (or write) each output's `.expected` on each fixture, and count them.
 
+    Each fixture runs once; outputs don't affect each other, so filtering its windows
+    by output is the same as running each output alone.
+
     Args:
         root: The registry directory, for readable paths.
         m: The matcher under test.
         report: Collects counts, variant coverage and problems.
         update: Write the `.expected` files instead of comparing.
     """
-    for o, out in enumerate(m.plan.outputs):
-        alone = Plan(m.plan.leaves, (out,))
-        stats = report.outputs.setdefault(out.output.id, OutputReport())
-        named = [v.name for v in out.variants if v.name]
-        stats.variants = dict.fromkeys(named, False)
-        for log, lines in m.logs.items():
-            for w in run(m.plan, lines):
-                if w.output == o and w.variant in stats.variants:
-                    stats.variants[w.variant] = True
-            got = selection(lines, alone)
+    stats = [
+        report.outputs.setdefault(
+            o.output.id, OutputReport(variants=dict.fromkeys((v.name for v in o.variants if v.name), False))
+        )
+        for o in m.plan.outputs
+    ]
+    for log, lines in m.logs.items():
+        windows = run(m.plan, lines)
+        for o, out in enumerate(m.plan.outputs):
+            own = [w for w in windows if w.output == o]
+            stats[o].variants |= {w.variant: True for w in own if w.variant}
             path = golden(log, out.output.id, m.spec.id)
-            where = log.relative_to(root)
-            if update:
-                path.write_text(got, encoding="utf-8")
-            elif not path.is_file():
-                report.problems.append(f"{where}: no {path.name}; run `ci-doctor matchers verify --update`")
-                continue
-            want = path.read_text(encoding="utf-8")
-            if want:
-                stats.positive += 1
-            else:
-                stats.negative += 1
-            if got != want:
-                diff = difflib.unified_diff(
-                    want.splitlines(), got.splitlines(), path.name, "actual", lineterm=""
-                )
-                report.problems.append(
-                    f"{where}: {out.output.id} differs from {path.name}\n" + "\n".join(diff)
-                )
-        report.problems += [
-            f"{out.output.id} ({name}): this variant anchors in none of its matcher's fixtures"
-            for name, covered in stats.variants.items()
-            if not covered
-        ]
+            if problem := _compare(path, selection(lines, own), out.output.id, stats[o], update=update):
+                report.problems.append(f"{log.relative_to(root)}: {problem}")
+    report.problems += [
+        f"{out.output.id} ({name}): this variant anchors in none of its matcher's fixtures"
+        for out, st in zip(m.plan.outputs, stats, strict=True)
+        for name, covered in st.variants.items()
+        if not covered
+    ]
+
+
+def _compare(path: Path, got: str, output_id: str, stats: OutputReport, *, update: bool) -> str | None:
+    """Write or compare one golden, counting it as positive or negative.
+
+    Args:
+        path: The `.expected` file.
+        got: What the output selects now.
+        output_id: Names it in a diff.
+        stats: Its output's counts.
+        update: Write instead of comparing.
+
+    Returns:
+        What is wrong, or None.
+    """
+    if update:
+        path.write_text(got, encoding="utf-8")
+    elif not path.is_file():
+        return f"no {path.name}; run `ci-doctor matchers verify --update`"
+    want = path.read_text(encoding="utf-8")
+    if want:
+        stats.positive += 1
+    else:
+        stats.negative += 1
+    if got == want:
+        return None
+    diff = difflib.unified_diff(want.splitlines(), got.splitlines(), path.name, "actual", lineterm="")
+    return f"{output_id} differs from {path.name}\n" + "\n".join(diff)
 
 
 def _counts(output_id: str, stats: OutputReport, policy: Policy, *, exempt: bool) -> Iterator[str]:

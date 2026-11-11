@@ -2,7 +2,7 @@
 
 from ci_doctor.engine.run.windows import Window
 from ci_doctor.engine.select.merge import merge
-from ci_doctor.engine.select.render import render
+from ci_doctor.engine.select.render import Evidence, render
 from ci_doctor.engine.select.shed import shed
 
 #: The tail window ranks below every matcher.
@@ -11,7 +11,7 @@ TAIL = -1
 
 def select(
     lines: list[str], windows: list[Window], tail_lines: int, max_tokens: int | None = None
-) -> list[str]:
+) -> Evidence:
     """Reduce a log to the lines worth showing.
 
     Args:
@@ -26,14 +26,15 @@ def select(
 
     Returns:
         The selected lines with "… [N lines elided] …" markers where content was
-        dropped. Falls back to every line when nothing matched and there is no tail.
+        dropped, and where each came from. Every line when nothing matched and
+        there is no tail.
     """
     wins = [Window(w.start, w.end, w.rank) for w in windows]  # merge mutates; keep the caller's intact
     if tail_lines > 0 and lines:
         wins.append(Window(max(0, len(lines) - tail_lines), len(lines), TAIL))
     merged = merge(wins)
     if not merged:
-        return list(lines)
+        return Evidence(list(lines), list(range(len(lines))))
     if max_tokens is not None:
         merged = shed(lines, merged, max_tokens)
     return render(lines, merged)

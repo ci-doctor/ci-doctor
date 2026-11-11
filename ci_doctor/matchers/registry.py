@@ -23,7 +23,7 @@ import httpx
 from pydantic import ValidationError
 
 from ci_doctor.config.schemas.matchers import MatchersConfig, unqualified
-from ci_doctor.engine import SCHEMAS, Spec, compile_plan
+from ci_doctor.engine import SCHEMAS, Output, Spec, compile_plan
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
 from ci_doctor.matchers.transports import redact, transport_for
@@ -270,6 +270,23 @@ def fetch_matcher(ref: Ref, seen: Resolved, http: httpx.Client) -> Spec:
     if m.id != ref.name:
         raise SetupError(f"{where}: id {m.id!r} does not match its index name {ref.name!r}")
     return m
+
+
+def fetch_outputs(ref: Ref, seen: Resolved, http: httpx.Client) -> list[Output]:
+    """What one served matcher puts in the prompt: each output's id, role and description.
+
+    Args:
+        ref: A matcher its registry's index lists.
+        seen: Registries already read, holding `ref`'s.
+        http: The run's HTTP client.
+
+    Returns:
+        Its outputs, in file order.
+
+    Raises:
+        SetupError: If the matcher can't be fetched or fails a load-time rule.
+    """
+    return [o.output for o in compile_plan([fetch_matcher(ref, seen, http)]).outputs]
 
 
 def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved:

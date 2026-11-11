@@ -11,6 +11,7 @@ import io
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Job, Run
+from ci_doctor.engine import compile_plan
 from ci_doctor.providers.registry import segmenter_for
 from ci_doctor.render.markdown import render_pipeline_markdown
 from ci_doctor.render.pipeline import triage
@@ -49,7 +50,7 @@ def _analyzed_pipeline(registry):
         log=support.NOISY["gitlab"],
     )
     jobs = _ordered([deploy, build])  # provider order is newest-first; we re-sort
-    results = [process_job(j, cfg, support.registry_matchers(registry), seg) for j in jobs]
+    results = [process_job(j, cfg, compile_plan(support.registry_matchers(registry)), seg) for j in jobs]
     run = Run(id="900", ref="main", sha="abc1234", web_url="https://gl/900", jobs=jobs)
     return run, results
 

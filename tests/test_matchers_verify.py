@@ -7,11 +7,12 @@ from pathlib import Path
 import pytest
 
 from ci_doctor import cli
-from ci_doctor.engine import compile_plan
+from ci_doctor.engine import compile_plan, run
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.index import write_index
+from ci_doctor.matchers.logs import read_fixture
 from ci_doctor.matchers.validate import load_matcher
-from ci_doctor.matchers.verify import Policy, read_fixture, selection, verify
+from ci_doctor.matchers.verify import Policy, selection, verify
 from tests import support
 from tests.support import gh_log, gitlab_log
 
@@ -111,7 +112,8 @@ def test_a_negative_fixture_fails_when_the_matcher_fires(registry):
 def test_no_window_is_empty_output_not_the_whole_log(registry):
     """`select()` falls back to every line when nothing matched; verify must not."""
     m = load_matcher(registry / PYTEST_DIR / "matcher.yaml")
-    assert selection(read_fixture(registry / FIX / "uncaught_exception.log"), compile_plan([m])) == ""
+    lines = read_fixture(registry / FIX / "uncaught_exception.log")
+    assert selection(lines, run(compile_plan([m]), lines)) == ""
 
 
 def test_a_missing_expected_file_fails(registry):
@@ -197,7 +199,8 @@ def test_github_gitlab_and_plain_logs_select_the_same_lines(registry):
     m = load_matcher(registry / PYTEST_DIR / "matcher.yaml")
 
     def selected(stem: str) -> list[str]:
-        out = selection(read_fixture(registry / FIX / f"{stem}.log"), compile_plan([m])).splitlines()
+        lines = read_fixture(registry / FIX / f"{stem}.log")
+        out = selection(lines, run(compile_plan([m]), lines)).splitlines()
         return [line.strip() for line in out if not line.startswith("… [")]
 
     assert selected("assert.github") == selected("assert.gitlab") == selected("assert_plain")

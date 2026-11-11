@@ -9,8 +9,7 @@ from tests.engine.support import budgeted, extract, rx
 def test_budget_pressure_sheds_the_wrapper_not_the_tool():
     """Under budget the compiler errors survive and the npm epilogue is shed."""
     lines = [f"src/a{i}.ts:1:1 - error TS2345: bad argument" for i in range(40)]
-    # Unmatched output between the blocks: windows only stay separable — and so
-    # only become rankable — across a gap, since `_merge` fuses adjacent ones.
+    # a gap keeps the windows apart; merge fuses adjacent ones
     lines += [f"  building bundle chunk {i}" for i in range(20)]
     lines += [f"npm ERR! code ELIFECYCLE {i}" for i in range(400)]
     matchers = [rx("error TS", id="tsc"), rx("npm ERR!", id="npm", role="wrapper")]

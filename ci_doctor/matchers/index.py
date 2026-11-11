@@ -17,7 +17,15 @@ import yaml
 from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
 from ci_doctor.lib.files import atomic_write
-from ci_doctor.matchers.models import BUNDLE_GLOB, GENERATED, INDEX, MAX_BUNDLE_DEPTH, Bundle, Index
+from ci_doctor.matchers.models import (
+    BUNDLE_GLOB,
+    GENERATED,
+    GENERATED_PREFIX,
+    INDEX,
+    MAX_BUNDLE_DEPTH,
+    Bundle,
+    Index,
+)
 from ci_doctor.matchers.validate import load_bundle, load_matcher, matcher_files
 
 
@@ -135,6 +143,91 @@ def _nesting_problems(bundles: dict[str, Bundle]) -> list[str]:
     return problems
 
 
+def _is_generated(path: Path) -> bool:
+    """Whether `matchers index` wrote this bundle file."""
+    return path.read_text(encoding="utf-8").startswith(GENERATED_PREFIX)
+
+
+def _load_matchers(root: Path, problems: list[str]) -> tuple[dict[str, dict], dict[str, list[str]]]:
+    """Every matcher's index entry, and each ecosystem folder's matcher names.
+
+    Args:
+        root: The registry directory.
+        problems: Collects every file that fails, and duplicate names.
+
+    Returns:
+        Index entries by name, and names by ecosystem.
+    """
+    matchers: dict[str, dict] = {}
+    ecosystems: dict[str, list[str]] = {}
+    for path in matcher_files(root):
+        try:
+            m = load_matcher(path, author=True)
+        except SetupError as err:
+            problems.append(str(err))
+            continue
+        if m.id in matchers:
+            problems.append(f"{path}: matcher name {m.id!r} is used twice")
+        matchers[m.id] = _matcher_entry(root, path, m)
+        ecosystems.setdefault(path.parent.parent.name, []).append(m.id)
+    return matchers, ecosystems
+
+
+def _generated_bundles(
+    generated: dict[str, str], matchers: dict[str, dict], problems: list[str]
+) -> tuple[dict[str, Bundle], dict[str, dict]]:
+    """The ecosystem bundles this run generates, and their index entries.
+
+    Args:
+        generated: Each ecosystem bundle's text.
+        matchers: Matcher entries by name, to catch an ecosystem named like a matcher.
+        problems: Collects such clashes.
+
+    Returns:
+        Bundles and index entries, by ecosystem.
+    """
+    bundles, entries = {}, {}
+    for eco, text in generated.items():
+        if eco in matchers:
+            problems.append(f"ecosystem {eco!r} has the same name as a matcher")
+        bundles[eco] = Bundle.model_validate(yaml.safe_load(text))
+        entries[eco] = {
+            "path": f"bundles/{eco}.yaml",
+            "sha256": hashlib.sha256(text.encode()).hexdigest(),
+            "description": bundles[eco].description,
+        }
+    return bundles, entries
+
+
+def _load_bundles(
+    root: Path, generated: dict[str, str], matchers: dict[str, dict], problems: list[str]
+) -> dict[str, tuple[Bundle, dict]]:
+    """The hand-written bundles: every bundle file `matchers index` did not generate.
+
+    Args:
+        root: The registry directory.
+        generated: The ecosystem bundles, whose names a hand-written file may not take.
+        matchers: Matcher entries by name.
+        problems: Collects every file that fails, and names already taken by a matcher.
+
+    Returns:
+        Each bundle and its index entry, by name.
+    """
+    out = {}
+    for path in sorted(root.glob(BUNDLE_GLOB)):
+        if path.stem in generated or _is_generated(path):
+            continue  # rewritten from its folder, or stale and deleted on write
+        try:
+            b = load_bundle(path, author=True)
+        except SetupError as err:
+            problems.append(str(err))
+            continue
+        if b.id in matchers:
+            problems.append(f"{path}: name {b.id!r} is already a matcher")
+        out[b.id] = (b, _entry(root, path, b.description))
+    return out
+
+
 def build_index(root: Path) -> tuple[str, Index, dict[str, str]]:
     """Validate every matcher and bundle in a registry and render its `index.yaml`.
 
@@ -148,48 +241,12 @@ def build_index(root: Path) -> tuple[str, Index, dict[str, str]]:
     Raises:
         SetupError: Listing every file or cross-file rule that fails.
     """
-    paths = matcher_files(root)
     problems: list[str] = []
-    matchers: dict[str, dict] = {}
-    ecosystems: dict[str, list[str]] = {}
-
-    for path in paths:
-        try:
-            m = load_matcher(path, author=True)
-        except SetupError as err:
-            problems.append(str(err))
-            continue
-        if m.id in matchers:
-            problems.append(f"{path}: matcher name {m.id!r} is used twice")
-        matchers[m.id] = _matcher_entry(root, path, m)
-        ecosystems.setdefault(path.parent.parent.name, []).append(m.id)
-
+    matchers, ecosystems = _load_matchers(root, problems)
     generated = _generated(ecosystems)
-    bundles: dict[str, Bundle] = {}
-    bundle_entries: dict[str, dict] = {}
-    for eco, text in generated.items():
-        path = root / "bundles" / f"{eco}.yaml"
-        if eco in matchers:
-            problems.append(f"ecosystem {eco!r} has the same name as a matcher")
-        bundles[eco] = Bundle.model_validate(yaml.safe_load(text))
-        bundle_entries[eco] = {
-            "path": path.relative_to(root).as_posix(),
-            "sha256": hashlib.sha256(text.encode()).hexdigest(),
-            "description": bundles[eco].description,
-        }
-
-    for path in sorted(root.glob(BUNDLE_GLOB)):
-        if path.stem in generated or path.read_text(encoding="utf-8").startswith(GENERATED.split("{")[0]):
-            continue  # generated: rewritten above, or stale and deleted on write
-        try:
-            b = load_bundle(path, author=True)
-        except SetupError as err:
-            problems.append(str(err))
-            continue
-        if b.id in matchers:
-            problems.append(f"{path}: name {b.id!r} is already a matcher")
-        bundles[b.id] = b
-        bundle_entries[b.id] = _entry(root, path, b.description)
+    bundles, bundle_entries = _generated_bundles(generated, matchers, problems)
+    for name, (b, entry) in _load_bundles(root, generated, matchers, problems).items():
+        bundles[name], bundle_entries[name] = b, entry
 
     problems += _bundle_problems(bundles, set(matchers))
     if problems:
@@ -215,12 +272,7 @@ def _stale_generated(root: Path, generated: dict[str, str]) -> list[Path]:
     Returns:
         Their paths.
     """
-    marker = GENERATED.split("{")[0]
-    return [
-        p
-        for p in sorted(root.glob(BUNDLE_GLOB))
-        if p.stem not in generated and p.read_text(encoding="utf-8").startswith(marker)
-    ]
+    return [p for p in sorted(root.glob(BUNDLE_GLOB)) if p.stem not in generated and _is_generated(p)]
 
 
 def write_index(root: Path, *, check: bool = False) -> int:

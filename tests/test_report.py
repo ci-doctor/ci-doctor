@@ -68,7 +68,7 @@ def _pipeline(log, reason=FailureReason.SCRIPT_FAILURE, overrides=None, provider
     job.sections = support.segment(provider, log)
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
-    bundle = build_bundle(job, attr, job.sections, cfg, matchers or [])
+    bundle = build_bundle(job, attr, job.sections, cfg, compile_plan(matchers or [], cfg.matchers.exclude))
     return job, attr, bundle, cfg
 
 

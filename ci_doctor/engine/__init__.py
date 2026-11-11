@@ -20,6 +20,7 @@ from ci_doctor.engine.run.windows import Window, run
 from ci_doctor.engine.select.budget import estimate_tokens, fit
 from ci_doctor.engine.select.evidence import select
 from ci_doctor.engine.select.fired import fired
+from ci_doctor.engine.select.render import Evidence
 from ci_doctor.engine.spec import SCHEMAS, Spec, load
 from ci_doctor.engine.spec.roles import RANK, Role
 from ci_doctor.engine.spec.text import Description, Tag
@@ -30,6 +31,7 @@ __all__ = [
     "SCHEMAS",
     "CompileError",
     "Description",
+    "Evidence",
     "MatcherV1",
     "Output",
     "Plan",

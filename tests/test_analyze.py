@@ -7,6 +7,7 @@ from ci_doctor.core.analyze import build_bundle
 from ci_doctor.core.attribution import attribute
 from ci_doctor.core.models import FailureReason, Job
 from ci_doctor.core.phases import assign_phases
+from ci_doctor.engine import compile_plan
 from tests import support
 
 
@@ -20,7 +21,7 @@ def test_build_bundle_excludes_fetch_noise_but_flags_it(provider, fx_registry):
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
 
-    bundle = build_bundle(job, attr, job.sections, cfg, support.registry_matchers(fx_registry))
+    bundle = build_bundle(job, attr, job.sections, cfg, compile_plan(support.registry_matchers(fx_registry)))
     assert bundle.blamed_phase == "script"
     assert bundle.token_estimate > 0
 

@@ -10,6 +10,7 @@ from ci_doctor.core.analyze import build_bundle
 from ci_doctor.core.attribution import attribute
 from ci_doctor.core.models import FailureReason, Job
 from ci_doctor.core.phases import assign_phases
+from ci_doctor.engine import compile_plan
 from ci_doctor.llm.report import produce_report
 from ci_doctor.render.markdown import MarkdownRenderer
 from tests import support
@@ -25,7 +26,7 @@ def test_full_offline_pipeline_no_network(provider, fx_registry):
     job.sections = support.segment(provider, log)
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
-    bundle = build_bundle(job, attr, job.sections, cfg, support.registry_matchers(fx_registry))
+    bundle = build_bundle(job, attr, job.sections, cfg, compile_plan(support.registry_matchers(fx_registry)))
     report = produce_report(job, attr, bundle, cfg)  # llm unconfigured -> deterministic, no network
 
     md = MarkdownRenderer().render(report)
@@ -45,7 +46,7 @@ def test_a_crlf_log_keeps_its_evidence(provider, fx_registry):
     job.sections = support.segment(provider, log)
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
-    bundle = build_bundle(job, attr, job.sections, cfg, support.registry_matchers(fx_registry))
+    bundle = build_bundle(job, attr, job.sections, cfg, compile_plan(support.registry_matchers(fx_registry)))
 
     assert attr.phase == "script"
     assert "E   assert 1 == 2" in bundle.blamed_lines

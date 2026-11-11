@@ -14,7 +14,7 @@ the failure modes it defends against — see [docs/PLAN.md](docs/PLAN.md).
 ci-doctor is a **read-only postmortem**. It reads a failed CI job's log and explains
 why it failed. A deterministic classifier decides **where** the job failed; the LLM
 only explains **why**, inside the phase already chosen. Everything is optional and
-degrades: no LLM, no network, no problem — you still get a full report.
+degrades: no LLM, no internet, no problem — you still get a full report.
 
 ```
 acquire → segment → attribute → denoise → extract → budget → (LLM) → render / deliver
@@ -142,8 +142,11 @@ invariants go on the end. The first three, and #10, are load-bearing:
    analyzer must never change a pipeline's outcome. `AnalyzeCommand` holds this; never
    raise `SetupError` from inside the analysis. Every other command exits 1 on any
    failure, a crash included, so a broken registry check never goes green.
-4. **Nothing reaches the public internet** by default — no telemetry, update checks, or
-   runtime downloads of models/rules/schemas.
+4. **Nothing reaches the public internet unless you point it there.** No telemetry or
+   update checks. The network calls ci-doctor makes go to your CI provider, your LLM,
+   and the matcher registries you configure. Each can be hosted inside your network, so
+   an air-gapped install works by cloning the registry and pointing
+   `matchers.registries` at the copy.
 5. **Never emit unredacted log content.** Redaction runs on the prompt *and* the report.
 6. **Every truncation is visible** (`… [N lines elided] …`), never a silent cut.
 7. `attribution.py` stays a pure function.

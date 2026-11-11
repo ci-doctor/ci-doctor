@@ -1,5 +1,6 @@
 """The schema 1 front end: a `schema: 1` matcher → its outputs in the Plan."""
 
+import functools
 from collections.abc import Mapping
 
 from ci_doctor.engine.compile.checks import check_regex, matches_empty_line
@@ -66,33 +67,44 @@ class _Tree:
             raise CompileError(where, f"the match has more than {MAX_NODES} nodes")
         if depth > MAX_DEPTH:
             raise CompileError(where, f"nests deeper than {MAX_DEPTH}")
+        if isinstance(spec, RegexNode | TemplateNode):
+            return self._leaf(spec, where)
+        if isinstance(spec, AllNode | AnyNode | NotNode):
+            return self._logic(spec, path, depth, line_only)
+        if line_only:
+            raise CompileError(where, "only regex, template, all, any and not are allowed here")
+        return self._relation(spec, path, depth)
+
+    def _leaf(self, spec: RegexNode | TemplateNode, where: str) -> Node:
+        """A regex or template, expanded and checked, as a leaf of the Plan."""
+        if isinstance(spec, RegexNode):
+            regex = expand_regex(spec.regex, self.defines, where)
+        else:
+            regex = expand_template(spec.template, self.defines, where)
+        return self.leaves(check_regex(regex, where))
+
+    def _logic(self, spec: AllNode | AnyNode | NotNode, path: str, depth: int, line_only: bool) -> Node:
+        """`all`, `any` or `not`: combinations of what one line matches."""
         match spec:
-            case RegexNode(regex=rx):
-                return self.leaves(check_regex(expand_regex(rx, self.defines, where), where))
-            case TemplateNode(template=tpl):
-                return self.leaves(check_regex(expand_template(tpl, self.defines, where), where))
             case AllNode(all=items):
                 return AllOf(self._each(items, f"{path}.all", depth, line_only))
             case AnyNode(any=items):
                 return AnyOf(self._each(items, f"{path}.any", depth, line_only))
             case NotNode(not_=item):
                 return Not(self.node(item, f"{path}.not", depth + 1, line_only=line_only))
-        if line_only:
-            raise CompileError(where, "only regex, template, all, any and not are allowed here")
+
+    def _relation(self, spec: NodeSpec, path: str, depth: int) -> Node:
+        """`inside`, `preceded_by` or `followed_by`: a line related to the lines around it."""
+        line = functools.partial(self.node, depth=depth + 1, line_only=True)
         match spec:
             case InsideNode(inside=block):
-                start = self.node(block.start, f"{path}.inside.start", depth + 1, line_only=True)
-                end = self.node(block.end, f"{path}.inside.end", depth + 1, line_only=True)
+                start, end = line(block.start, f"{path}.inside.start"), line(block.end, f"{path}.inside.end")
                 return Inside(start, end, block.max_lines)
             case PrecededByNode(preceded_by=near):
-                return PrecededBy(
-                    self.node(near.node, f"{path}.preceded_by", depth + 1, line_only=True), near.within
-                )
+                return PrecededBy(line(near.node, f"{path}.preceded_by"), near.within)
             case FollowedByNode(followed_by=near):
-                return FollowedBy(
-                    self.node(near.node, f"{path}.followed_by", depth + 1, line_only=True), near.within
-                )
-        raise CompileError(where, f"not a match node: {spec!r}")
+                return FollowedBy(line(near.node, f"{path}.followed_by"), near.within)
+        raise CompileError(f"{self.root}{_SEP}{path}", f"not a match node: {spec!r}")
 
     def _each(self, items: list[NodeSpec], path: str, depth: int, line_only: bool) -> tuple[Node, ...]:
         return tuple(

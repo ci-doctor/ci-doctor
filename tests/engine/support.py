@@ -18,12 +18,14 @@ def extract(
     lines: list[str], matchers: list[Spec], tail_lines: int, max_tokens: int | None = None
 ) -> list[str]:
     """Compile, run and select in one call: the path `build_bundle` takes."""
-    return select(lines, run(compile_plan(matchers), lines), tail_lines, max_tokens)
+    return select(lines, run(compile_plan(matchers), lines), tail_lines, max_tokens).lines
 
 
-def fired_ids(lines: list[str], matchers: list[Spec]) -> list[str]:
-    """The ids of the outputs anchored in `lines`, in log order."""
-    return [o.id for o in fired(compile_plan(matchers), lines)]
+def fired_ids(lines: list[str], matchers: list[Spec], max_tokens: int | None = None) -> list[str]:
+    """The ids of the outputs whose anchors survive selection at `max_tokens`, in log order."""
+    plan = compile_plan(matchers)
+    windows = run(plan, lines)
+    return [o.id for o in fired(plan, windows, select(lines, windows, 0, max_tokens))]
 
 
 def budgeted(lines: list[str], matchers: list[Spec]) -> str:
