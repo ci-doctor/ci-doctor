@@ -58,6 +58,26 @@ def _blamed_section(sections: list[Section], phase: Phase) -> Section | None:
     return match[-1] if match else None
 
 
+def evidence_lines(sections: list[Section], phase: Phase) -> list[str]:
+    """The raw lines evidence is drawn from: the blamed section's, as `analyze` reads them.
+
+    `matchers verify` and `examine` read fixtures through this too, so a relation or a
+    window never sees context a real run would not.
+
+    Args:
+        sections: The job's sections, phases already assigned.
+        phase: The phase attribution blamed.
+
+    Returns:
+        The last section carrying `phase`; every line when no section does (e.g.
+        PROVISION with an empty log), so the report still has context.
+    """
+    blamed = _blamed_section(sections, phase)
+    if blamed is not None:
+        return [line.text for line in blamed.lines]
+    return [line.text for sec in walk_sections(sections) for line in sec.lines]
+
+
 def build_bundle(
     job: Job, attr: Attribution, sections: list[Section], cfg: Config, plan: Plan
 ) -> EvidenceBundle:
@@ -77,14 +97,7 @@ def build_bundle(
     Returns:
         The bundle the report step consumes.
     """
-    blamed = _blamed_section(sections, attr.phase)
-    if blamed is not None:
-        raw = [line.text for line in blamed.lines]
-    else:
-        # No section carries the blamed phase (e.g. PROVISION with an empty log):
-        # fall back to whatever text exists so the report still has context.
-        raw = [line.text for sec in walk_sections(sections) for line in sec.lines]
-
+    raw = evidence_lines(sections, attr.phase)
     clean = denoise(raw, cfg.denoise)
     blamed_budget = int(cfg.llm.max_input_tokens * 0.7)
     # Budget the *selection* by matcher rank first; `fit` is the last resort

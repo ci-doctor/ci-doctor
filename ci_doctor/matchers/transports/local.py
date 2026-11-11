@@ -42,11 +42,13 @@ class LocalTransport(Transport):
             SetupError: If it can't be read, is over `cap`, or resolves outside the registry.
         """
         path = contained(Path(location), rel)
+        if path.exists() and not path.is_file():
+            raise SetupError(f"{rel} is not a regular file")  # a FIFO would block the read forever
         try:
-            size = path.stat().st_size
-            body = path.read_bytes() if size <= cap else b""
+            with path.open("rb") as f:
+                body = f.read(cap + 1)  # bounded even if the file grows while it is read
         except OSError as err:
             raise SetupError(f"{rel}: {err.strerror or err}") from None
-        if size > cap:
-            raise SetupError(f"{rel} is {size} bytes, over the {cap}-byte cap")
+        if len(body) > cap:
+            raise SetupError(f"{rel} is over the {cap}-byte cap")
         return decode(rel, body)

@@ -37,5 +37,7 @@ class UnknownSchema(ValueError):
         self.version = version
         if version is None:
             super().__init__("has no `schema`; write `schema: 1` (docs.cidoc.dev/reference/matcher-format/)")
+        elif type(version) is not int:
+            super().__init__(f"`schema` must be a whole number such as 1, not {version!r}")
         else:
             super().__init__(f"needs a newer ci-doctor (schema {version})")

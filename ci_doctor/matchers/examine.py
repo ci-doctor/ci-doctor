@@ -6,7 +6,7 @@ This shows what each output selects, its anchors marked, and which variant fired
 
 from dataclasses import dataclass
 
-from ci_doctor.engine import Output, Plan, Spec, compile_plan, run
+from ci_doctor.engine import Output, Spec, Window, compile_plan, run, select
 from ci_doctor.matchers.logs import Framing, read_log
 
 
@@ -26,29 +26,24 @@ class Examined:
     lines: list[str]
 
 
-def _render(lines: list[str], spans: list[tuple[int, int]], anchors: set[int]) -> list[str]:
-    """The selected lines, anchors marked, gaps announced.
+def _marked(lines: list[str], windows: list[Window]) -> list[str]:
+    """One output's selection as `verify` renders it, with `> ` before each anchor line.
 
     Args:
         lines: The log.
-        spans: Half-open windows.
-        anchors: Anchor line indexes.
+        windows: The output's windows.
 
     Returns:
-        The rendered selection.
+        The selection, or [] when the output didn't fire.
     """
-    out, prev = [], 0
-    for start, end in sorted(spans):
-        start = max(start, prev)
-        if start >= end:
-            continue
-        if start > prev:
-            out.append(f"  … [{start - prev} lines elided] …")
-        out += [("> " if i in anchors else "  ") + lines[i] for i in range(start, end)]
-        prev = end
-    if out and prev < len(lines):
-        out.append(f"  … [{len(lines) - prev} lines elided] …")
-    return out
+    if not windows:
+        return []
+    anchors = {w.anchor for w in windows}
+    evidence = select(lines, windows, tail_lines=0)
+    return [
+        ("> " if src in anchors else "  ") + line
+        for line, src in zip(evidence.lines, evidence.sources, strict=True)
+    ]
 
 
 def examine(spec: Spec, raw: str, framing: Framing) -> list[Examined]:
@@ -64,15 +59,10 @@ def examine(spec: Spec, raw: str, framing: Framing) -> list[Examined]:
     """
     lines = read_log(raw, framing)
     plan = compile_plan([spec])
+    windows = sorted(run(plan, lines), key=lambda w: w.anchor)
     out = []
-    for op in plan.outputs:
-        wins = sorted(run(Plan(plan.leaves, (op,)), lines), key=lambda w: w.anchor)
-        variants = list(dict.fromkeys(w.variant for w in wins if w.variant))
-        out.append(
-            Examined(
-                op.output,
-                variants,
-                _render(lines, [(w.start, w.end) for w in wins], {w.anchor for w in wins}),
-            )
-        )
+    for o, op in enumerate(plan.outputs):
+        own = [w for w in windows if w.output == o]
+        variants = list(dict.fromkeys(w.variant for w in own if w.variant))
+        out.append(Examined(op.output, variants, _marked(lines, own)))
     return out

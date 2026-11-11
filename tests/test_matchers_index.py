@@ -104,3 +104,17 @@ def test_rewriting_the_index_keeps_its_mode(registry):
     index.chmod(0o644)
     write_index(registry)
     assert stat.S_IMODE(index.stat().st_mode) == 0o644
+
+
+def test_a_hand_written_bundle_may_not_take_an_ecosystems_name(registry):
+    """`bundles/python.yaml` belongs to the generated ecosystem bundle; overwriting a curated one would lose it."""
+    _bundle(registry, "python", ["pytest"])
+    with pytest.raises(SetupError, match="'python' is an ecosystem, whose bundle is generated"):
+        build_index(registry)
+
+
+def test_an_ecosystem_folder_with_an_invalid_name_is_a_problem_not_a_crash(registry):
+    """The folder becomes a bundle name, so it is held to the same rule, and reported with the rest."""
+    shutil.move(registry / "matchers/python", registry / "matchers/py-thon")
+    with pytest.raises(SetupError, match="matchers/py-thon/: an ecosystem folder name must match"):
+        build_index(registry)

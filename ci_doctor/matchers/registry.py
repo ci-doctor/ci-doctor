@@ -23,7 +23,7 @@ import httpx
 from pydantic import ValidationError
 
 from ci_doctor.config.schemas.matchers import MatchersConfig, unqualified
-from ci_doctor.engine import SCHEMAS, Output, Spec, compile_plan
+from ci_doctor.engine import SCHEMAS, Output, Spec
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
 from ci_doctor.matchers.transports import redact, transport_for
@@ -286,7 +286,8 @@ def fetch_outputs(ref: Ref, seen: Resolved, http: httpx.Client) -> list[Output]:
     Raises:
         SetupError: If the matcher can't be fetched or fails a load-time rule.
     """
-    return [o.output for o in compile_plan([fetch_matcher(ref, seen, http)]).outputs]
+    m = fetch_matcher(ref, seen, http)
+    return [Output(output_id, o.role, o.description) for output_id, _, o in m.named_outputs()]
 
 
 def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved:
@@ -498,7 +499,7 @@ def _check_exclude(exclude: list[str], specs: list[Spec]) -> None:
     """
     if not exclude:
         return
-    known = [o.output.id for o in compile_plan(specs).outputs]
+    known = [output_id for spec in specs for output_id, _, _ in spec.named_outputs()]
     problems = []
     for ref in exclude:
         if ref not in known:

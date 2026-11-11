@@ -172,8 +172,8 @@ PY_MATCHERS = {
         "window": {"after": 12},
     },
 }
-#: `all` -> `python` -> both matchers, so bundle nesting is exercised too.
-PY_BUNDLES = {"python": ["pytest", "python_traceback"], "all": ["python"]}
+#: `all` -> the generated `python` bundle -> both matchers, so nesting is exercised too.
+PY_BUNDLES = {"all": ["python"]}
 
 
 def write_registry(

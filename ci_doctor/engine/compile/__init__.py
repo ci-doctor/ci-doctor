@@ -13,7 +13,7 @@ def compile_plan(specs: Sequence[Spec], exclude: Collection[str] = ()) -> Plan:
 
     Args:
         specs: Validated matchers, in load order.
-        exclude: Output ids to leave out (`matchers.exclude`).
+        exclude: Output ids to leave out (`matchers.exclude`); their regexes are never scanned.
 
     Returns:
         The Plan: their outputs in order, sharing one leaf table.
@@ -24,5 +24,5 @@ def compile_plan(specs: Sequence[Spec], exclude: Collection[str] = ()) -> Plan:
     leaves = Leaves()
     outputs: list[OutputPlan] = []
     for spec in specs:
-        outputs += compile_v1(spec, leaves)
-    return Plan(leaves.table(), tuple(o for o in outputs if o.output.id not in exclude))
+        outputs += compile_v1(spec, leaves, exclude)
+    return Plan(leaves.table(), tuple(outputs))
