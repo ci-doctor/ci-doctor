@@ -32,8 +32,8 @@ ci_doctor/
                     redact, analyze
   engine/           the matching engine, pure (§2.3): spec/ (matcher files), compile/
                     (spec → Plan), run/ (Plan × lines → windows), select/ (evidence)
-  regex.py          RE2 for every user- or pack-supplied regex, shared by engine/,
-                    core/ and config/
+  lib/              shared low-level helpers, a leaf: regex.py (RE2 for every user-
+                    or matcher-supplied regex), files.py (atomic writes)
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
   matchers/         matcher registries: file formats (models), validate, index and
@@ -120,8 +120,8 @@ same path through it, so a test and production can't drift.
 
 `tests/test_layout.py` pins four rules:
 
-1. `engine/` imports nothing from `ci_doctor` but `ci_doctor.regex`; third-party, only
-   pydantic.
+1. `engine/` imports nothing from `ci_doctor` but `ci_doctor.lib`; third-party, only
+   pydantic. `lib/` itself imports nothing from `ci_doctor` but `ci_doctor.errors`.
 2. A layer imports only the layers below it.
 3. Code outside `engine/` imports `ci_doctor.engine`, never a submodule.
 4. `config/` imports nothing from `core/`.
@@ -265,7 +265,7 @@ Anchor on the **cause**, not on a trailing summary line: a summary-only anchor w
 *past* the detail above it. And anchor on something only *your tool* prints — see the
 two runner/wrong-tool traps in §7 before choosing a regex.
 
-Every regex is **RE2** (`ci_doctor/regex.py`), compiled when the matcher loads: no
+Every regex is **RE2** (`ci_doctor/lib/regex.py`), compiled when the matcher loads: no
 lookaround (use `not`), no backreferences, `\z` not `\Z`, repeats of at most 1000, and
 `\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). An expanded pattern is
 at most 500 characters and 1,000 RE2 instructions, and a `match` must not hold on an

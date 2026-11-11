@@ -1,13 +1,13 @@
 """One RE2 pass over the log: for each leaf regex, the lines it matches."""
 
 from ci_doctor.engine.plan import Plan
-from ci_doctor.regex import pattern_set
+from ci_doctor.lib.regex import pattern_set
 
 
 def scan(plan: Plan, lines: list[str]) -> list[frozenset[int]]:
     """Match every leaf of every output against each line, in one RE2 set.
 
-    One pass per line, not one per pattern — see `ci_doctor/regex.py` for why that
+    One pass per line, not one per pattern — see `ci_doctor/lib/regex.py` for why that
     matters at a hundred matchers.
 
     Args:

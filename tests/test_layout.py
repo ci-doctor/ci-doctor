@@ -89,11 +89,11 @@ def _layer(module: str) -> int:
     return LAYERS.index(part) if part in LAYERS else -1
 
 
-def test_the_engine_imports_only_the_regex_module_pydantic_and_the_stdlib():
+def test_the_engine_imports_only_lib_pydantic_and_the_stdlib():
     """The engine is pure: no config, no providers, no I/O dependency to drift under it."""
     import sys
 
-    allowed = {"ci_doctor.regex", "ci_doctor.engine", "pydantic", *sys.stdlib_module_names}
+    allowed = {"ci_doctor.lib", "ci_doctor.engine", "pydantic", *sys.stdlib_module_names}
     bad = {
         str(p.relative_to(PACKAGE)): sorted(out)
         for p in ENGINE.rglob("*.py")
@@ -129,3 +129,13 @@ def test_outside_code_imports_the_engine_only_through_its_surface():
 def test_config_imports_nothing_from_core():
     """`core` reads the config; the config reaching back into `core` was an import cycle."""
     assert _offenders((PACKAGE / "config").rglob("*.py"), ("ci_doctor.core",)) == {}
+
+
+def test_lib_is_a_leaf():
+    """Every package may use `lib/`, so it may use none of them back."""
+    bad = {
+        str(p.relative_to(PACKAGE)): out
+        for p in (PACKAGE / "lib").rglob("*.py")
+        if (out := sorted(m for m in _imports(p) if m.startswith("ci_doctor.") and m != "ci_doctor.errors"))
+    }
+    assert bad == {}

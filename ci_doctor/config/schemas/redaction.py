@@ -3,7 +3,7 @@
 from pydantic import Field
 
 from ci_doctor.config.schemas._base import Strict
-from ci_doctor.regex import Re2
+from ci_doctor.lib.regex import Re2
 
 
 class RedactionConfig(Strict):

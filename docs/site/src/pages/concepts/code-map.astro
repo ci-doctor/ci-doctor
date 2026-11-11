@@ -20,9 +20,9 @@ const packages = [
                 role: "What each command does, with no terminal in it: `analyze` (segment → assign phases → attribute → build bundle → report, over a live run or a log file), `deliver` (artifacts, MR note), `setup` (the dry run).",
             },
             {
-                path: "regex.py",
+                path: "lib/",
                 entry: "pattern_set()",
-                role: "RE2 for every regex a user or a pack supplies: linear time by construction, so no pattern can hang a job. `pattern_set` matches a whole list in one pass per line. Shared by `engine/`, `core/` and `config/`.",
+                role: "Shared low-level helpers. `regex.py`: RE2 for every regex a user or a matcher supplies, linear time by construction, so no pattern can hang a job; `pattern_set` matches a whole list in one pass per line. `files.py`: atomic writes.",
             },
             {
                 path: "errors.py",

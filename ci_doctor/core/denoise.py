@@ -15,7 +15,7 @@ import re
 from collections.abc import Callable
 
 from ci_doctor.config.schemas.denoise import DenoiseConfig
-from ci_doctor.regex import pattern_set
+from ci_doctor.lib.regex import pattern_set
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")  # CSI sequences (SGR colour, cursor, ...)
 _ERRORISH = re.compile(

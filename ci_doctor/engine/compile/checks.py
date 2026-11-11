@@ -3,7 +3,7 @@
 from ci_doctor.engine.errors import CompileError
 from ci_doctor.engine.plan import AllOf, AnyOf, FollowedBy, Inside, Leaf, Node, Not, PrecededBy
 from ci_doctor.engine.spec.limits import MAX_PATTERN_CHARS, MAX_PROGRAM_SIZE
-from ci_doctor.regex import compile_user, programsize
+from ci_doctor.lib.regex import compile_user, programsize
 
 
 def check_regex(regex: str, path: str) -> str:

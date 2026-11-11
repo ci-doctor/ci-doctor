@@ -16,7 +16,7 @@ import yaml
 
 from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
-from ci_doctor.files import atomic_write
+from ci_doctor.lib.files import atomic_write
 from ci_doctor.matchers.models import BUNDLE_GLOB, GENERATED, INDEX, MAX_BUNDLE_DEPTH, Bundle, Index
 from ci_doctor.matchers.validate import load_bundle, load_matcher, matcher_files
 
