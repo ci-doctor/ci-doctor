@@ -101,6 +101,6 @@ const config = `matchers:
     <ul>
         <li><strong>Plain <code>http://</code> works</strong>, but nothing protects the files in transit; every run that uses one logs a warning.</li>
         <li><strong>A presigned URL can't be a registry</strong>: it signs one file, and ci-doctor fetches many relative to the folder.</li>
-        <li><strong>Air-gapped:</strong> run <code>ci-doctor matchers mirror official DIR</code> where the official registry is reachable, copy <code>DIR</code> inside the network, and register its path (or a server serving it) as <code>official</code> to replace the built-in one. Cloning <code>ci-doctor/matchers</code> works too.</li>
+        <li><strong>Air-gapped:</strong> run <code>ci-doctor matchers mirror official DIR</code> where the official registry is reachable, copy <code>DIR</code> inside the network, and register its path (or a server serving it) as <code>official</code> to replace the built-in one. The mirror carries the official signature, so it verifies as <code>official</code>; a plain clone of <code>ci-doctor/matchers</code> has none (the deploy signs), so register a clone under another alias.</li>
     </ul>
 </Base>

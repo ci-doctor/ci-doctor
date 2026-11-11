@@ -3,9 +3,9 @@
 Matchers and bundles are stored by the sha256 their index lists (`blobs/sha256/ab/abcd…`):
 a file whose hash is unchanged is never fetched again, from any registry, and a
 blob is trusted because its name is its hash. Each http(s) registry's `index.yaml`
-is kept with its HTTP validators and how long the server said it stays fresh, so
-it is reused without a request while fresh and revalidated with a conditional GET
-after that. Local registries aren't cached: reading them is already a disk read.
+and its signature are kept with their HTTP validators and how long the server
+said they stay fresh, so they are reused without a request while fresh and
+revalidated with a conditional GET after that. Local registries aren't cached: reading them is already a disk read.
 
 The cache is an optimisation, never a requirement: a directory that can't be
 written logs one warning and the run goes on without it.
@@ -71,11 +71,11 @@ def default_root() -> Path:
 
 
 @dataclass(frozen=True)
-class CachedIndex:
-    """A registry's index as last fetched.
+class CachedFile:
+    """A registry file fetched by path, not hash (its index, its signature), as last fetched.
 
     Attributes:
-        body: The index's bytes.
+        body: The file's bytes.
         validators: What to revalidate it with.
         fresh_until: Unix time until which it is used without a request.
         fetched_at: Unix time it was last fetched or revalidated.
@@ -89,10 +89,10 @@ class CachedIndex:
     location: str = ""
 
     def hashes(self) -> set[str]:
-        """Every sha256 this index lists, for its matchers and bundles.
+        """Every sha256 this file lists, if it is an index.
 
         Returns:
-            The hashes; none if the cached index no longer parses.
+            The hashes; none if it doesn't parse as an index.
         """
         return _hashes(self.body)
 
@@ -161,26 +161,50 @@ class Cache:
         """
         self._store(self._blob_path(sha256), body)
 
-    def index(self, location: str) -> CachedIndex | None:
-        """A registry's cached index, if one is cached and readable.
+    def file(self, location: str, rel: str) -> CachedFile | None:
+        """A registry file cached by path (its index or signature), if cached and readable.
 
         Args:
             location: The registry's directory URL.
+            rel: The file, relative to it.
 
         Returns:
-            The cached index, or None.
+            The cached file, or None.
         """
-        return _read_index(self._registry_dir(location))
+        return _read_file(self._registry_dir(location), rel)
 
-    def indexes(self) -> list[CachedIndex]:
+    def indexes(self) -> list[CachedFile]:
         """Every registry index in the cache, oldest fetch first.
 
         Returns:
             The readable ones; a damaged entry is skipped.
         """
         folders = sorted((self.root / "registries").glob("*/")) if (self.root / "registries").is_dir() else []
-        found = [i for i in map(_read_index, folders) if i is not None]
+        found = [i for i in (_read_file(f, INDEX) for f in folders) if i is not None]
         return sorted(found, key=lambda i: i.fetched_at)
+
+    def signed_version(self, location: str) -> int | None:
+        """The highest signed index version seen from this registry, for the rollback check.
+
+        Args:
+            location: The registry's directory URL.
+
+        Returns:
+            The version, or None if none was recorded.
+        """
+        try:
+            return int(json.loads((self._registry_dir(location) / "signed.json").read_text())["version"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def record_signed_version(self, location: str, version: int) -> None:
+        """Remember a verified index version, so an older one is refused later.
+
+        Args:
+            location: The registry's directory URL.
+            version: The version just verified.
+        """
+        self._store(self._registry_dir(location) / "signed.json", json.dumps({"version": version}).encode())
 
     def blob_paths(self) -> list[Path]:
         """Every cached file.
@@ -208,30 +232,34 @@ class Cache:
         for sub in ("blobs", "registries"):
             shutil.rmtree(self.root / sub, ignore_errors=True)
 
-    def put_index(self, location: str, body: bytes, validators: Validators, max_age: float) -> None:
-        """Store a registry's freshly fetched index.
+    def put_file(self, location: str, rel: str, body: bytes, validators: Validators, max_age: float) -> None:
+        """Store a freshly fetched registry file (its index or signature).
 
         Args:
             location: The registry's directory URL.
-            body: The index's bytes.
+            rel: The file, relative to it.
+            body: Its bytes.
             validators: Its response's validators.
             max_age: How many seconds it stays fresh, from its response.
         """
         folder = self._registry_dir(location)
-        self._store(folder / INDEX, body)
-        self._store_meta(folder, location, validators, max_age)
+        self._store(folder / rel, body)
+        self._store_meta(folder, rel, location, validators, max_age)
 
-    def revalidated(self, location: str, validators: Validators, max_age: float) -> None:
-        """Record that a cached index is still current (the server answered `304`).
+    def revalidated(self, location: str, rel: str, validators: Validators, max_age: float) -> None:
+        """Record that a cached file is still current (the server answered `304`).
 
         Args:
             location: The registry's directory URL.
+            rel: The file, relative to it.
             validators: The validators to keep using.
             max_age: How many seconds it stays fresh, from the `304`.
         """
-        self._store_meta(self._registry_dir(location), location, validators, max_age)
+        self._store_meta(self._registry_dir(location), rel, location, validators, max_age)
 
-    def _store_meta(self, folder: Path, location: str, validators: Validators, max_age: float) -> None:
+    def _store_meta(
+        self, folder: Path, rel: str, location: str, validators: Validators, max_age: float
+    ) -> None:
         now = time.time()
         meta = {
             "location": redact(location),
@@ -240,7 +268,7 @@ class Cache:
             "fetched_at": now,
             "fresh_until": now + max_age,
         }
-        self._store(folder / "meta.json", json.dumps(meta, indent=2).encode())
+        self._store(folder / f"{rel}.meta.json", json.dumps(meta, indent=2).encode())
 
     def _blob_path(self, sha256: str) -> Path:
         return self.root / "blobs" / "sha256" / sha256[:2] / sha256
@@ -275,20 +303,21 @@ def root_for(cfg: MatchersConfig) -> Path:
     return Path(cfg.cache_dir).expanduser() if cfg.cache_dir else default_root()
 
 
-def _read_index(folder: Path) -> CachedIndex | None:
-    """One registry's cached index and its metadata, if both are readable.
+def _read_file(folder: Path, rel: str) -> CachedFile | None:
+    """One cached registry file and its metadata, if both are readable.
 
     Args:
-        folder: Its directory under `registries/`.
+        folder: Its registry's directory under `registries/`.
+        rel: The file.
 
     Returns:
-        The cached index, or None.
+        The cached file, or None.
     """
     try:
-        meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
-        body = (folder / INDEX).read_bytes()
+        meta = json.loads((folder / f"{rel}.meta.json").read_text(encoding="utf-8"))
+        body = (folder / rel).read_bytes()
         validators = Validators(etag=meta.get("etag"), last_modified=meta.get("last_modified"))
-        return CachedIndex(
+        return CachedFile(
             body,
             validators,
             float(meta["fresh_until"]),

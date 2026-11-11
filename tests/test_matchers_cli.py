@@ -23,7 +23,9 @@ from tests import support
 @pytest.fixture(autouse=True)
 def _mock_http(monkeypatch, fx_registry):
     """Serve the test registry at https://matchers.cidoc.dev/, a broken one and a dead one."""
-    files = {p.relative_to(fx_registry).as_posix(): p.read_bytes() for p in fx_registry.rglob("*.yaml")}
+    files = {
+        p.relative_to(fx_registry).as_posix(): p.read_bytes() for p in fx_registry.rglob("*") if p.is_file()
+    }
 
     def handler(request):
         host, rel = request.url.host, request.url.path.lstrip("/")

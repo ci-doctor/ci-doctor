@@ -99,7 +99,7 @@ def test_a_fresh_index_is_used_without_a_request(tmp_path, registry):
     server.fetched()
     _load(cfg, server)
     assert server.fetched() == []
-    meta = json.loads(next((tmp_path / "cache" / "registries").glob("*/meta.json")).read_text())
+    meta = json.loads(next((tmp_path / "cache" / "registries").glob("*/index.yaml.meta.json")).read_text())
     assert 560 <= meta["fresh_until"] - meta["fetched_at"] <= 570  # 600 - 30, measured from now
 
 

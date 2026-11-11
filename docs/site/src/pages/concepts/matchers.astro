@@ -208,6 +208,20 @@ ci-doctor matchers examine official/ruff ./job.log --framing gitlab`;
         <a href={url("/cicd/gitlab/")}>GitLab CI</a>.
     </p>
 
+    <h2>The official registry is signed</h2>
+    <p>
+        The hash check proves each file matches its index, but the index comes from
+        the same server as the files. So the official registry's deploy signs its
+        index: <code>index.yaml.sig</code> names the index's sha256, a version that
+        only goes up, and an expiry, signed with an Ed25519 key whose public half
+        ships inside ci-doctor. For the registry under the <code>official</code>
+        alias, a run refuses an index that isn't the one signed, a signature by any
+        other key, an expired signature (a frozen copy), and a version older than one
+        it has already seen (a rollback, remembered in the cache). The deploy
+        re-signs weekly. Your own registries aren't signed: they live in your network,
+        and are trusted as served.
+    </p>
+
     <h2>Pinning, and running with no network</h2>
     <p>
         There is no lock file: every run uses each registry's index as it is now.

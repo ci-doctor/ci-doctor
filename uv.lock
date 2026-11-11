@@ -1,11 +1,11 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten')",
+    "(python_full_version < '3.14' and sys_platform != 'emscripten') or (python_full_version < '3.12' and sys_platform == 'emscripten')",
 ]
 
 [[package]]
@@ -468,6 +468,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-ai-slim" },
     { name = "pygithub" },
+    { name = "pynacl" },
     { name = "python-gitlab" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -534,6 +535,7 @@ requires-dist = [
     { name = "pydantic-ai-slim", extras = ["openai"], marker = "extra == 'openai'", specifier = ">=2.40" },
     { name = "pydantic-ai-slim", extras = ["xai"], marker = "extra == 'xai'", specifier = ">=2.40" },
     { name = "pygithub", specifier = ">=2.9.1" },
+    { name = "pynacl", specifier = ">=1.5" },
     { name = "python-gitlab", specifier = ">=8.4.0" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "requests", specifier = ">=2.32" },
