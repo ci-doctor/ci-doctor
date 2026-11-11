@@ -373,3 +373,15 @@ def test_the_fetch_settings_come_from_the_config(monkeypatch):
         pass
     assert seen["timeout"] == 3
     assert seen["limits"].max_connections == 16
+
+
+def test_a_local_registry_file_that_is_not_regular_is_refused(tmp_path):
+    """A FIFO at a matcher path would block the read forever; the cap check alone can't see it."""
+    import os
+
+    reg = _registry(tmp_path, ["x"])
+    path = tmp_path / "matchers/python/x/matcher.yaml"
+    path.unlink()
+    os.mkfifo(path)
+    with pytest.raises(SetupError, match="is not a regular file"):
+        load(_cfg(["r/x"], r=reg))

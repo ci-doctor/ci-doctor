@@ -336,3 +336,10 @@ def test_cross_fire_is_reported_and_fails_only_when_asked(registry, tmp_path):
     assert report["outputs"]["pytest"]["positive"] == 4
     with pytest.raises(SetupError, match="python_traceback fires on .*with_traceback.log"):
         verify(registry, policy=Policy(cross_fire=True))
+
+
+def test_two_matchers_with_one_name_are_reported(registry):
+    """Their counts would merge and cross-fire would credit the wrong one."""
+    shutil.copytree(registry / PYTEST_DIR, registry / "matchers/js/pytest")
+    with pytest.raises(SetupError, match="matcher name 'pytest' is used twice"):
+        verify(registry)
