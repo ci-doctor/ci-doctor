@@ -110,7 +110,7 @@ jobs:
   contract:
     runs-on: ubuntu-latest
     env:
-      MATCHERS_REF: main   # the migration, goldens regenerated for this reader; main once merged
+      MATCHERS_REF: main
     steps:
       - uses: actions/checkout@v7
         with:
