@@ -5,6 +5,7 @@ shared `fx_registry`, and `http(s)://` goes through `httpx.MockTransport`.
 """
 
 import contextlib
+import hashlib
 import logging
 
 import httpx
@@ -24,6 +25,11 @@ _MATCHER = {
     "match": {"regex": "^boom"},
 }
 _SHA = "0" * 64
+
+
+def _sha(body: bytes) -> str:
+    """The index's hash of a file's bytes."""
+    return hashlib.sha256(body).hexdigest()
 
 
 def _cfg(include, **registries):
@@ -51,7 +57,7 @@ def _registry(root, matchers=(), bundles=None, index=None):
         path.write_text(yaml.safe_dump(body))
         doc["matchers"][name] = {
             "path": path.relative_to(root).as_posix(),
-            "sha256": _SHA,
+            "sha256": _sha(path.read_bytes()),
             "description": "d",
         }
     for name, include in (bundles or {}).items():
@@ -60,7 +66,11 @@ def _registry(root, matchers=(), bundles=None, index=None):
         path.write_text(
             yaml.safe_dump({"id": name, "description": "A bundle for the loading tests.", "include": include})
         )
-        doc["bundles"][name] = {"path": f"bundles/{name}.yaml", "sha256": _SHA, "description": "d"}
+        doc["bundles"][name] = {
+            "path": f"bundles/{name}.yaml",
+            "sha256": _sha(path.read_bytes()),
+            "description": "d",
+        }
     root.mkdir(parents=True, exist_ok=True)
     (root / "index.yaml").write_text(yaml.safe_dump(index if index is not None else doc))
     return str(root)
@@ -221,6 +231,32 @@ def test_a_404_names_the_registry_and_the_file(missing, fx_registry):
     files = _files(fx_registry)
     del files[missing]
     with pytest.raises(SetupError, match=f"registry 'fx' .*GET {missing}: HTTP 404"):
+        load(_cfg(["fx/all"], fx="https://reg.test/m/"), client=_http(files))
+
+
+def test_a_file_edited_after_indexing_fails_setup(tmp_path):
+    """The index's sha256 is checked: an edited or swapped file is refused, naming both hashes."""
+    location = _registry(tmp_path, ["x"])
+    path = tmp_path / "matchers/python/x/matcher.yaml"
+    path.write_text(path.read_text().replace("^boom", "^bang"))
+    expected = r"registry 'r' .*matchers/python/x/matcher.yaml has sha256 [0-9a-f]{64}, but the index lists [0-9a-f]{64}"
+    with pytest.raises(SetupError, match=expected):
+        load(_cfg(["r/x"], r=location))
+
+
+@pytest.mark.parametrize(
+    ("rel", "change"),
+    [
+        ("matchers/python/pytest/matcher.yaml", lambda text: text[: len(text) // 2]),
+        ("bundles/all.yaml", lambda text: text + "# appended on the way\n"),
+    ],
+    ids=["truncated matcher", "altered bundle"],
+)
+def test_a_served_file_that_differs_from_its_index_hash_fails_setup(rel, change, fx_registry):
+    """A short read or an altered file over http fails before it is parsed, matcher or bundle alike."""
+    files = _files(fx_registry)
+    files[rel] = change(files[rel])
+    with pytest.raises(SetupError, match=f"registry 'fx' .*{rel} has sha256"):
         load(_cfg(["fx/all"], fx="https://reg.test/m/"), client=_http(files))
 
 

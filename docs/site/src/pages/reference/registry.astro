@@ -79,7 +79,11 @@ const config = `matchers:
     <Code code={flags} lang="sh" theme="github-dark" />
     <p>
         ci-doctor checks every file again when it loads it, so a registry that never
-        ran <code>verify</code> still can't hand it an invalid matcher.
+        ran <code>verify</code> still can't hand it an invalid matcher. It also
+        refuses a matcher or bundle whose bytes don't match the <code>sha256</code>
+        that <code>index.yaml</code> lists for it, so a file edited, truncated or
+        swapped after indexing fails the setup. Run <code>matchers index</code> after
+        every edit, and publish the index together with the files it was built from.
     </p>
 
     <h2>Publish it and register it</h2>

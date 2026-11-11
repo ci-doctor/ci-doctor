@@ -46,8 +46,8 @@ class Transport(ABC):
         """
 
     @abstractmethod
-    def read(self, alias: str, location: str, rel: str, *, cap: int, client: httpx.Client) -> str:
-        """Read one file of a registry.
+    def read(self, alias: str, location: str, rel: str, *, cap: int, client: httpx.Client) -> bytes:
+        """Read one file of a registry, as the bytes its index hashes.
 
         Args:
             alias: The registry's alias, for warnings.
@@ -57,7 +57,7 @@ class Transport(ABC):
             client: The run's shared HTTP client.
 
         Returns:
-            The file's text.
+            The file's bytes.
 
         Raises:
             SetupError: If it can't be read, is over `cap`, or leaves the registry.

@@ -6,7 +6,7 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.transports import Transport, decode, redact
+from ci_doctor.matchers.transports import Transport, redact
 
 log = logging.getLogger("ci_doctor.matchers")
 
@@ -27,7 +27,7 @@ class HttpTransport(Transport):
         """
         return value if value.endswith("/") else value + "/"
 
-    def read(self, alias: str, location: str, rel: str, *, cap: int, client: httpx.Client) -> str:
+    def read(self, alias: str, location: str, rel: str, *, cap: int, client: httpx.Client) -> bytes:
         """GET a registry file: bounded redirects that never downgrade (another host warns), capped size.
 
         Args:
@@ -38,7 +38,7 @@ class HttpTransport(Transport):
             client: The run's shared HTTP client.
 
         Returns:
-            The file's text.
+            The file's bytes.
 
         Raises:
             SetupError: On a refused redirect, a non-200 answer, an oversized body,
@@ -83,8 +83,8 @@ def _follow(alias: str, rel: str, url: str, resp: httpx.Response, host: str | No
     return nxt
 
 
-def _body(rel: str, resp: httpx.Response, cap: int) -> str:
-    """A final response's text, streamed under the size cap.
+def _body(rel: str, resp: httpx.Response, cap: int) -> bytes:
+    """A final response's bytes, streamed under the size cap.
 
     Args:
         rel: The file being read, for messages.
@@ -92,7 +92,7 @@ def _body(rel: str, resp: httpx.Response, cap: int) -> str:
         cap: The most bytes accepted.
 
     Returns:
-        The decoded body.
+        The body.
 
     Raises:
         SetupError: On a non-200 answer or a body over `cap`.
@@ -104,4 +104,4 @@ def _body(rel: str, resp: httpx.Response, cap: int) -> str:
         body += chunk
         if len(body) > cap:
             raise SetupError(f"{rel} is over the {cap}-byte cap")
-    return decode(rel, bytes(body))
+    return bytes(body)

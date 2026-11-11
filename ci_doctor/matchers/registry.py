@@ -3,8 +3,9 @@
 Every `analyze` resolves `matchers.include` against the registries' indexes and
 fetches what it selected: no cache, so a registry is always read as it is now.
 What comes back is someone else's file, so every fetch is bounded (scheme,
-redirects, size, path containment, in `transports/`) and every file is validated
-again (`validate.py`). Anything wrong is a `SetupError`: the job exits 1 before
+redirects, size, path containment, in `transports/`), every matcher and bundle
+must match the sha256 its index lists, and every file is validated again
+(`validate.py`). Anything wrong is a `SetupError`: the job exits 1 before
 analysis starts, naming the registry and the cause.
 
 The author's side, building `index.yaml`, is `index.py`.
@@ -12,6 +13,7 @@ The author's side, building `index.yaml`, is `index.py`.
 
 import contextlib
 import difflib
+import hashlib
 import logging
 import time
 from collections.abc import Iterator, Mapping
@@ -26,7 +28,7 @@ from ci_doctor.config.schemas.matchers import MatchersConfig, unqualified
 from ci_doctor.engine import SCHEMAS, Output, Spec
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
-from ci_doctor.matchers.transports import redact, transport_for
+from ci_doctor.matchers.transports import decode, redact, transport_for
 from ci_doctor.matchers.validate import bundle_from, matcher_from, parse_yaml
 
 log = logging.getLogger("ci_doctor.matchers")
@@ -75,7 +77,9 @@ def registry_dir(alias: str, value: str) -> str:
         raise _fail(alias, value, err) from None
 
 
-def fetch_file(alias: str, location: str, rel: str, *, cap: int, client: httpx.Client) -> str:
+def fetch_file(
+    alias: str, location: str, rel: str, *, cap: int, client: httpx.Client, sha256: str | None = None
+) -> str:
     """Read one file of a registry through the transport its location calls for.
 
     Args:
@@ -84,15 +88,21 @@ def fetch_file(alias: str, location: str, rel: str, *, cap: int, client: httpx.C
         rel: The file, relative to that directory (already path-checked by `Index`).
         cap: The most bytes accepted.
         client: The run's shared HTTP client.
+        sha256: The hash the index lists for this file, checked against its bytes.
+            None for the index itself.
 
     Returns:
         The file's text.
 
     Raises:
-        SetupError: If it can't be read, is over `cap`, or leaves the registry.
+        SetupError: If it can't be read, is over `cap`, leaves the registry, does
+            not match `sha256`, or is not UTF-8.
     """
     try:
-        return transport_for(location).read(alias, location, rel, cap=cap, client=client)
+        body = transport_for(location).read(alias, location, rel, cap=cap, client=client)
+        if sha256 is not None and (actual := hashlib.sha256(body).hexdigest()) != sha256:
+            raise SetupError(f"{rel} has sha256 {actual}, but the index lists {sha256}")
+        return decode(rel, body)
     except SetupError as err:
         raise _fail(alias, location, err) from None
 
@@ -242,12 +252,12 @@ def _fetch_entry(ref: Ref, seen: Resolved, http: httpx.Client) -> tuple[Any, str
         The parsed document, and where it came from (redacted) for error messages.
 
     Raises:
-        SetupError: If the file can't be fetched or isn't valid YAML.
+        SetupError: If the file can't be fetched, doesn't match its index hash, or isn't valid YAML.
     """
     index, location = seen.indexes[ref.alias], seen.locations[ref.alias]
     entry = index.matchers.get(ref.name) or index.bundles[ref.name]
     where = redact(f"registry {ref.alias!r} ({location}): {entry.path}")
-    text = fetch_file(ref.alias, location, entry.path, cap=FILE_CAP, client=http)
+    text = fetch_file(ref.alias, location, entry.path, cap=FILE_CAP, client=http, sha256=entry.sha256)
     return parse_yaml(text, where), where
 
 

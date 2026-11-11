@@ -118,7 +118,9 @@ class IndexEntry(Strict):
     path: Annotated[str, AfterValidator(check_relative_path)] = Field(
         description="POSIX path relative to the registry directory."
     )
-    sha256: str = Field(pattern=r"^[0-9a-f]{64}$", description="sha256 of the file's bytes. Not checked yet.")
+    sha256: str = Field(
+        pattern=r"^[0-9a-f]{64}$", description="sha256 of the file's bytes; a fetched file must match it."
+    )
     description: str = Field(max_length=250, description="The file's description, for search and listings.")
     tags: list[Tag] = Field(default_factory=list, description="The matcher's tags; empty for a bundle.")
     schema_version: int | None = Field(
