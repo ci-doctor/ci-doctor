@@ -21,9 +21,9 @@ import yaml
 from pydantic import ValidationError
 
 from ci_doctor.config.schemas.matchers import BARE_ID
-from ci_doctor.engine import CompileError, MatcherV1, Spec, UnknownSchema, compile_plan, load
+from ci_doctor.engine import CompileError, Spec, UnknownSchema, compile_plan, load
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.models import MATCHER_GLOB, Bundle, RegistryMatcher
+from ci_doctor.matchers.models import MATCHER_GLOB, Bundle
 
 
 class _NoAliasLoader(yaml.SafeLoader):
@@ -144,13 +144,13 @@ def matcher_from(data: Any, where: str, *, dirs: tuple[str, str] | None = None) 
             version this ci-doctor doesn't know.
     """
     try:
-        m = load(data, legacy=RegistryMatcher)
+        m = load(data)
         compile_plan([m])
     except (UnknownSchema, CompileError) as err:
         raise SetupError(f"{where}: {err}") from None
     except ValidationError as err:
         raise SetupError(f"{where}: {err}") from None
-    if isinstance(m, MatcherV1) and not re.fullmatch(BARE_ID, m.id):
+    if not re.fullmatch(BARE_ID, m.id):
         raise SetupError(f"{where}: id {m.id!r} must be a bare name matching {BARE_ID}")
     if dirs is not None and m.id != dirs[1]:
         raise SetupError(f"{where}: id {m.id!r} must equal its directory name {dirs[1]!r}")

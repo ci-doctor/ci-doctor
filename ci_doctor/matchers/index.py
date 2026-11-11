@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from ci_doctor.engine import MatcherConfig, MatcherV1, Spec
+from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
 from ci_doctor.files import atomic_write
 from ci_doctor.matchers.models import BUNDLE_GLOB, GENERATED, INDEX, MAX_BUNDLE_DEPTH, Bundle, Index
@@ -59,14 +59,12 @@ def _matcher_entry(root: Path, path: Path, m: Spec) -> dict:
     Returns:
         The entry, in index key order.
     """
-    entry = _entry(root, path, m.description or "")
-    if isinstance(m, MatcherConfig):
-        entry["tags"] = list(m.classification)
-    else:
-        entry["schema"] = m.schema_version
-        entry["tags"] = list(m.tags)
-    entry["ecosystem"] = path.parent.parent.name
-    if isinstance(m, MatcherV1) and m.outputs is not None:
+    entry = _entry(root, path, m.description) | {
+        "schema": m.schema_version,
+        "tags": list(m.tags),
+        "ecosystem": path.parent.parent.name,
+    }
+    if m.outputs is not None:
         entry["outputs"] = list(m.outputs)
     return entry
 

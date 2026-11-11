@@ -53,7 +53,7 @@ def followed_by(hits: list[int], within: int, n: int) -> Lines:
     return _spans([(k - within, k - 1) for k in hits], n)
 
 
-def blocks(starts: list[int], ends: list[int], max_lines: int | None, n: int) -> list[tuple[int, int]]:
+def blocks(starts: list[int], ends: list[int], max_lines: int, n: int) -> list[tuple[int, int]]:
     """Non-nesting blocks: open on a start, close on the first end after it, or after `max_lines`.
 
     The scan resumes after a block closes, so a start inside an open block opens nothing.
@@ -61,7 +61,7 @@ def blocks(starts: list[int], ends: list[int], max_lines: int | None, n: int) ->
     Args:
         starts: Lines that open a block, ascending.
         ends: Lines that close one, ascending.
-        max_lines: The most lines a block holds; None for no cap (to the end of the log).
+        max_lines: The most lines a block holds.
         n: How many lines the log has.
 
     Returns:
@@ -73,10 +73,7 @@ def blocks(starts: list[int], ends: list[int], max_lines: int | None, n: int) ->
         if s < resume:
             continue
         k = bisect_right(ends, s)
-        last = ends[k] if k < len(ends) else n - 1
-        if max_lines is not None:
-            last = min(last, s + max_lines - 1)
-        last = min(last, n - 1)
+        last = min(ends[k] if k < len(ends) else n - 1, s + max_lines - 1, n - 1)
         out.append((s, last))
         resume = last + 1
     return out

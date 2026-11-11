@@ -1,8 +1,7 @@
 """The registry's own file formats: a matcher file, a bundle, and the `index.yaml` that lists everything.
 
-A matcher file is a spec of its schema version (`ci_doctor.engine`); a legacy one, with
-no `schema`, is :class:`RegistryMatcher`, the few rules a registry adds. The other
-shapes are the registry's own. Every model is
+A matcher file is a spec of its schema version, validated by `ci_doctor.engine`. The
+other shapes are the registry's own. Every model is
 strict, so a key we don't know is an error rather than a silently ignored typo.
 """
 
@@ -13,7 +12,7 @@ from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, model
 
 from ci_doctor.config.schemas._base import Strict
 from ci_doctor.config.schemas.matchers import BARE_ID
-from ci_doctor.engine import Description, MatcherConfig, Tag
+from ci_doctor.engine import Description, Tag
 
 #: Bounds the work one index can cause.
 MAX_INDEX_ENTRIES = 2000
@@ -86,20 +85,6 @@ class Ref(NamedTuple):
         return f"{self.alias}/{self.name}"
 
 
-class RegistryMatcher(MatcherConfig):
-    """A matcher as a registry file holds it: stricter than one in a config.
-
-    The id is bare; ci-doctor makes it `alias/id` at load. The description and a
-    tag are required: the description is all the LLM learns about the tool.
-    """
-
-    id: BareId = Field(description="Matcher name, bare (`pytest`); also its directory name.")
-    description: Description = Field(
-        description="What the tool is and what its failure means. Shown to the LLM; one line."
-    )
-    classification: list[Tag] = Field(min_length=1, max_length=5, description="1-5 tags (`[python, test]`).")
-
-
 class Bundle(Strict):
     """A named list of matchers and bundles from the same registry: our `p/python`."""
 
@@ -139,7 +124,7 @@ class IndexEntry(Strict):
         None,
         alias="schema",
         description="The matcher's schema version, so a client skips what it can't read without "
-        "fetching it. Absent for a bundle and a legacy matcher.",
+        "fetching it. Absent for a bundle.",
     )
     ecosystem: BareId | None = Field(
         None, description="The matcher's ecosystem: its folder under `matchers/`."
@@ -148,21 +133,6 @@ class IndexEntry(Strict):
         default_factory=list,
         description="The matcher's output names, when it has several (`check`, `format`).",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _classification_is_tags(cls, data: object) -> object:
-        """Read an index written before tags were renamed, so today's registries still load.
-
-        Args:
-            data: The entry as parsed.
-
-        Returns:
-            The entry, `classification` renamed to `tags`.
-        """
-        if isinstance(data, dict) and "classification" in data and "tags" not in data:
-            data = {("tags" if k == "classification" else k): v for k, v in data.items()}
-        return data
 
 
 class Index(Strict):

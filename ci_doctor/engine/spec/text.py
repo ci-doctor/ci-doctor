@@ -33,7 +33,7 @@ def _description(text: str, info: ValidationInfo) -> str:
     return text
 
 
-#: A classification tag: lowercase, digits and dashes.
+#: A tag: lowercase, digits and dashes.
 Tag = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]+$")]
 #: A description: one line of printable ASCII, safe to put in a prompt.
 Description = Annotated[str, AfterValidator(_description)]

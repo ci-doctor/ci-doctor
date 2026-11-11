@@ -73,7 +73,7 @@ def test_the_cli_exits_one_on_a_stale_index_and_zero_when_current(registry, monk
             "nests 6 deep, over 5",
         ),
         (
-            lambda r: (r / PYTEST).write_text((r / PYTEST).read_text().replace("FAILURES", "(?=FAILURES)")),
+            lambda r: (r / PYTEST).write_text((r / PYTEST).read_text().replace("FAILURES", r"(F)\1")),
             "not valid RE2",
         ),
         (

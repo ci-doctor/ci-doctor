@@ -118,19 +118,3 @@ def test_a_newer_schema_in_the_file_itself_fails_setup(registry):
     path.write_text(path.read_text().replace("schema: 1", "schema: 3"))
     with pytest.raises(SetupError, match=r"needs a newer ci-doctor \(schema 3\)"):
         load(_cfg(registry, ["fx/ruff"]))
-
-
-def test_a_legacy_index_still_reads(registry):
-    """An index from before tags were renamed (`classification`) loads unchanged."""
-    path = registry / "index.yaml"
-    text = path.read_text().replace("    tags: ", "    classification: ")
-    text = (
-        "\n".join(
-            line
-            for line in text.splitlines()
-            if not line.strip().startswith(("schema: 1", "ecosystem:", "outputs:")) or line == "schema: 1"
-        )
-        + "\n"
-    )
-    path.write_text(text)
-    assert list(resolve(_cfg(registry, ["fx/all"])).matchers) == ["fx/ruff", "fx/disk_full"]

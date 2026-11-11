@@ -23,7 +23,7 @@ import yaml
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.core.models import Section
-from ci_doctor.engine import MatcherConfig, Spec
+from ci_doctor.engine import MatcherV1, Spec
 from ci_doctor.matchers.index import write_index
 from ci_doctor.matchers.registry import load
 from ci_doctor.providers.registry import SEGMENTERS, segmenter_for
@@ -153,21 +153,23 @@ def segment(provider: str, raw_log: str) -> list[Section]:
 
 # --- matcher registries ------------------------------------------------------------
 
-#: Two matchers in the shape real packs take: a start/end block and an anchored window.
+#: Two matchers in the shape real ones take: a block closed by `until`, and an anchor with lines after it.
 PY_MATCHERS = {
     "pytest": {
+        "schema": 1,
         "role": "tool",
-        "classification": ["python", "test"],
         "description": "pytest's === FAILURES === block, from the first failing test through to the short summary.",
-        "start": "^=+ FAILURES =+",
-        "end": "^=+ short test summary",
+        "tags": ["python", "test"],
+        "match": {"regex": "^=+ FAILURES =+"},
+        "window": {"until": {"regex": "^=+ short test summary"}, "max_lines": 500},
     },
     "python_traceback": {
+        "schema": 1,
         "role": "tool",
-        "classification": ["python", "runtime"],
         "description": "An uncaught Python exception. The exception type and message are on the traceback's last line.",
-        "pattern": r"^\s*Traceback \(most recent call last\):",
-        "after": 12,
+        "tags": ["python", "runtime"],
+        "match": {"regex": r"^\s*Traceback \(most recent call last\):"},
+        "window": {"after": 12},
     },
 }
 #: `all` -> `python` -> both matchers, so bundle nesting is exercised too.
@@ -184,8 +186,8 @@ def write_registry(
 
     Args:
         root: Where to write it; created if missing.
-        matchers: `{name: matcher fields}`, without `id`. The first tag
-            (`classification` or `tags`) picks the ecosystem directory.
+        matchers: `{name: matcher fields}`, without `id`. The first tag picks
+            the ecosystem directory.
         bundles: `{name: [included names]}`.
         fixtures: `{matcher name: {stem: log text}}`, written as
             `fixtures/<stem>.log` next to the matcher for `matchers verify`. No
@@ -196,7 +198,7 @@ def write_registry(
         and a current `index.yaml`.
     """
     for name, fields in matchers.items():
-        path = root / "matchers" / (fields.get("classification") or fields["tags"])[0] / name / "matcher.yaml"
+        path = root / "matchers" / fields["tags"][0] / name / "matcher.yaml"
         path.parent.mkdir(parents=True)
         path.write_text(_dump({"id": name, **fields}))
         for stem, log in (fixtures or {}).get(name, {}).items():
@@ -239,21 +241,24 @@ def registry_matchers(root: Path, *refs: str) -> list[Spec]:
 
 
 #: Two of the formerly shipped matchers, for tests about wrappers vs tools.
-TSC = MatcherConfig(
-    id="t/tsc",
-    role="tool",
-    classification=["js", "build"],
-    description="A TypeScript compile error (`error TS2345:`) with the source excerpt around it.",
-    pattern=r"error TS\d+:",
-    before=1,
-    after=3,
+TSC = MatcherV1.model_validate(
+    {
+        "schema": 1,
+        "id": "t/tsc",
+        "description": "A TypeScript compile error (`error TS2345:`) with the source excerpt around it.",
+        "tags": ["js", "build"],
+        "match": {"regex": r"error TS\d+:"},
+        "window": {"before": 1, "after": 3},
+    }
 )
-NPM = MatcherConfig(
-    id="t/npm",
-    role="wrapper",
-    classification=["js", "deps"],
-    description="`npm ERR!` lines. A wrapper: npm reports the failure of the script it ran, never the cause.",
-    pattern="npm ERR!",
-    before=2,
-    after=10,
+NPM = MatcherV1.model_validate(
+    {
+        "schema": 1,
+        "id": "t/npm",
+        "role": "wrapper",
+        "description": "`npm ERR!` lines. A wrapper: npm reports the failure of the script it ran, never the cause.",
+        "tags": ["js", "deps"],
+        "match": {"regex": "npm ERR!"},
+        "window": {"before": 2, "after": 10},
+    }
 )

@@ -3,11 +3,9 @@
 from collections.abc import Collection, Sequence
 
 from ci_doctor.engine.compile.leaves import Leaves
-from ci_doctor.engine.compile.legacy import compile_legacy
 from ci_doctor.engine.compile.v1 import compile_v1
 from ci_doctor.engine.plan import OutputPlan, Plan
 from ci_doctor.engine.spec import Spec
-from ci_doctor.engine.spec.legacy import MatcherConfig
 
 
 def compile_plan(specs: Sequence[Spec], exclude: Collection[str] = ()) -> Plan:
@@ -26,8 +24,5 @@ def compile_plan(specs: Sequence[Spec], exclude: Collection[str] = ()) -> Plan:
     leaves = Leaves()
     outputs: list[OutputPlan] = []
     for spec in specs:
-        if isinstance(spec, MatcherConfig):
-            outputs.append(compile_legacy(spec, leaves))
-        else:
-            outputs += compile_v1(spec, leaves)
+        outputs += compile_v1(spec, leaves)
     return Plan(leaves.table(), tuple(o for o in outputs if o.output.id not in exclude))

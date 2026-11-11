@@ -51,7 +51,7 @@ def _downwards(ev: Evaluator, anchors: list[int], window: WindowPlan) -> list[tu
     """
     n = ev.n
     if window.until is not None:
-        return blocks(anchors, ev.sorted(window.until), window.max_lines, n)
+        return blocks(anchors, ev.sorted(window.until), window.max_lines or n, n)
     if window.while_ is None:
         return [(i, min(n - 1, i + window.after)) for i in anchors]
     cont, cap = ev.lines(window.while_), window.max_lines or n

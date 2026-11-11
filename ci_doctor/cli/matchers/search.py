@@ -23,11 +23,11 @@ class SearchCommand(Command):
     class _Hit(Row):
         name: str
         kind: str
-        classification: str
+        tags: str
         description: str
 
         def line(self) -> str:
-            tags = f" [{self.classification}]" if self.classification else ""
+            tags = f" [{self.tags}]" if self.tags else ""
             return f"{self.name}  ({self.kind}){tags}  {self.description}"
 
     @override

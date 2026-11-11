@@ -1,11 +1,17 @@
 """Builders shared by the engine tests."""
 
-from ci_doctor.engine import MatcherConfig, MatcherV1, Spec, compile_plan, estimate_tokens, fired, run, select
+from ci_doctor.engine import MatcherV1, Spec, compile_plan, estimate_tokens, fired, run, select
 
 
-def matcher(**kw: object) -> MatcherConfig:
-    """Build a MatcherConfig with every field defaulted, overridden by kwargs."""
-    return MatcherConfig(**{"id": "x", **kw})
+def rx(regex: str, *, id: str = "x", role: str = "tool", before: int = 0, after: int = 0) -> MatcherV1:
+    """A one-output matcher anchored on `regex`, keeping `before`/`after` lines."""
+    window = {k: v for k, v in (("before", before), ("after", after)) if v}
+    return v1(id=id, role=role, match={"regex": regex}, **({"window": window} if window else {}))
+
+
+def block(start: str, end: str, *, id: str = "x") -> MatcherV1:
+    """A one-output matcher keeping the block from `start` to the next `end`."""
+    return v1(id=id, match={"regex": start}, window={"until": {"regex": end}, "max_lines": 500})
 
 
 def extract(

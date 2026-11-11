@@ -142,8 +142,6 @@ id: mytool`;
     <p>
         A released schema version never changes how it compiles: a change is a new
         version, and every ci-doctor compiles every version it knows. A file with no
-        <code>schema</code> key is the pre-1 format (<code>pattern</code>, or
-        <code>start</code> and <code>end</code>), still read while registries
-        migrate.
+        <code>schema</code> is refused.
     </p>
 </Base>

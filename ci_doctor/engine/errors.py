@@ -32,7 +32,10 @@ class UnknownSchema(ValueError):
         """Record the version.
 
         Args:
-            version: The `schema` the file declares.
+            version: The `schema` the file declares; None when it declares none.
         """
         self.version = version
-        super().__init__(f"needs a newer ci-doctor (schema {version})")
+        if version is None:
+            super().__init__("has no `schema`; write `schema: 1` (docs.cidoc.dev/reference/matcher-format/)")
+        else:
+            super().__init__(f"needs a newer ci-doctor (schema {version})")

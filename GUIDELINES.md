@@ -109,7 +109,7 @@ new front end, never a change to how matching runs. Its layers, bottom first:
 | Layer | Holds |
 |---|---|
 | `plan.py`, `errors.py` | The Plan, and `CompileError` / `UnknownSchema`; under every layer |
-| `spec/` | What a matcher file may say, per schema version (`v1/`, `legacy.py`), and `load`, which picks the model by `schema`. Caps in `limits.py`, roles and ranks in `roles.py` |
+| `spec/` | What a matcher file may say, per schema version (`v1/`), and `load`, which picks the model by `schema`. Caps in `limits.py`, roles and ranks in `roles.py` |
 | `compile/` | Spec → Plan: template and `define` expansion, the cost and empty-line checks, an error path on every failure |
 | `run/` | Plan × lines → windows: one RE2 pass (`scan.py`), set algebra for `all`/`any`/`not` (`lines.py`), linear sweeps for relations, then windows |
 | `select/` | Windows → evidence: `merge`, `shed`, `render`, `fired`, and the token `budget` |
@@ -340,7 +340,7 @@ would mean matching tool-specific regexes (pytest, tsc, go…) that duplicate th
 catalogue and belong to the model. So without an LLM the category is honestly `unknown`
 — the deterministic pipeline still decides the **phase** (where it broke); the model
 decides the category (what kind). Do not reintroduce log-signature category guessing here.
-A matcher's `role` and `classification` rank and describe *evidence*; neither ever sets
+A matcher's `role` and `tags` rank and describe *evidence*; neither ever sets
 the category.
 
 ### 5.4 Add a provider

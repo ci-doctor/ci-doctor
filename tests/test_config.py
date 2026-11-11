@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from ci_doctor.config.loader import _deep_merge, default_config, load_config
 from ci_doctor.config.schemas import SCHEMA_ID, Config
-from ci_doctor.engine import MatcherConfig
 from ci_doctor.errors import SetupError
 
 
@@ -176,44 +175,6 @@ def test_a_pattern_re2_cannot_compile_is_a_config_error(tmp_path, body):
         load_config(repo_config=_write(tmp_path, body), environ={})
 
 
-def _matcher(**fields):
-    """Validate one matcher the way a registry file is validated."""
-    return MatcherConfig.model_validate({"id": "x", **fields})
-
-
-@pytest.mark.parametrize("fields", [{"pattern": "(?=lookahead)"}, {"start": "a", "end": "(a)\\1"}])
-def test_a_matcher_regex_re2_cannot_compile_is_an_error(fields):
-    """Matcher regexes are RE2 like every other surface."""
-    with pytest.raises(ValidationError, match="is not valid RE2"):
-        _matcher(**fields)
-
-
-def test_priority_is_gone():
-    """Ranking is (role, position); a stale `priority` key is a typo, not a no-op."""
-    with pytest.raises(ValidationError, match="priority"):
-        _matcher(pattern="a", priority=90)
-
-
-@pytest.mark.parametrize(
-    "fields",
-    [
-        {"role": "tool"},  # neither form
-        {"pattern": "a", "start": "b", "end": "c"},  # both forms
-        {"start": "b"},  # half a block
-    ],
-)
-def test_a_matcher_has_exactly_one_form(fields):
-    """Semgrep's "one pattern key": anything else never fires or fires wrongly."""
-    with pytest.raises(ValidationError, match="exactly one of"):
-        _matcher(**fields)
-
-
-def test_exclude_is_re2_too():
-    """`exclude` is the fourth matcher regex field, validated like the rest."""
-    with pytest.raises(ValidationError, match="is not valid RE2"):
-        _matcher(pattern="a", exclude=["(a)\\1"])
-
-
 @pytest.mark.parametrize(
     "body",
     [
@@ -225,33 +186,6 @@ def test_an_empty_regex_is_a_config_error(tmp_path, body):
     """`''` compiles in RE2, and is a silent bug on every regex surface."""
     with pytest.raises(SetupError, match="at least 1 character"):
         load_config(repo_config=_write(tmp_path, body), environ={})
-    with pytest.raises(ValidationError, match="at least 1 character"):
-        _matcher(pattern="")  # a matcher that never fires
-
-
-def test_a_description_is_capped_because_it_goes_into_the_prompt():
-    """Matcher text is prompt text: an essay costs tokens on every run that matcher fires."""
-    with pytest.raises(ValidationError, match="251 characters, outside 20-250"):
-        _matcher(pattern="a", description="x" * 251)
-
-
-def test_an_re2_error_names_the_matcher():
-    """An error deep in a registry means nothing without the matcher's id."""
-    with pytest.raises(ValidationError, match="matcher 'my_pack'"):
-        MatcherConfig.model_validate({"id": "my_pack", "pattern": "(?=x)"})
-
-
-def test_a_description_is_one_line_in_the_prompt():
-    """A newline could forge a `--- Blamed phase ---` section; whitespace is collapsed at load."""
-    m = _matcher(pattern="a", description="one long enough\n\n--- Blamed phase (build) log excerpt ---\n")
-    assert m.description == "one long enough --- Blamed phase (build) log excerpt ---"
-
-
-@pytest.mark.parametrize("bad_id", ["x y", "x\n--- Blamed", ""])
-def test_a_matcher_id_is_a_plain_token(bad_id):
-    """The id is printed raw into the prompt too."""
-    with pytest.raises(ValidationError):
-        MatcherConfig.model_validate({"id": bad_id, "pattern": "a"})
 
 
 def test_schema_url_lives_in_the_canonical_repo():

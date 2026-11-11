@@ -99,8 +99,7 @@ class WindowPlan:
         until: End at the next line matching this, inclusive.
         while_: Extend while the next line matches this.
         max_lines: Caps `until` / `while_`: the window holds at most this many lines
-            from the anchor down. None only for the legacy `start`/`end` block, which
-            runs to the end of the log when its `end` never comes.
+            from the anchor down. None when neither is set.
     """
 
     before: int = 0
