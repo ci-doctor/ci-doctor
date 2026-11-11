@@ -9,12 +9,12 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "astro": "^7.3.5"
+    "astro": "^7.4.7"
   },
   "allowScripts": {
     "esbuild@0.28.1": true
   },
   "devDependencies": {
-    "pagefind": "^1.5.2"
+    "pagefind": "^1.6.0"
   }
 }
