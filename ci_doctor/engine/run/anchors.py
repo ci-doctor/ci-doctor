@@ -22,6 +22,7 @@ class Evaluator:
         self.hits = hits
         self.n = n
         self._memo: dict[Node, Lines] = {}
+        self._sorted: dict[Node, list[int]] = {}
 
     def lines(self, node: Node) -> Lines:
         """The lines where `node` holds.
@@ -43,9 +44,11 @@ class Evaluator:
             node: A match tree.
 
         Returns:
-            Line indexes.
+            Line indexes. Remembered too: a window looks its `from` lines up per anchor.
         """
-        return self.lines(node).sorted(self.n)
+        if node not in self._sorted:
+            self._sorted[node] = self.lines(node).sorted(self.n)
+        return self._sorted[node]
 
     def _eval(self, node: Node) -> Lines:
         match node:

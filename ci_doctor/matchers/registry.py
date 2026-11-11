@@ -333,21 +333,23 @@ def _drop_unreadable(out: Resolved) -> None:
     asked for, so that fails setup instead (invariant #3: before analysis starts).
 
     Args:
-        out: The expansion so far; unreadable matchers are removed from it.
+        out: The expansion so far; its matchers are narrowed to the readable ones.
 
     Raises:
         SetupError: For an unreadable matcher included by name.
     """
-    for key, via in list(out.matchers.items()):
+    readable = {}
+    for key, via in out.matchers.items():
         ref = Ref.parse(key)
         version = out.indexes[ref.alias].matchers[ref.name].schema_version
         if version is None or version in SCHEMAS:
+            readable[key] = via
             continue
         message = f"{key} needs a newer ci-doctor (schema {version})"
         if via == "direct":
             raise SetupError(message)
         log.warning(f"{message}; skipped from {via}")
-        del out.matchers[key]
+    out.matchers = readable
 
 
 def _prefetch_bundles(refs: list[Ref], out: Resolved, http: httpx.Client, workers: int) -> dict[str, Bundle]:

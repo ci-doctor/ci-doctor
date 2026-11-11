@@ -273,13 +273,14 @@ def _cross_fire(root: Path, matchers: list[_Matcher], report: Report) -> None:
     """
     plan = compile_plan([m.spec for m in matchers])
     owner = {o.output.id: m for m in matchers for o in m.plan.outputs}
-    own = {id(m): {_digest(lines) for lines in m.logs.values()} for m in matchers}
+    digests = {log: _digest(lines) for m in matchers for log, lines in m.logs.items()}
+    own = {id(m): {digests[log] for log in m.logs} for m in matchers}
     for m in matchers:
         for log, lines in m.logs.items():
             fired = {plan.outputs[w.output].output for w in run(plan, lines)}
             for out in sorted(fired, key=lambda o: o.id):
                 other = owner[out.id]
-                if other is m or out.role == "fallback" or _digest(lines) in own[id(other)]:
+                if other is m or out.role == "fallback" or digests[log] in own[id(other)]:
                     continue
                 report.cross_fire.append({"output": out.id, "fixture": str(log.relative_to(root))})
 
