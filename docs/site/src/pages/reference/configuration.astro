@@ -83,6 +83,7 @@ matchers:
     # pinned: https://raw.githubusercontent.com/acme/matchers/<tag-or-sha>/
   include: []                    # alias/name of a matcher or bundle; empty exits 1
   # include: [official/python, acme/mytool]
+  exclude: []                    # alias/matcher.output to drop; one that names nothing exits 1
   timeout_seconds: 10            # per registry request
   fetch_workers: 8               # registry files fetched at once; 1 fetches in order
 
@@ -337,6 +338,13 @@ redaction:
                 ></tr
             >
             <tr
+                ><td><code>matchers.exclude</code></td><td><code>[]</code></td><td
+                    >Outputs to drop from the included matchers, each
+                    <code>alias/matcher.output</code> (<code>official/ruff.format</code>).
+                    An entry that names no output of an included matcher exits 1.</td
+                ></tr
+            >
+            <tr
                 ><td><code>matchers.timeout_seconds</code></td><td><code>10</code></td><td
                     >Seconds to wait on each registry request before failing the
                     setup. Raise it for a slow mirror.</td
@@ -377,8 +385,8 @@ redaction:
 
     <h2>Regex syntax</h2>
     <p>
-        Every regex you can configure — matcher <code>pattern</code>,
-        <code>start</code>, <code>end</code> and <code>exclude</code>,
+        Every regex you can configure — a matcher's <code>regex</code> (and the
+        regex a <code>template</code> becomes),
         <code>denoise.noise_patterns</code>, <code>redaction.extra_patterns</code> —
         is <a href="https://github.com/google/re2/wiki/Syntax">RE2</a>, compiled when
         the config loads. RE2 matches in linear time, so no pattern can hang a job.

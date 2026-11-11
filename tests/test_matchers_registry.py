@@ -17,10 +17,11 @@ from ci_doctor.matchers import registry
 from ci_doctor.matchers.registry import FILE_CAP, INDEX_CAP, load, resolve
 
 _MATCHER = {
+    "schema": 1,
     "role": "tool",
-    "classification": ["python"],
     "description": "A matcher written for the registry loading tests.",
-    "pattern": "^boom",
+    "tags": ["python"],
+    "match": {"regex": "^boom"},
 }
 _SHA = "0" * 64
 

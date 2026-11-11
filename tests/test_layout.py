@@ -1,4 +1,4 @@
-"""The package layering GUIDELINES §2 describes: `cli/` on top, nothing importing it."""
+"""The package layering GUIDELINES §2 describes: `cli/` on top, nothing importing it; `engine/` pure."""
 
 import ast
 from pathlib import Path
@@ -73,3 +73,66 @@ def test_each_command_module_holds_one_command():
         ]
         found[str(path.relative_to(cli))] = [(c.name, bool(inspect.getdoc(c))) for c in own]
     assert found and all(v == [(Path(k).stem, True)] for k, v in found.items()), found
+
+
+ENGINE = PACKAGE / "engine"
+#: `engine/`'s layers, bottom first: each imports only the ones before it.
+LAYERS = ("spec", "compile", "run", "select")
+
+
+def _layer(module: str) -> int:
+    """A dotted `ci_doctor.engine.*` module's layer; modules beside the layers sit under them all."""
+    part = module.split(".")[2] if module.count(".") >= 2 else ""
+    return LAYERS.index(part) if part in LAYERS else -1
+
+
+def test_the_engine_imports_only_lib_pydantic_and_the_stdlib():
+    """The engine is pure: no config, no providers, no I/O dependency to drift under it."""
+    import sys
+
+    allowed = {"ci_doctor.lib", "ci_doctor.engine", "pydantic", *sys.stdlib_module_names}
+    bad = {
+        str(p.relative_to(PACKAGE)): sorted(out)
+        for p in ENGINE.rglob("*.py")
+        if (out := {m for m in _imports(p) if not any(m == a or m.startswith(f"{a}.") for a in allowed)})
+    }
+    assert bad == {}
+
+
+def test_engine_layers_import_only_downwards():
+    """`spec` <- `compile` <- `run` <- `select`: a layer never reaches above itself."""
+    bad = {}
+    for p in ENGINE.rglob("*.py"):
+        rel = p.relative_to(ENGINE)
+        if rel == Path("__init__.py"):
+            continue  # the surface re-exports every layer
+        own = LAYERS.index(rel.parts[0]) if rel.parts[0] in LAYERS else -1
+        if up := sorted(m for m in _imports(p) if m.startswith("ci_doctor.engine.") and _layer(m) > own):
+            bad[str(rel)] = up
+    assert bad == {}
+
+
+def test_outside_code_imports_the_engine_only_through_its_surface():
+    """`ci_doctor.engine` is the contract; its submodules can move without touching callers."""
+    bad = {
+        str(p.relative_to(PACKAGE)): deep
+        for p in PACKAGE.rglob("*.py")
+        if ENGINE not in p.parents
+        and (deep := sorted(m for m in _imports(p) if m.startswith("ci_doctor.engine.")))
+    }
+    assert bad == {}
+
+
+def test_config_imports_nothing_from_core():
+    """`core` reads the config; the config reaching back into `core` was an import cycle."""
+    assert _offenders((PACKAGE / "config").rglob("*.py"), ("ci_doctor.core",)) == {}
+
+
+def test_lib_is_a_leaf():
+    """Every package may use `lib/`, so it may use none of them back."""
+    bad = {
+        str(p.relative_to(PACKAGE)): out
+        for p in (PACKAGE / "lib").rglob("*.py")
+        if (out := sorted(m for m in _imports(p) if m.startswith("ci_doctor.") and m != "ci_doctor.errors"))
+    }
+    assert bad == {}

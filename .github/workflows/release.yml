@@ -82,18 +82,15 @@ jobs:
             docker.io/fennet/ci-doctor:latest
 
       # The air-gap tarball; the bare `ci-doctor:X` tag is what the docs say to retag.
-      - name: Save the Docker image as a gzipped tar
-        if: steps.gate.outputs.release == 'true'
-        env:
-          VERSION: ${{ steps.bump.outputs.version }}
-        run: |
-          docker tag "docker.io/fennet/ci-doctor:$VERSION" "ci-doctor:$VERSION"
-          docker save "ci-doctor:$VERSION" | gzip -9 > "ci-doctor-$VERSION-image.tar.gz"
-
       # Editors resolve it via its $id, /releases/latest/download/ci-doctor.schema.json.
       - name: Generate the config JSON Schema
         if: steps.gate.outputs.release == 'true'
         run: uv run --locked ci-doctor config --schema > ci-doctor.schema.json
+
+      # One per known version; matcher files resolve /releases/latest/download/matcher-v<N>.schema.json.
+      - name: Generate the matcher JSON Schemas
+        if: steps.gate.outputs.release == 'true'
+        run: uv run --locked ci-doctor matchers schema --out schemas
 
       # Runtime deps only: what a user installs.
       - name: Generate the SBOM
@@ -141,7 +138,7 @@ jobs:
           gh release create "v$VERSION" \
             --title "v$VERSION" \
             --generate-notes \
-            dist/* "ci-doctor-$VERSION-image.tar.gz" ci-doctor.schema.json ci-doctor.sbom.json
+            ci-doctor.schema.json schemas/matcher-v*.schema.json ci-doctor.sbom.json
 
       # The PyPI publisher is bound to this repo and this file name.
       - name: Publish distributions to PyPI

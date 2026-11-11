@@ -40,6 +40,8 @@ Five top-level sections. Every page belongs to exactly one, and the URL says whi
 /reference/                   index
   /reference/cli/
   /reference/configuration/
+  /reference/matcher-format/
+  /reference/registry/
 ```
 
 ### Choosing where a new page goes
@@ -122,13 +124,14 @@ exceptions. Pages nested one directory deep import from `../../lib/url`.
 
 ## 4. Generated content must not be hand-written
 
-Data that lives in `ci_doctor/config/defaults.yml` is generated into
+Data that lives in `ci_doctor/config/defaults.yml` or on the engine's matcher models is generated into
 `src/data/*.json` by `mise run docs:data` (`scripts/gen_docs_data.py`), and a test
-fails when the committed JSON drifts from the config:
+fails when the committed JSON drifts from its source:
 
 | File | Source | Used by |
 |---|---|---|
 | `src/data/phases.json` | the section-name → phase map | `/concepts/attribution/` |
+| `src/data/matcher-v1.json` | the schema 1 matcher models' fields | `/reference/matcher-format/` |
 
 **Never edit that JSON.** A hand-written table is stale by the next commit, which
 is the whole reason it is generated.
@@ -138,7 +141,7 @@ the official registry at <https://matchers.cidoc.dev>; `/concepts/matchers/`
 explains matchers and registries and links there. Do not copy matcher names or
 counts into a page: they change in another repository.
 
-Regenerate after any change to `defaults.yml`:
+Regenerate after any change to `defaults.yml` or a matcher spec model:
 
 ```sh
 mise run docs:data

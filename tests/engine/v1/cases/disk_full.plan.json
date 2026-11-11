@@ -1,0 +1,47 @@
+{
+  "type": "Plan",
+  "leaves": [
+    "No space left on device",
+    "ENOSPC"
+  ],
+  "outputs": [
+    {
+      "type": "OutputPlan",
+      "output": {
+        "type": "Output",
+        "id": "disk_full",
+        "role": "issue",
+        "description": "The runner ran out of disk - No space left on device / ENOSPC. The step that hit it is a victim of the runner, not the cause."
+      },
+      "variants": [
+        {
+          "type": "VariantPlan",
+          "name": "",
+          "match": {
+            "type": "AnyOf",
+            "items": [
+              {
+                "type": "Leaf",
+                "index": 0
+              },
+              {
+                "type": "Leaf",
+                "index": 1
+              }
+            ]
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 3,
+            "after": 3,
+            "from_": null,
+            "from_within": 0,
+            "until": null,
+            "while_": null,
+            "max_lines": null
+          }
+        }
+      ]
+    }
+  ]
+}

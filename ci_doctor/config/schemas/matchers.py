@@ -15,6 +15,8 @@ BARE_ID = r"[a-z][a-z0-9_]{0,63}"
 _ALIAS = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 #: A qualified matcher or bundle reference.
 _REF = re.compile(rf"{_ALIAS.pattern}/{BARE_ID}")
+#: A qualified output reference: `alias/matcher.output`, or `alias/matcher` for a one-output matcher.
+_OUTPUT_REF = re.compile(rf"{_REF.pattern}(\.{BARE_ID})?")
 
 
 def _alias(value: str) -> str:
@@ -63,6 +65,23 @@ def _ref(value: str) -> str:
     return value
 
 
+def _output_ref(value: str) -> str:
+    """Validate an `alias/matcher.output` reference.
+
+    Args:
+        value: One entry of `matchers.exclude`.
+
+    Returns:
+        The reference, unchanged.
+
+    Raises:
+        ValueError: If it is not `<registry>/<matcher>[.<output>]`.
+    """
+    if not _OUTPUT_REF.fullmatch(value):
+        raise ValueError(f"{value!r} is not an output reference: write `<registry>/<matcher>.<output>`")
+    return value
+
+
 class MatchersConfig(Strict):
     """Which registries to read matchers from, and what to load from them."""
 
@@ -79,6 +98,13 @@ class MatchersConfig(Strict):
         description=(
             "Matchers and bundles to load, as `<registry>/<name>` (e.g. `official/python`). "
             "Replaces the default list. Browse https://matchers.cidoc.dev"
+        ),
+    )
+    exclude: list[Annotated[str, AfterValidator(_output_ref)]] = Field(
+        default_factory=list,
+        description=(
+            "Outputs to drop from the included matchers, as `<registry>/<matcher>.<output>` "
+            "(e.g. `official/ruff.format`). Each must name an output of an included matcher."
         ),
     )
     timeout_seconds: float = Field(

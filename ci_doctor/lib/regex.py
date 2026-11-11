@@ -15,8 +15,10 @@ some use features RE2 deliberately lacks.
 
 import functools
 from collections.abc import Callable, Sequence
+from typing import Annotated
 
 import re2
+from pydantic import AfterValidator, StringConstraints, ValidationInfo
 
 #: The compiled-pattern type `compile_user` returns.
 Regex = re2._Regexp
@@ -100,3 +102,30 @@ def pattern_set(patterns: Sequence[str]) -> Callable[[str], list[int]]:
     # default). Measured fine at 1,640 patterns; raise `_OPTS.max_mem` if a rules
     # repo outgrows it.
     return match
+
+
+def _re2(pattern: str, info: ValidationInfo) -> str:
+    """Reject a pattern RE2 cannot compile, at load time rather than mid-run.
+
+    Args:
+        pattern: The regex as written in the config.
+        info: Validation context; on a matcher it carries the already-validated `id`,
+            which names the culprit better than its index in the merged list.
+
+    Returns:
+        The pattern, unchanged.
+
+    Raises:
+        ValueError: If RE2 rejects it, naming the matcher when there is one.
+    """
+    try:
+        compile_user(pattern)
+    except ValueError as err:
+        owner = info.data.get("id")
+        raise ValueError(f"matcher {owner!r}: {err}" if owner else str(err)) from None
+    return pattern
+
+
+#: A regex field: non-empty (`''` compiles, and fires on everything or nothing) and
+#: validated as RE2 when the config loads. Shared by the config and the matcher spec.
+Re2 = Annotated[str, StringConstraints(min_length=1), AfterValidator(_re2)]

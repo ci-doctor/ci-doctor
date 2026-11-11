@@ -14,7 +14,7 @@ the failure modes it defends against — see [docs/PLAN.md](docs/PLAN.md).
 ci-doctor is a **read-only postmortem**. It reads a failed CI job's log and explains
 why it failed. A deterministic classifier decides **where** the job failed; the LLM
 only explains **why**, inside the phase already chosen. Everything is optional and
-degrades: no LLM, no network, no problem — you still get a full report.
+degrades: no LLM, no internet, no problem — you still get a full report.
 
 ```
 acquire → segment → attribute → denoise → extract → budget → (LLM) → render / deliver
@@ -29,7 +29,11 @@ ci_doctor/
                     setup, report
   config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit
   core/             provider-neutral: models, ports, attribution (pure), denoise,
-                    extract, budget, redact, analyze
+                    redact, analyze
+  engine/           the matching engine, pure (§2.3): spec/ (matcher files), compile/
+                    (spec → Plan), run/ (Plan × lines → windows), select/ (evidence)
+  lib/              shared low-level helpers, a leaf: regex.py (RE2 for every user-
+                    or matcher-supplied regex), files.py (atomic writes)
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
   matchers/         matcher registries: file formats (models), validate, index and
@@ -51,7 +55,7 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | Provider failure-reason mapping | `providers/<name>/reasons.py` | Maps vendor strings → `FailureReason`. |
 | Something every provider needs | `providers/<shared>.py` | Provider-neutral, but does I/O, so not `core/` (see `git_origin.py`). |
 | Blame/classification logic | `core/attribution.py` | Pure function. No I/O, network, or clock. |
-| Evidence selection | `core/{denoise,extract,budget}.py` | Config-driven where possible. |
+| Evidence selection | `core/denoise.py`, `engine/` | Config-driven where possible; `engine/` stays pure (§2.3). |
 | An LLM backend | `llm/backends.py` + a pip extra | Only a provider Pydantic AI ships; lazy-import the SDK inside the client. |
 | A command or subcommand | `cli/<group…>/<command>.py` (surface) + `service/` or the owning package (work) | See §2.1. |
 | Output format | `render/` | Implements the `Renderer` port. |
@@ -90,9 +94,37 @@ cli/
 ### 2.2 The config schema
 
 `config/schemas/` has one module per top-level key of `.ci-doctor.yml` (`llm.py` is
-`llm:`); `__init__.py` is `Config`. `matcher.py` is a registry matcher file, not a key,
-and the underscored modules hold shared types. A new key is a new module plus a field
-on `Config`. A refactor here must leave `ci-doctor config --schema` byte-identical.
+`llm:`); `__init__.py` is `Config`, and the underscored modules hold shared types. A
+registry matcher file is not a key: its model lives in `engine/spec/`. A new key is a
+new module plus a field on `Config`. A refactor here must leave `ci-doctor config --schema` byte-identical.
+
+### 2.3 The engine
+
+`engine/` turns matcher files and log lines into evidence. It is pure: no I/O, no
+YAML, no config, no providers. Every matcher schema version compiles to one internal
+form, the **Plan** (`plan.py`): every regex once, and each output's match tree and
+window over them. `run` and `select` only ever see a Plan, so a new schema version is a
+new front end, never a change to how matching runs. Its layers, bottom first:
+
+| Layer | Holds |
+|---|---|
+| `plan.py`, `errors.py` | The Plan, and `CompileError` / `UnknownSchema`; under every layer |
+| `spec/` | What a matcher file may say, per schema version (`v1/`), and `load`, which picks the model by `schema`. Caps in `limits.py`, roles and ranks in `roles.py` |
+| `compile/` | Spec → Plan: template and `define` expansion, the cost and empty-line checks, an error path on every failure |
+| `run/` | Plan × lines → windows: one RE2 pass (`scan.py`), set algebra for `all`/`any`/`not` (`lines.py`), linear sweeps for relations, then windows |
+| `select/` | Windows → evidence: `merge`, `shed`, `render`, `fired`, and the token `budget` |
+
+The public surface is `load`, `compile_plan`, `run`, `select`, `fired` and `fit`, plus
+the types. `core/analyze.py`, `matchers/verify.py` and `matchers/examine.py` all take the
+same path through it, so a test and production can't drift.
+
+`tests/test_layout.py` pins four rules:
+
+1. `engine/` imports nothing from `ci_doctor` but `ci_doctor.lib`; third-party, only
+   pydantic. `lib/` itself imports nothing from `ci_doctor` but `ci_doctor.errors`.
+2. A layer imports only the layers below it.
+3. Code outside `engine/` imports `ci_doctor.engine`, never a submodule.
+4. `config/` imports nothing from `core/`.
 
 ## 3. Invariants — do not break these
 
@@ -110,8 +142,11 @@ invariants go on the end. The first three, and #10, are load-bearing:
    analyzer must never change a pipeline's outcome. `AnalyzeCommand` holds this; never
    raise `SetupError` from inside the analysis. Every other command exits 1 on any
    failure, a crash included, so a broken registry check never goes green.
-4. **Nothing reaches the public internet** by default — no telemetry, update checks, or
-   runtime downloads of models/rules/schemas.
+4. **Nothing reaches the public internet unless you point it there.** No telemetry or
+   update checks. The network calls ci-doctor makes go to your CI provider, your LLM,
+   and the matcher registries you configure. Each can be hosted inside your network, so
+   an air-gapped install works by cloning the registry and pointing
+   `matchers.registries` at the copy.
 5. **Never emit unredacted log content.** Redaction runs on the prompt *and* the report.
 6. **Every truncation is visible** (`… [N lines elided] …`), never a silent cut.
 7. `attribution.py` stays a pure function.
@@ -120,6 +155,11 @@ invariants go on the end. The first three, and #10, are load-bearing:
 10. **Read-only.** Every provider method is a read. The single exception in the whole
     tool is `SCMProvider.post_note`, which writes to a discussion thread. Nothing
     retries, cancels, restarts, pushes or merges anything — see `core/ports.py`.
+11. **A released matcher schema version never changes how it compiles.** Every
+    ci-doctor compiles every schema version it knows; a change to the format is a new
+    version. Pinned by the frozen Plan snapshots in `tests/engine/v1/cases/`, and by the
+    `contract` CI job, which verifies the official registry at HEAD. A snapshot diff
+    means a new schema version, not a new snapshot.
 
 ## 4. Writing tests
 
@@ -183,69 +223,92 @@ parametrized over `support.PROVIDERS` then covers the format.
 
 ## 5. Cookbook
 
-### 5.1 Add a matcher / language pack
+### 5.1 Add a matcher
 
 Pure data — no Python, and not in this repo. Matchers live in **registries**: the
 [official one](https://github.com/ci-doctor/matchers), or your own (a directory or an
-`https://` folder) listed under
-`matchers.registries`. A config selects them with `matchers.include` (`official/pytest`,
-`acme/mytool`); `defaults.yml` ships no matchers, only the `official` registry's address.
-In a registry, one file per matcher at `matchers/<ecosystem>/<id>/matcher.yaml`:
+`https://` folder) listed under `matchers.registries`. A config selects them with
+`matchers.include` (`official/pytest`, `acme/mytool`) and drops single outputs with
+`matchers.exclude` (`official/ruff.format`); `defaults.yml` ships no matchers, only the
+`official` registry's address. In a registry, one file per matcher at
+`matchers/<ecosystem>/<id>/matcher.yaml`. The folder is the ecosystem, and its bundle
+is generated from it.
 
 ```yaml
+schema: 1
 id: mytool
-role: tool                          # tool | wrapper | fallback
-classification: [python, test]      # ecosystem first (its directory); metadata only
+role: tool                          # issue | tool | gate | wrapper | fallback
 description: >-
   Acme's build CLI. `MYTOOL ERROR <file>:<line>` is a config error in that file, not a code bug.
-pattern: '^MYTOOL ERROR'            # or start:/end: for a block — exactly one form
-exclude: ['^MYTOOL ERROR: retrying'] # anchor lines to reject; RE2 has no lookaround
-before: 2
-after: 10
+tags: [build]                       # free: search and filters only
+define:
+  FILE: '[\w./-]+'
+match:
+  all:
+    - template: 'MYTOOL ERROR $FILE:'
+    - not: { regex: 'retrying' }    # RE2 has no lookaround
+window: { before: 2, after: 10 }
 ```
 
-Then **add fixtures for it** next to the file (`fixtures/*.log`), run
-`ci-doctor matchers verify --update`, review the `.expected` files, and
-`ci-doctor matchers index` to regenerate `index.yaml`. Without fixtures the pack proves
-nothing — a matcher that never matches fails silently, because the tail window still
-returns something. `verify` asks for at least 3 positive and 2 negative fixture logs per
-matcher.
+A tool whose output means two different things gets two **outputs** (`ruff.check`,
+`ruff.format`), each with its own description and role; one meaning spelled two ways
+gets two **variants** of one output. Every field is on the docs site's *Matcher format
+v1* page.
+
+Then **add fixtures** next to the file: `fixtures/<case>.github.log` or
+`<case>.gitlab.log` for a raw CI log, `<case>.log` for plain tool output. Run
+`ci-doctor matchers examine matcher.yaml <log>` while writing the pattern, then
+`ci-doctor matchers verify --update`, review the `.expected` files (one per output), and
+`ci-doctor matchers index` to regenerate `index.yaml` and the ecosystem bundles.
+Without fixtures a matcher proves nothing — one that never matches fails silently,
+because the tail window still returns something. `verify` asks, per output, for 3
+positive and 2 negative fixtures by default, and a positive for every variant.
 
 Anchor on the **cause**, not on a trailing summary line: a summary-only anchor windows
 *past* the detail above it. And anchor on something only *your tool* prints — see the
 two runner/wrong-tool traps in §7 before choosing a regex.
 
-Windows are `before`/`after` lines around the anchor.
+Every regex is **RE2** (`ci_doctor/lib/regex.py`), compiled when the matcher loads: no
+lookaround (use `not`), no backreferences, `\z` not `\Z`, repeats of at most 1000, and
+`\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). An expanded pattern is
+at most 500 characters and 1,000 RE2 instructions, and a `match` must not hold on an
+empty line.
 
-Every regex is **RE2** (`core/regex.py`), compiled when the config loads: no lookaround
-(use `exclude`), no backreferences, `\z` not `\Z`, repeats of at most 1000, and
-`\d \s \w \b` are ASCII-only (`\p{Nd}`, `\p{L}` for Unicode). A pattern is at most 500
-characters and 1,000 RE2 instructions, and an anchor (`pattern`/`start`/`end`) must not
-match an empty line.
+**Ranking.** When the evidence exceeds the token budget, `engine/select/shed.py` sheds
+whole windows by `(role, position)` before `budget.py` truncates what is left, lowest
+rank first:
 
-**Ranking.** When the evidence exceeds the token budget, `extract.py` sheds whole windows
-by `(role, position)` before `budget.py` truncates what is left: `fallback` first, then
-`wrapper`, then `tool`, and within a role the earliest first. `role` says what the output
-*is*: a `tool` prints the failure itself (tsc, pytest, a traceback); a `wrapper` reports
-that a child process failed (npm, make, gradle, BuildKit) and prints *after* it, so a
-wrapper never outranks a tool wherever it sits. Within a role the later window wins,
-because a job stops at its first failing command. A pack whose lines are of both kinds is
-two packs. Only windows separated by unselected lines are rankable; adjacent ones merge
-and keep the highest role among them.
+| Role | Rank | Is |
+|---|---|---|
+| `issue` | 4 | The environment failed (a full disk, OOM, the network), matched only on standard strings |
+| `tool` | 3 | The failing tool printing the cause (tsc, pytest, a traceback) |
+| `gate` | 2 | A deliberate check failing the job on purpose (coverage, a scanner, a formatter) |
+| `wrapper` | 1 | An orchestrator reporting that something it ran failed (npm, make, gradle, BuildKit) |
+| `fallback` | 0 | The generic catch-all |
 
-**`description` is prompt text.** The LLM sees `id [role]: description` for every pack whose
-window reached the excerpt. It knows jest, not your in-house deploy CLI, so say what the
-tool is and what its failure *means* (`E-LOCK: another deploy holds the lock, not a code
-bug`), not only which lines the window keeps. One line of 20-250 printable ASCII
-characters; the prompt frames it as context, and the log wins where the two disagree.
+An `issue` outranks the `tool` it broke: shed the issue and the model blames the code;
+shed the tool and the cause is still there. A `gate` ranks below the `tool` because a
+failing test fails coverage too. A `wrapper` prints *after* the tool it ran, so it never
+outranks it wherever it sits. Within a role the later window wins, because a job stops
+at its first failing command. Only windows separated by unselected lines are rankable;
+adjacent ones merge and keep the highest role among them.
+
+**`description` is prompt text.** The LLM sees `id [role]: description` for every
+output whose anchor reached the excerpt (`official/ruff.check [tool]: …`). It knows
+jest, not your in-house deploy CLI, so say what the tool is and what its failure
+*means* (`E-LOCK: another deploy holds the lock, not a code bug`), not only which lines
+the window keeps. One line of 20-250 printable ASCII characters; the prompt frames it as
+context, and the log wins where the two disagree.
 
 A loaded matcher's id is `alias/id`, so the same bare id from two registries is two
-matchers. To change a shipped pack, copy it into your own registry and include that
+matchers. To change a shipped matcher, copy it into your own registry and include that
 instead; there is no field-by-field override.
 
 Every field you add to `config/schemas/` needs a `description=` — it becomes the text in
 the published `ci-doctor.schema.json`, and `test_json_schema_documents_every_field` fails
-without it.
+without it. The same goes for the matcher spec models: their descriptions are the field
+tables on the docs site (`mise run docs:data`) and the published
+`matcher-v1.schema.json`.
 
 The matcher catalogue is the official registry's site, https://matchers.cidoc.dev.
 
@@ -280,7 +343,7 @@ would mean matching tool-specific regexes (pytest, tsc, go…) that duplicate th
 catalogue and belong to the model. So without an LLM the category is honestly `unknown`
 — the deterministic pipeline still decides the **phase** (where it broke); the model
 decides the category (what kind). Do not reintroduce log-signature category guessing here.
-A matcher's `role` and `classification` rank and describe *evidence*; neither ever sets
+A matcher's `role` and `tags` rank and describe *evidence*; neither ever sets
 the category.
 
 ### 5.4 Add a provider
@@ -347,7 +410,8 @@ Real bugs, kept here so they don't recur:
 - **A `Panel` `subtitle=` is drawn inside the bottom border** and is cropped to the box
   width. Long text belongs in the body, not the border.
 - **A matcher that matches nothing fails silently** — the tail window still returns
-  output, so the test looks fine. Assert on `_windows_for(...)` being non-empty.
+  output, so the test looks fine. Assert on `run(...)` being non-empty; `verify` now
+  fails a variant that anchors in none of its fixtures.
 - **The report is the last place evidence can be lost, and it was losing it.**
   `deterministic_report` re-trimmed `bundle.blamed_lines` to a hardcoded `[-15:]`,
   throwing away the selection that denoise + matcher ranking + `budget.fit` had just
@@ -360,14 +424,15 @@ Real bugs, kept here so they don't recur:
   `##[error]Process completed with exit code N.` (GitHub), so a pack anchored on a bare
   `^ERROR: .*failed` looks covered by every fixture in the registry while proving nothing.
   `bazel` shipped that way and opened a high-ranked window on 40 of 41 logs.
-  Nothing in this repo pins it now that matchers live in registries: give a pack a
-  negative fixture that ends in the runner's trailer, so `matchers verify` fails if it
-  fires there. Only a fallback (`generic_error`) and `oom` (the trailer's `exit code 137`
-  is the *only* OOM signal GitLab gives) may match it.
+  `matchers verify` now runs every output over a corpus of these trailers
+  (`RUNNER_TRAILERS`, all `exit code 1`) and fails any that fires there except a
+  fallback. `oom` may still match `exit code 137`: it is the *only* OOM signal GitLab
+  gives.
 - **A pack can also be "covered" by the wrong tool.** `jest`'s `^FAIL ` matched
   `go test`'s `FAIL example.com/pkg 0.038s`, and `maven_gradle` only ever fired on
-  gradle's half of its own pattern — both looked green for months. When adding a pack,
-  check what it matches across *every* fixture in the registry, not just its own.
+  gradle's half of its own pattern — both looked green for months. `matchers verify
+  --json` lists every output that fires on another matcher's fixture, and
+  `--cross-fire` fails on them; a variant per spelling catches the dead half.
 - **Uncommenting the `llm:` block in `defaults.yml` makes the test suite call a real
   model**, taking it from ~2s to ~2min, and breaks
   `test_backends.py::test_backend_ready_rules` (it asserts a backend is *not* ready
@@ -391,8 +456,9 @@ Real bugs, kept here so they don't recur:
   case, not a log.
 - **A `^`-anchored matcher does not see the raw file.** Segmentation strips the
   provider's framing (GitHub prefixes every line with an ISO timestamp) before
-  `extract()` runs, so test matchers against segmented lines (`read_fixture` in
-  `matchers/verify.py` does it), never `raw_log.splitlines()`.
+  the engine runs, so test matchers against segmented lines (`read_fixture` in
+  `matchers/verify.py` does it, by the fixture's `.github.log` / `.gitlab.log` name),
+  never `raw_log.splitlines()`.
 - **The domain models are plain dataclasses, not pydantic** — nothing validates what an
   adapter puts in them. A `datetime` where the model says `str | None` sails through and
   crashes much later, in the JSON dump. Normalise at the adapter boundary.

@@ -20,6 +20,11 @@ const packages = [
                 role: "What each command does, with no terminal in it: `analyze` (segment → assign phases → attribute → build bundle → report, over a live run or a log file), `deliver` (artifacts, MR note), `setup` (the dry run).",
             },
             {
+                path: "lib/",
+                entry: "pattern_set()",
+                role: "Shared low-level helpers. `regex.py`: RE2 for every regex a user or a matcher supplies, linear time by construction, so no pattern can hang a job; `pattern_set` matches a whole list in one pass per line. `files.py`: atomic writes.",
+            },
+            {
                 path: "errors.py",
                 entry: "SetupError",
                 role: "The one error allowed to change the exit code. Raised only before analysis starts: a bad config, an empty include, a registry that cannot be read.",
@@ -82,16 +87,6 @@ const packages = [
                 role: "Strip ANSI, collapse `\\r` progress rewrites to their final state, optionally drop the timestamp prefix, drop configured noise, then fold runs of identical lines into one with a count.",
             },
             {
-                path: "extract.py",
-                entry: "extract()",
-                role: "Runs the matchers, turns hits into windows, merges what overlaps, sheds the lowest-ranked windows under budget pressure, and renders the gaps as explicit elision markers.",
-            },
-            {
-                path: "budget.py",
-                entry: "fit()",
-                role: "The last-resort cap: trims *inside* the surviving evidence, keeping the tail, and announces how much it dropped. Token counting is a 4-chars-per-token estimate — no tokenizer is loaded.",
-            },
-            {
                 path: "analyze.py",
                 entry: "build_bundle()",
                 role: "The orchestrator for the evidence: picks the last section carrying the blamed phase, then denoise → extract → fit into one `EvidenceBundle`.",
@@ -100,6 +95,47 @@ const packages = [
                 path: "redact.py",
                 entry: "redact()",
                 role: "The secret scrubber. Run on the prompt and again on the finished report.",
+            },
+        ],
+    },
+    {
+        dir: "engine/",
+        blurb: "Matcher files and log lines in, evidence out. Pure, and layered: spec → compile → run → select, each importing only the ones below it; outside code imports only `ci_doctor.engine`.",
+        files: [
+            {
+                path: "plan.py",
+                entry: "Plan",
+                role: "The one internal form every schema version compiles to: every regex once, and each output's match tree and window over them. `run` and `select` only ever see a Plan, so a new format version never changes how matching runs.",
+            },
+            {
+                path: "spec/",
+                entry: "load()",
+                role: "What a matcher file may say, per schema version: `v1/` (outputs, variants, match nodes, windows). `load` picks the model by the file's `schema`; caps are in `limits.py`, roles and ranks in `roles.py`.",
+            },
+            {
+                path: "compile/",
+                entry: "compile_plan()",
+                role: "Spec → Plan. Expands templates and `define`s into RE2, checks each regex's cost and that no match fires on an empty line, and names the place in the file on every error.",
+            },
+            {
+                path: "run/windows.py",
+                entry: "run()",
+                role: "Plan × lines → windows. One RE2 pass gives each leaf its lines (`scan.py`); `all`/`any`/`not` are set operations and relations are linear sweeps (`anchors.py`, `relations.py`); each anchor becomes a window with its output's rank.",
+            },
+            {
+                path: "select/evidence.py",
+                entry: "select()",
+                role: "Adds the tail window, merges what overlaps (`merge.py`), sheds the lowest-ranked windows under budget pressure (`shed.py`), and renders the gaps as explicit elision markers (`render.py`).",
+            },
+            {
+                path: "select/fired.py",
+                entry: "fired()",
+                role: "The outputs that anchor in the final evidence, in log order: what the prompt describes to the model.",
+            },
+            {
+                path: "select/budget.py",
+                entry: "fit()",
+                role: "The last-resort cap: trims *inside* the surviving evidence, keeping the tail, and announces how much it dropped. Token counting is a 4-chars-per-token estimate — no tokenizer is loaded.",
             },
         ],
     },
@@ -125,12 +161,17 @@ const packages = [
             {
                 path: "index.py",
                 entry: "write_index()",
-                role: "`matchers index`: validates every matcher and bundle (unique names, known includes, no cycles) and writes a deterministic `index.yaml`.",
+                role: "`matchers index`: validates every matcher and bundle (unique names, known includes, no cycles), generates one bundle per ecosystem folder, and writes a deterministic `index.yaml`.",
             },
             {
                 path: "verify.py",
                 entry: "verify()",
-                role: "`matchers verify`: runs each matcher alone over its fixture logs, read the way `analyze` reads a log, and compares the output with the committed `.expected` files.",
+                role: "`matchers verify`: runs each output alone over its matcher's fixture logs, framing stripped as each log's name declares, and compares with the committed `.expected` files; also checks variant coverage, runner trailers and cross-fire.",
+            },
+            {
+                path: "examine.py",
+                entry: "examine()",
+                role: "`matchers examine`: one matcher over one log, as `verify` reads it, each output's selection with its anchors marked.",
             },
             {
                 path: "transports/",

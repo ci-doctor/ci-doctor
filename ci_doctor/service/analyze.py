@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import NamedTuple
 
 from ci_doctor.config.schemas import Config
-from ci_doctor.config.schemas.matcher import MatcherConfig
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
+from ci_doctor.engine import Plan, Spec, compile_plan
 from ci_doctor.llm.schema import Report
 from ci_doctor.providers.registry import make_ci_provider, make_segmenter, segmenter_for_log
 
@@ -40,7 +40,7 @@ class JobResult(NamedTuple):
 def process_job(
     job: Job,
     cfg: Config,
-    matchers: list[MatcherConfig],
+    plan: Plan,
     segmenter: LogSegmenter | None = None,
     client: LLMClient | None = None,
 ) -> JobResult:
@@ -51,7 +51,7 @@ def process_job(
     Args:
         job: The failed job, log already attached.
         cfg: The effective config.
-        matchers: The evidence matchers, loaded from the configured registries.
+        plan: The run's compiled matchers.
         segmenter: Parser for this log's format. Defaults to the one `config.ci`
             names, which is right for a live run — the provider that produced the
             log is the one we just read it from.
@@ -74,7 +74,7 @@ def process_job(
     log.debug(
         f"job {job.name}: attribution phase={attr.phase} reason={attr.reason} rule={attr.rule_id} confidence={attr.confidence}",
     )
-    bundle = build_bundle(job, attr, job.sections, cfg, matchers)
+    bundle = build_bundle(job, attr, job.sections, cfg, plan)
     report = produce_report(job, attr, bundle, cfg, client=client)
     log.debug(
         f"job {job.name}: report category={report.category} confidence={report.confidence} infra={report.is_infra_not_code}",
@@ -102,7 +102,7 @@ def _ordered(jobs: list[Job]) -> list[Job]:
 
 
 def analyze_run(
-    run_id: str, cfg: Config, matchers: list[MatcherConfig], job_id: str | None = None
+    run_id: str, cfg: Config, matchers: list[Spec], job_id: str | None = None
 ) -> tuple[Run, CIProvider, list[JobResult]]:
     """Fetch a run from the provider and analyze its failed jobs.
 
@@ -134,7 +134,7 @@ def analyze_run(
 
 
 def _analyze(
-    jobs: list[Job], cfg: Config, matchers: list[MatcherConfig], segmenter: LogSegmenter | None = None
+    jobs: list[Job], cfg: Config, matchers: list[Spec], segmenter: LogSegmenter | None = None
 ) -> list[JobResult]:
     """Analyze every job, concurrently when the config allows it.
 
@@ -153,22 +153,23 @@ def _analyze(
     """
     from ci_doctor.llm.report import client_for_run
 
+    plan = compile_plan(matchers, cfg.matchers.exclude)
     client = client_for_run(cfg)
     try:
         workers = min(cfg.analysis.max_parallel_jobs, len(jobs))
         if workers <= 1:
-            return [process_job(job, cfg, matchers, segmenter, client) for job in jobs]
+            return [process_job(job, cfg, plan, segmenter, client) for job in jobs]
         log.debug(f"analyzing {len(jobs)} job(s) across {workers} workers")
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ci-doctor") as pool:
             # `map` yields in submission order, so the report reads chronologically even
             # though the jobs finished in whatever order the endpoint answered them.
-            return list(pool.map(lambda job: process_job(job, cfg, matchers, segmenter, client), jobs))
+            return list(pool.map(lambda job: process_job(job, cfg, plan, segmenter, client), jobs))
     finally:
         if client is not None:
             client.close()
 
 
-def analyze_log(path: Path, cfg: Config, matchers: list[MatcherConfig]) -> list[JobResult]:
+def analyze_log(path: Path, cfg: Config, matchers: list[Spec]) -> list[JobResult]:
     """Analyze a captured job log offline.
 
     Args:

@@ -3,32 +3,65 @@ import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
 import { url } from "../../lib/url";
 
-const matcher = `id: mytool
-role: tool                          # tool | wrapper | fallback
-classification: [python, test]      # ecosystem first; metadata only
+const disk = `schema: 1
+id: disk_full
+role: issue
 description: >-
-  Acme's build CLI. MYTOOL ERROR <file>:<line> is a config error in that file, not a code bug.
-pattern: '^MYTOOL ERROR'            # or start: + end: for a block
-exclude: ['^MYTOOL ERROR: retrying']
-before: 2
-after: 10`;
+  The runner ran out of disk - No space left on device / ENOSPC. The step
+  that hit it is a victim of the runner, not the cause.
+tags: [infra, disk]
+match:
+  any:
+    - template: 'No space left on device'
+    - template: 'ENOSPC'
+window: { before: 3, after: 3 }`;
+
+const ruff = `schema: 1
+id: ruff
+description: Ruff, the Python linter and formatter - lint violations and files ruff format would change.
+tags: [python, lint, format]
+define:
+  FILE: '[\\w./-]+\\.pyi?'
+  NUM: '\\d+'
+  RULE: '[A-Z]+[0-9]+'
+outputs:
+  check:
+    description: ruff check lint violations, each naming a rule code and the file:line it fired on.
+    variants:
+      concise:                       # older default: one line per violation
+        match: { template: '$FILE:$NUM:$NUM: $RULE ' }
+      full:                          # newer default: the code, then the location
+        match:
+          all:
+            - regex: '^%{RULE} '
+            - followed_by: { template: '--> $FILE:$NUM:$NUM', within: 2 }
+        window: { after: 8 }
+  format:
+    role: gate
+    description: ruff format --check listing the files it would reformat. Running ruff format fixes it.
+    match: { regex: '^Would reformat: ' }`;
 
 const config = `matchers:
   registries:                       # official is already declared; add your own
     acme: ./ci/matchers             # relative to this file
   include:
-    - official/python               # a bundle
-    - official/pytest               # a matcher
-    - acme/mytool`;
+    - official/python               # a bundle: every matcher under matchers/python/
+    - official/ruff                 # a matcher, with all its outputs
+    - acme/mytool
+  exclude:
+    - official/ruff.format          # drop one output`;
 
 const pinned = `matchers:
   registries:
     acme: https://raw.githubusercontent.com/acme/matchers/v1.4.0/   # a tag or a commit SHA`;
+
+const examineIt = `ci-doctor matchers examine matchers/python/ruff/matcher.yaml ./job.github.log
+ci-doctor matchers examine official/ruff ./job.log --framing gitlab`;
 ---
 
 <Base
     title="Matchers"
-    description="What a matcher and a bundle are, how roles rank their windows, and how registries and alias/name refs decide which ones a run loads."
+    description="Matchers, outputs and variants, the five roles that rank their windows, bundles, and the registries a run loads them from."
 >
     <h1>Matchers</h1>
     <p class="lead">
@@ -37,92 +70,86 @@ const pinned = `matchers:
         the registries it declares.
     </p>
 
-    <h2>What a matcher is</h2>
+    <h2>Matcher, output, variant</h2>
     <p>
-        A matcher decides which lines of the blamed section are worth showing. Its
-        anchor is an RE2 regex; where it fires, it keeps a <strong>window</strong>,
-        and the <a href={url("/concepts/evidence/")}>evidence</a> step merges the
-        windows, ranks them and fits them to the budget. It comes in exactly one of
-        two forms:
-    </p>
-    <ul>
-        <li><code>pattern</code> with <code>before</code>/<code>after</code>: one
-            anchor line plus that much context.</li>
-        <li><code>start</code> and <code>end</code>: the block between two
-            anchors.</li>
-    </ul>
-    <Code code={matcher} lang="yaml" theme="github-dark" />
-    <p>
-        Every matcher comes from someone else's file, so every field is bounded and
-        checked again each time it is loaded:
+        A matcher file describes one tool, wrapper or environment issue. Inside it,
+        each level has one job:
     </p>
     <table>
-        <thead><tr><th>Field</th><th>Limit</th></tr></thead>
+        <thead><tr><th>Level</th><th>Is</th><th>The model sees</th><th>Example</th></tr></thead>
         <tbody>
-            <tr
-                ><td><code>id</code></td><td
-                    >Lowercase letters, digits and <code>_</code>, starting with a
-                    letter, at most 64 characters; the same as its directory. Loaded, it becomes
-                    <code>alias/id</code>.</td
-                ></tr
-            >
-            <tr
-                ><td><code>pattern</code>, <code>start</code>, <code>end</code></td
-                ><td
-                    >RE2, at most 500 characters and 1,000 RE2 instructions, and must
-                    not match an empty line.</td
-                ></tr
-            >
-            <tr
-                ><td><code>exclude</code></td><td
-                    >Up to 20 RE2 regexes that reject an anchor line. RE2 has no
-                    lookaround, so this is how to say "but not this".</td
-                ></tr
-            >
-            <tr><td><code>before</code>, <code>after</code></td><td>0–100 lines.</td></tr>
-            <tr
-                ><td><code>description</code></td><td
-                    >Required. One line of 20–250 printable ASCII characters.</td
-                ></tr
-            >
-            <tr
-                ><td><code>classification</code></td><td
-                    >Required. 1–5 tags of lowercase letters, digits and
-                    <code>-</code>. The first names the ecosystem directory the file
-                    sits in; the rest are for search and listings. None of them
-                    changes what the matcher does.</td
-                ></tr
-            >
+            <tr><td>Matcher</td><td>One tool, wrapper or issue</td><td>nothing of its own when it has several outputs</td><td><code>ruff</code>, <code>disk_full</code></td></tr>
+            <tr><td>Output</td><td>One distinct output: one meaning, one description</td><td><code>ruff.check [tool]: …</code></td><td><code>ruff.check</code>, <code>ruff.format</code></td></tr>
+            <tr><td>Variant</td><td>One spelling of that output, such as an older version's format</td><td>nothing: it shares the output's description</td><td><code>ruff.check (full)</code></td></tr>
         </tbody>
     </table>
     <p>
-        The <code>description</code> is the one field the model reads: it sits
-        beside the windows that matcher selected, as data. The model knows public
-        tools; it does not know your in-house ones, and the description is where it
-        learns what their failure means.
+        A different meaning is a new output; the same meaning spelled differently is
+        a variant. Every variant runs on every log, so whichever spelling the log
+        holds picks itself: there is no tool version to declare. Most matchers have
+        one output and write it at the top level:
+    </p>
+    <Code code={disk} lang="yaml" theme="github-dark" />
+    <p>A tool with several outputs lists them, and gives a spelling its own window only when it needs one:</p>
+    <Code code={ruff} lang="yaml" theme="github-dark" />
+
+    <h2>Finding and keeping</h2>
+    <p>
+        <code>match</code> finds the anchor lines. A leaf is a <code>regex</code>
+        (RE2), or a <code>template</code> written as the line looks in the log:
+        everything is literal except <code>$NAME</code>, which inserts the matcher's
+        own <code>define</code>, and <code>...</code>, which matches anything.
+        <code>all</code>, <code>any</code> and <code>not</code> combine leaves on
+        one line; <code>inside</code>, <code>preceded_by</code> and
+        <code>followed_by</code> relate a line to the lines around it.
+    </p>
+    <p>
+        <code>window</code> says which lines become evidence: <code>before</code>
+        and <code>after</code>, or <code>from</code> a header above, <code>until</code>
+        a closing line, <code>while</code> the next line continues, each capped by
+        <code>max_lines</code>. Every field is on
+        <a href={url("/reference/matcher-format/")}>Matcher format v1</a>.
+    </p>
+    <p>
+        Everything compiles to the one RE2 pass per line ci-doctor has always run,
+        plus a linear pass over the hits: a hundred matchers cost one scan of the
+        log, and no pattern can hang a job.
     </p>
 
     <h2>Roles</h2>
     <p>
         <code>role</code> decides which windows survive when the evidence is over
-        budget. A <code>tool</code> prints the failure itself (<code>tsc</code>,
-        pytest, a traceback). A <code>wrapper</code> reports that a child process
-        failed (npm, make, gradle, BuildKit) and prints <em>after</em> it, so it
-        must lose to the tool it ran: <code>npm ERR!</code> trails the compiler
-        error that caused it. A <code>fallback</code> is a guess for output no other
-        matcher recognised, and goes first. Within a role, the later window wins.
-        The section's last lines are always kept as well, ranked below every
-        matcher.
+        budget, and tells the model how to read them. Higher ranks survive:
+    </p>
+    <table>
+        <thead><tr><th>Role</th><th>Means</th><th>Rank</th></tr></thead>
+        <tbody>
+            <tr><td><code>issue</code></td><td>The environment failed: a full disk, out of memory, the network. Matched only on standard strings.</td><td>4</td></tr>
+            <tr><td><code>tool</code></td><td>The failing tool printing the cause: <code>tsc</code>, pytest, a traceback. The default.</td><td>3</td></tr>
+            <tr><td><code>gate</code></td><td>A deliberate check failing the job on purpose: coverage, a scanner, a formatter.</td><td>2</td></tr>
+            <tr><td><code>wrapper</code></td><td>An orchestrator reporting that something it ran failed: npm, make, gradle.</td><td>1</td></tr>
+            <tr><td><code>fallback</code></td><td>The generic catch-all.</td><td>0</td></tr>
+        </tbody>
+    </table>
+    <p>
+        An <code>issue</code> outranks the tool it broke: shed the full disk and the
+        model blames the compile error it caused; shed the compile error and the
+        cause is still in front of it. A <code>gate</code> ranks below the tool
+        because a failing test fails coverage too. A <code>wrapper</code> prints
+        <em>after</em> the tool it ran, so it must lose to it wherever it sits.
+        Within a role, the later window wins. The section's last lines are always
+        kept as well, ranked below every matcher.
     </p>
 
     <h2>Bundles</h2>
     <p>
         A bundle is a named list of matchers and other bundles from the same
-        registry, such as everything for one ecosystem. Including a bundle includes
-        what it lists. Bundles nest at most five deep, a cycle is an error, and a
-        matcher reached twice, directly and through a bundle, loads once.
-        <code>ci-doctor matchers list</code> shows which entry brought each matcher
-        in.
+        registry. A registry generates one per ecosystem folder:
+        <code>official/python</code> is every matcher under
+        <code>matchers/python/</code>. Curated bundles, such as <code>all</code>,
+        are written by hand. Bundles nest at most five deep, a cycle is an error,
+        and a matcher reached twice loads once. <code>ci-doctor matchers list</code>
+        shows which entry brought each matcher in.
     </p>
 
     <h2>Registries and refs</h2>
@@ -130,56 +157,64 @@ const pinned = `matchers:
         A registry is a folder with an <code>index.yaml</code> listing every
         matcher and bundle it serves. Your config names registries under
         <code>matchers.registries</code>, alias → location, and selects from them
-        under <code>matchers.include</code>, each entry an
-        <code>alias/name</code> ref to a matcher or a bundle. One registry is
+        under <code>matchers.include</code>, each entry an <code>alias/name</code>
+        ref to a matcher or a bundle. Including a matcher includes all its outputs;
+        <code>matchers.exclude</code> drops one by its dotted id. One registry is
         declared for you: <code>official</code>, at
         <code>https://matchers.cidoc.dev/</code>. Nothing is included for you.
     </p>
     <Code code={config} lang="yaml" theme="github-dark" />
     <p>
-        A location is a path (relative to the config file that names it),
-        <code>file://</code> or <code>https://</code>. The full list is on
-        <a href={url("/reference/configuration/")}>Configuration</a>.
-    </p>
-    <p>
         Before analysis starts, each run reads every registry an include names,
-        expands the bundles, and fetches and validates each selected matcher. Every
-        read is bounded: an index of at most 1 MiB and 2,000 entries, a file of at
-        most 64 KiB, paths that cannot leave the registry, an <code>https</code>
-        and a redirect that cannot drop to <code>http</code>. Anything wrong, including an empty
-        <code>include</code>, an unknown alias or name, or an unreachable registry,
-        is a broken setup: the job exits 1, naming the registry and the cause.
-        <code>ci-doctor config --validate</code> runs the same steps as a dry run.
+        expands the bundles, and fetches, validates and compiles each selected
+        matcher. Every read is bounded: an index of at most 1 MiB and 2,000
+        entries, a file of at most 64 KiB, paths that cannot leave the registry,
+        and a redirect that cannot drop from <code>https</code> to
+        <code>http</code>. Anything wrong, including an empty <code>include</code>,
+        an unknown alias or name, an <code>exclude</code> that names no output, or
+        an unreachable registry, is a broken setup: the job exits 1, naming the
+        registry and the cause. <code>ci-doctor config --validate</code> runs the
+        same steps as a dry run.
+    </p>
+
+    <h2>Schema versions</h2>
+    <p>
+        Every matcher file says which format it is written in
+        (<code>schema: 1</code>). Every ci-doctor compiles every schema version it
+        knows, and a released version never changes how it compiles. A matcher in a
+        newer version than your ci-doctor knows is skipped with a warning when a
+        bundle brings it in, and fails the setup when you included it by name.
     </p>
 
     <h2>Pinning, and running with no network</h2>
     <p>
-        There is no cache, no lock file and no version field: every run reads each
-        registry as it is now. That keeps a fix to a matcher one push away from
-        every pipeline, and it means a registry change reaches your next run
-        unreviewed. To hold a registry still, point at a URL that contains a fixed
-        revision, such as a raw file URL with a tag or commit SHA in it.
+        There is no cache and no lock file: every run reads each registry as it is
+        now. That keeps a fix to a matcher one push away from every pipeline, and it
+        means a registry change reaches your next run unreviewed. To hold a
+        registry still, point at a URL that contains a fixed revision.
     </p>
     <Code code={pinned} lang="yaml" theme="github-dark" />
     <p>
         Registries are the one network dependency besides your CI provider and your
         LLM. On an air-gapped network, clone the registry inside it and point the
-        alias at the local path; nothing is then fetched from outside.
+        alias at the local path; see <a href={url("/reference/registry/")}>Hosting a registry</a>.
     </p>
 
-    <h2>Finding and writing matchers</h2>
+    <h2>Finding, trying and writing matchers</h2>
     <p>
-        The official registry's catalogue, with a playground to try a matcher
-        against a log, is at <a href="https://matchers.cidoc.dev"
-            >matchers.cidoc.dev</a
-        >. From the terminal, <code>ci-doctor matchers search</code> and
-        <code>ci-doctor matchers info</code> read the same indexes; the commands
-        are on <a href={url("/reference/cli/")}>CLI</a>.
+        The official catalogue, with each matcher's fixtures beside what it selects
+        from them, is at <a href="https://matchers.cidoc.dev">matchers.cidoc.dev</a>.
+        From the terminal, <code>ci-doctor matchers search</code> and
+        <code>ci-doctor matchers info</code> read the same indexes. To see what a
+        matcher selects from your own log, with the real engine:
     </p>
+    <Code code={examineIt} lang="sh" theme="github-dark" />
     <p>
-        Writing a matcher, testing it against fixture logs, and running your own
-        registry are covered in the <a
-            href="https://github.com/ci-doctor/matchers">ci-doctor/matchers</a
-        > repository, which is also where the official matchers are contributed.
+        It marks each anchor and names the variant that fired. Writing and testing
+        matchers in a registry of your own is on
+        <a href={url("/reference/registry/")}>Hosting a registry</a>; contributing
+        to the official one is in the
+        <a href="https://github.com/ci-doctor/matchers">ci-doctor/matchers</a>
+        repository.
     </p>
 </Base>

@@ -1,0 +1,101 @@
+---
+import { Code } from "astro:components";
+import Base from "../../layouts/Base.astro";
+import { url } from "../../lib/url";
+
+const layout = `index.yaml                                        # generated: ci-doctor matchers index
+bundles/<ecosystem>.yaml                          # generated, one per ecosystem folder
+bundles/<id>.yaml                                 # curated bundles, by hand
+matchers/<ecosystem>/<id>/matcher.yaml
+matchers/<ecosystem>/<id>/fixtures/<case>.github.log   # a raw GitHub Actions log
+matchers/<ecosystem>/<id>/fixtures/<case>.gitlab.log   # a raw GitLab CI trace
+matchers/<ecosystem>/<id>/fixtures/<case>.log          # plain tool output
+matchers/<ecosystem>/<id>/fixtures/<case>[.<output>].expected`;
+
+const build = `ci-doctor matchers examine matchers/acme/deploy_cli/matcher.yaml ./job.log   # see what it selects
+ci-doctor matchers verify --update .     # write the .expected files, then read the diff
+ci-doctor matchers verify .              # every rule, every golden
+ci-doctor matchers index .               # write index.yaml and the ecosystem bundles
+ci-doctor matchers index . --check       # in CI: fail when either is stale`;
+
+const flags = `ci-doctor matchers verify . \\
+  --min-positive 3 --min-negative 2 \\
+  --exempt verify-exempt.txt \\
+  --cross-fire \\
+  --json report.json`;
+
+const config = `matchers:
+  registries:
+    acme: https://matchers.acme.dev/
+  include: [official/python, acme/deploy_cli]`;
+---
+
+<Base
+    title="Hosting a registry"
+    description="The layout of a matcher registry, how to test and index it, and where to host it so ci-doctor can read it."
+>
+    <h1>Hosting a registry</h1>
+    <p class="lead">
+        A registry is any folder with this layout and an <code>index.yaml</code> at
+        its root. Use one for in-house tools, for a changed copy of an official
+        matcher, or as an offline mirror of the official registry.
+    </p>
+    <Code code={layout} lang="text" theme="github-dark" />
+    <p>
+        The folder a matcher sits in is its ecosystem: there is no field for it,
+        and its bundle is generated from the folder. A matcher's <code>id</code>
+        equals its own folder's name. The file format is on
+        <a href={url("/reference/matcher-format/")}>Matcher format v1</a>.
+    </p>
+
+    <h2>Fixtures</h2>
+    <p>
+        A fixture is a log plus, for each output, the <code>.expected</code> lines
+        that output alone selects from it. An empty <code>.expected</code> means it
+        must not fire. The log's name declares its framing: a
+        <code>.github.log</code> or <code>.gitlab.log</code> is stripped by that
+        runner's segmenter, and a plain <code>.log</code> is read as it is. A
+        one-output matcher's golden is <code>&lt;case&gt;.expected</code>; with
+        several outputs each has <code>&lt;case&gt;.&lt;output&gt;.expected</code>.
+    </p>
+
+    <h2>Test and index it</h2>
+    <Code code={build} lang="sh" theme="github-dark" />
+    <p><code>verify</code> fails when:</p>
+    <ul>
+        <li>a file doesn't validate or compile;</li>
+        <li>an output's selection differs from its <code>.expected</code>;</li>
+        <li>a variant anchors in none of its matcher's fixtures;</li>
+        <li>an output other than a <code>fallback</code> fires on a runner's own "job failed" line, which would make it fire on every failed job;</li>
+        <li>an output has fewer positive or negative fixtures than the registry asks for.</li>
+    </ul>
+    <p>
+        How many fixtures are enough is your registry's policy, set by flags. The
+        defaults are the official registry's. <code>--json</code> writes the full
+        report, including every output that fires on another matcher's fixture;
+        <code>--cross-fire</code> fails on those too.
+    </p>
+    <Code code={flags} lang="sh" theme="github-dark" />
+    <p>
+        ci-doctor checks every file again when it loads it, so a registry that never
+        ran <code>verify</code> still can't hand it an invalid matcher.
+    </p>
+
+    <h2>Publish it and register it</h2>
+    <p>Point ci-doctor at the <strong>folder</strong>, never at <code>index.yaml</code>.</p>
+    <table>
+        <thead><tr><th>Host</th><th>Publish</th><th>Register</th></tr></thead>
+        <tbody>
+            <tr><td>Local disk or NFS</td><td>nothing</td><td><code>acme=/mnt/nfs/matchers</code> or <code>acme=file:///mnt/nfs/matchers</code></td></tr>
+            <tr><td>A git repository</td><td>push</td><td><code>acme=https://raw.githubusercontent.com/acme/matchers/main/</code>, or a tag in place of <code>main</code> to pin</td></tr>
+            <tr><td>A web server, GitHub Pages, an S3 bucket over HTTPS</td><td>copy the tree</td><td><code>acme=https://matchers.acme.dev/</code></td></tr>
+        </tbody>
+    </table>
+    <p>Register with <code>ci-doctor matchers registry add acme=…</code>, or in the config:</p>
+    <Code code={config} lang="yaml" theme="github-dark" />
+    <ul>
+        <li><strong>Plain <code>http://</code> works</strong>, but nothing protects the files in transit; every run that uses one logs a warning.</li>
+        <li><strong>A presigned URL can't be a registry</strong>: it signs one file, and ci-doctor fetches many relative to the folder.</li>
+        <li><strong>Air-gapped:</strong> clone <code>ci-doctor/matchers</code> inside the network and register the path as <code>official</code> to replace the built-in one.</li>
+    </ul>
+</Base>

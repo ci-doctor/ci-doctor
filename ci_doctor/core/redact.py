@@ -16,7 +16,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from ci_doctor.config.schemas.redaction import RedactionConfig
-from ci_doctor.core.regex import Regex, compile_user
+from ci_doctor.lib.regex import Regex, compile_user
 
 if TYPE_CHECKING:
     # Only for the annotation: `core/` must not import `llm/` at runtime.

@@ -41,7 +41,8 @@ const matchersUse = `ci-doctor matchers add ALIAS/NAME...      # append to match
 ci-doctor matchers remove ALIAS/NAME...   # drop entries from matchers.include
 ci-doctor matchers list                   # what include resolves to, and via which bundle
 ci-doctor matchers search TERM [--registry ALIAS]
-ci-doctor matchers info ALIAS/NAME        # description, role, registry, path; a bundle's members
+ci-doctor matchers info ALIAS/NAME        # description, tags, each output's role, registry, path; a bundle's members
+ci-doctor matchers examine MATCHER LOG [--framing github|gitlab|plain]  # what each output selects from LOG
 
 ci-doctor matchers registry add NAME=LOCATION...  # add or override, after fetching its index.yaml
 ci-doctor matchers registry remove NAME...        # refused while include still uses it
@@ -53,8 +54,10 @@ ci-doctor matchers registry ping [NAME...]        # reachability, latency, match
 # missing; ci-doctor --write-to FILE matchers ... writes FILE instead, and reads it too.
 # Output is a table by default; ci-doctor --plain matchers ... prints one bare line per row.`;
 
-const matchersAuthor = `ci-doctor matchers index [ROOT] [--check]    # validate, then write ROOT/index.yaml
-ci-doctor matchers verify [ROOT] [--update]  # run each matcher over its fixtures`;
+const matchersAuthor = `ci-doctor matchers index [ROOT] [--check]    # validate, then write index.yaml and the ecosystem bundles
+ci-doctor matchers verify [ROOT] [--update] [--min-positive N] [--min-negative N]
+                          [--exempt FILE] [--cross-fire] [--json FILE]
+ci-doctor matchers schema [--version N | --out DIR]  # a matcher file's JSON Schema; --out writes every version`;
 
 const deterministic = `# Deterministic report, no model required:
 ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
@@ -159,8 +162,18 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         and leaves the file as it was. <code>add</code> skips a ref that is already
         included, directly or through a bundle. <code>remove</code> drops only
         entries written in <code>include</code>; to drop a matcher that came in
-        through a bundle, remove the bundle. Removing an override of
+        through a bundle, remove the bundle; to drop one output of a matcher, list
+        it under <code>matchers.exclude</code>. Removing an override of
         <code>official</code> falls back to its default address.
+    </p>
+    <p>
+        <code>examine</code> runs one matcher, a <code>matcher.yaml</code> or an
+        <code>alias/name</code>, over one log with the same engine
+        <code>analyze</code> uses. A <code>.github.log</code> or
+        <code>.gitlab.log</code> has that runner's framing stripped; anything else
+        is read as plain unless <code>--framing</code> says otherwise. It prints
+        each output's selection, <code>&gt;</code> on every anchor, with the
+        variants that fired, and exits 0 even when nothing matches.
     </p>
     <p>
         Two commands are for registry authors, run in the registry's own CI.
@@ -170,11 +183,16 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
     <Code code={matchersAuthor} lang="text" theme="github-dark" />
     <p>
         <code>index --check</code> writes nothing and exits 1 when the committed
-        <code>index.yaml</code> is stale. <code>verify</code> exits 1 when a
-        matcher's output differs from its <code>.expected</code> file or it has
-        too few fixtures; <code>--update</code> rewrites the
-        <code>.expected</code> files for review. Writing a registry is covered in
-        the <a href="https://github.com/ci-doctor/matchers">matchers repo</a>.
+        <code>index.yaml</code> or a generated ecosystem bundle is stale.
+        <code>verify</code> exits 1 when an output's selection differs from its
+        <code>.expected</code> file, a variant is proven by no fixture, an output
+        fires on a runner's own "job failed" line, or an output has fewer fixtures
+        than <code>--min-positive</code> / <code>--min-negative</code> (3 and 2 by
+        default; <code>--exempt</code> names a file of matchers held to one).
+        <code>--cross-fire</code> also fails on an output firing on another
+        matcher's fixture, and <code>--json</code> writes the whole report.
+        <code>--update</code> rewrites the <code>.expected</code> files for review.
+        Writing a registry is on <a href={url("/reference/registry/")}>Hosting a registry</a>.
     </p>
 
     <h2>Reporting a bug</h2>

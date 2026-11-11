@@ -2,7 +2,7 @@
 
 import pytest
 
-from ci_doctor.core.regex import compile_user, pattern_set
+from ci_doctor.lib.regex import compile_user, pattern_set
 
 
 @pytest.mark.parametrize(

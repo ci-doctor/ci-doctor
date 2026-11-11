@@ -12,7 +12,7 @@ from ci_doctor.cli._lib.context import editable
 from ci_doctor.cli._lib.outputs.message import say
 from ci_doctor.cli._lib.outputs.table import Cell, Row, table
 from ci_doctor.matchers.models import Ref
-from ci_doctor.matchers.registry import Resolved, check_ref, fetch_matcher, redact, session, via
+from ci_doctor.matchers.registry import Resolved, check_ref, fetch_outputs, redact, session, via
 
 
 class InfoCommand(Command):
@@ -56,7 +56,7 @@ class InfoCommand(Command):
         Args:
             ref: A ref its registry serves, already checked.
             seen: Registries already read, holding `ref`'s.
-            http: The command's HTTP client, to fetch a matcher's role.
+            http: The command's HTTP client, to fetch a matcher's outputs and roles.
 
         Returns:
             The rows, in display order.
@@ -65,9 +65,11 @@ class InfoCommand(Command):
         entry = served.matchers.get(ref.name) or served.bundles[ref.name]
         pairs = [("description", entry.description)]
         if ref.name in served.matchers:
-            pairs += [
-                ("classification", ", ".join(served.matchers[ref.name].classification)),
-                ("role", fetch_matcher(ref, seen, http).role),
-            ]
+            pairs.append(("tags", ", ".join(served.matchers[ref.name].tags)))
+            outputs = fetch_outputs(ref, seen, http)
+            if len(outputs) == 1:
+                pairs.append(("role", outputs[0].role))
+            else:
+                pairs += [("output", f"{o.id} [{o.role}]") for o in outputs]
         pairs += [("registry", redact(seen.locations[ref.alias])), ("path", entry.path)]
         return [self._Field(Text(name, "dim"), value) for name, value in pairs]

@@ -1,0 +1,25 @@
+schema: 1
+id: phpstan_jvm
+description: Two smaller pieces from the format page - a relation and a while window.
+tags: [php, jvm]
+
+outputs:
+  phpstan:
+    description: PHPStan's footer, kept away from Maven's [ERROR] lines by its own table above.
+    match:
+      all:
+        - template: ' [ERROR] Found ... error'
+        - preceded_by: { regex: '^ -+ +-+', within: 300 }
+  jvm:
+    description: A JVM exception and its Caused by chain, which has no closing line.
+    match: { regex: '^Exception in thread ' }
+    window:
+      while: { regex: '^\s+at |^\s+\.\.\. \d+ more|^Caused by: ' }
+      max_lines: 150
+  go:
+    description: A go build error with its package header above it, and a block relation.
+    match:
+      all:
+        - template: '.go:...: '
+        - not: { inside: { start: { regex: '^=== RUN' }, end: { regex: '^--- (PASS|FAIL)' }, max_lines: 200 } }
+    window: { from: { regex: '^# ', within: 20 } }

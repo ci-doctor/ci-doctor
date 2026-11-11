@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from gen_docs_data import PHASES_OUT, build_phases
+from gen_docs_data import MATCHER_OUT, PHASES_OUT, build_matcher_fields, build_phases
 
 from ci_doctor.config.loader import load_config
 
@@ -27,3 +27,10 @@ def test_every_shipped_section_name_reaches_the_docs():
     shipped = load_config(environ={}).phases
     listed = {row["section"]: row["phase"] for row in build_phases()}
     assert listed == shipped
+
+
+def test_docs_matcher_format_tables_are_current():
+    """The format reference's field tables are the spec models, not a copy of them."""
+    assert json.loads(MATCHER_OUT.read_text()) == build_matcher_fields(), (
+        "docs/site/src/data/matcher-v1.json is stale — run `mise run docs:data`"
+    )

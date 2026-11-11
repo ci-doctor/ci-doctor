@@ -5,22 +5,25 @@ One module for both callers, so the rules can't drift: `matchers index` and
 ci-doctor itself loads with ``author=False`` when it fetches a file, because a
 self-hosted registry may never have run our CI.
 
-Every field rule (lengths, RE2 cost, ASCII descriptions, the bare id, a required
-description and tag) lives on the models in `config/schemas/matchers.py` and
-`matchers/models.py`. What lives here is reading a file safely, and the one rule
-that needs to know where the file sits: its id and ecosystem matching their
-directories.
+Every field rule (lengths, RE2 cost, ASCII descriptions, a required description
+and tag) lives on the engine's spec models and `matchers/models.py`; a file is also
+compiled on load, so an undefined `$NAME` or an over-cost regex fails here, not
+mid-run. What lives here is reading a file safely, picking the model by its
+`schema`, and the one rule that needs to know where the file sits: its id
+matching its directory.
 """
 
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import ValidationError
 
-from ci_doctor.config.schemas.matcher import MatcherConfig
+from ci_doctor.config.schemas.matchers import BARE_ID
+from ci_doctor.engine import CompileError, Spec, UnknownSchema, compile_plan, load
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.models import MATCHER_GLOB, Bundle, RegistryMatcher
+from ci_doctor.matchers.models import MATCHER_GLOB, Bundle
 
 
 class _NoAliasLoader(yaml.SafeLoader):
@@ -125,8 +128,8 @@ def contained(root: Path, rel: str) -> Path:
     return real
 
 
-def matcher_from(data: Any, where: str, *, dirs: tuple[str, str] | None = None) -> MatcherConfig:  # noqa: ANN401 - parsed YAML
-    """Validate one parsed matcher document, still under its bare id.
+def matcher_from(data: Any, where: str, *, dirs: tuple[str, str] | None = None) -> Spec:  # noqa: ANN401 - parsed YAML
+    """Validate and compile one parsed matcher document, still under its bare id.
 
     Args:
         data: The parsed `matcher.yaml`.
@@ -137,34 +140,30 @@ def matcher_from(data: Any, where: str, *, dirs: tuple[str, str] | None = None) 
         The matcher, with its bare id.
 
     Raises:
-        SetupError: Naming `where` and everything wrong with it.
+        SetupError: Naming `where` and everything wrong with it, including a schema
+            version this ci-doctor doesn't know.
     """
     try:
-        m = RegistryMatcher.model_validate(data)
+        m = load(data)
+        compile_plan([m])
+    except (UnknownSchema, CompileError) as err:
+        raise SetupError(f"{where}: {err}") from None
     except ValidationError as err:
         raise SetupError(f"{where}: {err}") from None
-    if dirs is None:
-        return m
-    eco, name = dirs
-    problems = []
-    if m.id != name:
-        problems.append(f"id {m.id!r} must equal its directory name {name!r}")
-    if m.classification[0] != eco:
-        problems.append(
-            f"first classification tag {m.classification[0]!r} must equal its ecosystem directory {eco!r}"
-        )
-    if problems:
-        raise SetupError(f"{where}: " + "; ".join(problems))
+    if not re.fullmatch(BARE_ID, m.id):
+        raise SetupError(f"{where}: id {m.id!r} must be a bare name matching {BARE_ID}")
+    if dirs is not None and m.id != dirs[1]:
+        raise SetupError(f"{where}: id {m.id!r} must equal its directory name {dirs[1]!r}")
     return m
 
 
-def load_matcher(path: Path, *, author: bool = False) -> MatcherConfig:
+def load_matcher(path: Path, *, author: bool = False) -> Spec:
     """Load and validate one `matcher.yaml` from disk.
 
     Args:
         path: The file, at `matchers/<eco>/<id>/matcher.yaml` in its registry.
-        author: Also check that the id and ecosystem match the directories, as
-            `matchers index` / `verify` do.
+        author: Also check that the id matches its directory, as `matchers index` /
+            `verify` do.
 
     Returns:
         The matcher, with its bare id.

@@ -1,0 +1,32 @@
+schema: 1
+id: ruff
+description: >-
+  Ruff, the Python linter and formatter - lint violations from ruff check and
+  files ruff format would change.
+tags: [python, lint, format]
+
+define:
+  FILE: '[\w./-]+\.pyi?'
+  NUM: '\d+'
+  RULE: '[A-Z]+[0-9]+'
+
+outputs:
+  check:
+    description: >-
+      ruff check lint violations. Each names a rule code (F401, E501) and the
+      file:line it fired on. The code breaks a lint rule; ruff itself is fine.
+    variants:
+      concise:
+        match: { template: '$FILE:$NUM:$NUM: $RULE ' }
+      full:
+        match:
+          all:
+            - regex: '^%{RULE} '
+            - followed_by: { template: '--> $FILE:$NUM:$NUM', within: 2 }
+        window: { after: 8 }
+  format:
+    role: gate
+    description: >-
+      ruff format --check listing the files it would reformat. Formatting only:
+      running ruff format fixes it.
+    match: { regex: '^Would reformat: ' }

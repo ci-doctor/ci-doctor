@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from ci_doctor.config.schemas import Config
 from ci_doctor.errors import SetupError
-from ci_doctor.files import atomic_write
+from ci_doctor.lib.files import atomic_write
 
 _TOP_LEVEL = re.compile(r"^[^\s#]")
 

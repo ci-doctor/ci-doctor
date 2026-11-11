@@ -71,30 +71,28 @@ def test_a_description_is_required_in_a_registry(registry):
         load_matcher(_edit(registry, PYTEST, description=None))
 
 
-def test_a_tag_is_required_in_a_registry(registry):
-    """The first tag names the ecosystem directory, so a registry matcher needs one."""
-    with pytest.raises(SetupError, match=r"classification\s+Field required"):
-        load_matcher(_edit(registry, PYTEST, classification=None))
-    with pytest.raises(SetupError, match=r"classification\s+List should have at least 1 item"):
-        load_matcher(_edit(registry, PYTEST, classification=[]))
+def test_a_tag_is_required(registry):
+    """Tags are how the catalogue and `matchers search` find a matcher."""
+    with pytest.raises(SetupError, match=r"tags\s+Field required"):
+        load_matcher(_edit(registry, PYTEST, tags=None))
+    with pytest.raises(SetupError, match=r"tags\s+List should have at least 1 item"):
+        load_matcher(_edit(registry, PYTEST, tags=[]))
 
 
 @pytest.mark.parametrize(
     ("changes", "why"),
     [
-        ({"start": "^=+ FAILURES " + "x" * 488}, "501 characters, over 500"),
-        ({"start": "(a|b|c){400}"}, "1204 RE2 instructions, over 1000"),
-        ({"start": ".*"}, "matches an empty line"),
-        ({"end": "^"}, "matches an empty line"),
-        ({"start": None, "end": None, "pattern": "x*"}, "matches an empty line"),
-        ({"start": None, "end": None, "pattern": "FAIL", "before": -1}, "greater than or equal to 0"),
-        ({"start": None, "end": None, "pattern": "FAIL", "after": 101}, "less than or equal to 100"),
-        ({"exclude": [f"skip{i}" for i in range(21)]}, "at most 20 items"),
-        ({"classification": ["python", "a", "b", "c", "d", "e"]}, "at most 5 items"),
+        ({"match": {"regex": "^=+ FAILURES " + "x" * 488}}, "501 characters, over 500"),
+        ({"match": {"regex": "(a|b|c){400}"}}, "1204 RE2 instructions, over 1000"),
+        ({"match": {"regex": "x*"}}, "matches an empty line"),
+        ({"window": {"before": -1}}, "greater than or equal to 0"),
+        ({"window": {"after": 101}}, "less than or equal to 100"),
+        ({"define": {f"D{i}": "x" for i in range(21)}}, "at most 20 items"),
+        ({"tags": ["python", "a", "b", "c", "d", "e"]}, "at most 5 items"),
     ],
 )
 def test_a_matcher_field_out_of_bounds_is_rejected(registry, changes, why):
-    """Every cost cap: pattern length, RE2 program size, empty-line anchors, windows, lists."""
+    """Every cost cap: regex length, RE2 program size, empty-line anchors, windows, lists."""
     with pytest.raises(SetupError, match=why):
         load_matcher(_edit(registry, PYTEST, **changes))
 
@@ -107,21 +105,20 @@ def test_the_bare_id_must_match_its_directory(registry):
 
 def test_a_slash_in_the_file_id_is_rejected_even_though_the_model_allows_it(registry):
     """`alias/id` is what ci-doctor makes of it at load; the file holds the bare name."""
-    with pytest.raises(SetupError, match=r"id\s+String should match pattern"):
+    with pytest.raises(SetupError, match="must be a bare name"):
         load_matcher(_edit(registry, PYTEST, id="acme/pytest"))
 
 
-def test_the_ecosystem_must_match_its_directory(registry):
-    """Author time: the first tag is the directory under `matchers/`."""
-    with pytest.raises(SetupError, match="must equal its ecosystem directory 'python'"):
-        load_matcher(_edit(registry, PYTEST, classification=["js", "test"]), author=True)
+def test_tags_are_free_the_folder_is_the_ecosystem(registry):
+    """Tags are for search: no tag has to name the directory the matcher sits in."""
+    assert load_matcher(_edit(registry, PYTEST, tags=["test"]), author=True).tags == ["test"]
 
 
 def test_a_brand_new_ecosystem_is_accepted(registry):
     """Ecosystems are open: a new one needs nothing but a directory."""
     shutil.move(registry / "matchers/python/pytest", registry / "matchers/zig/pytest")
-    path = _edit(registry, "matchers/zig/pytest/matcher.yaml", classification=["zig", "test"])
-    assert load_matcher(path, author=True).classification[0] == "zig"
+    path = _edit(registry, "matchers/zig/pytest/matcher.yaml", tags=["zig", "test"])
+    assert load_matcher(path, author=True).tags[0] == "zig"
 
 
 def test_yaml_anchors_and_aliases_are_rejected(registry):
