@@ -115,7 +115,7 @@ new front end, never a change to how matching runs. Its layers, bottom first:
 | `select/` | Windows → evidence: `merge`, `shed`, `render`, `fired`, and the token `budget` |
 
 The public surface is `load`, `compile_plan`, `run`, `select`, `fired` and `fit`, plus
-the types. `core/analyze.py`, `matchers/verify.py` and `matchers/try_.py` all take the
+the types. `core/analyze.py`, `matchers/verify.py` and `matchers/examine.py` all take the
 same path through it, so a test and production can't drift.
 
 `tests/test_layout.py` pins four rules:
@@ -254,7 +254,7 @@ v1* page.
 
 Then **add fixtures** next to the file: `fixtures/<case>.github.log` or
 `<case>.gitlab.log` for a raw CI log, `<case>.log` for plain tool output. Run
-`ci-doctor matchers try matcher.yaml <log>` while writing the pattern, then
+`ci-doctor matchers examine matcher.yaml <log>` while writing the pattern, then
 `ci-doctor matchers verify --update`, review the `.expected` files (one per output), and
 `ci-doctor matchers index` to regenerate `index.yaml` and the ecosystem bundles.
 Without fixtures a matcher proves nothing — one that never matches fails silently,

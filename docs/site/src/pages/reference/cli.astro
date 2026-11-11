@@ -42,7 +42,7 @@ ci-doctor matchers remove ALIAS/NAME...   # drop entries from matchers.include
 ci-doctor matchers list                   # what include resolves to, and via which bundle
 ci-doctor matchers search TERM [--registry ALIAS]
 ci-doctor matchers info ALIAS/NAME        # description, tags, each output's role, registry, path; a bundle's members
-ci-doctor matchers try MATCHER LOG [--framing github|gitlab|plain]  # what each output selects from LOG
+ci-doctor matchers examine MATCHER LOG [--framing github|gitlab|plain]  # what each output selects from LOG
 
 ci-doctor matchers registry add NAME=LOCATION...  # add or override, after fetching its index.yaml
 ci-doctor matchers registry remove NAME...        # refused while include still uses it
@@ -57,7 +57,7 @@ ci-doctor matchers registry ping [NAME...]        # reachability, latency, match
 const matchersAuthor = `ci-doctor matchers index [ROOT] [--check]    # validate, then write index.yaml and the ecosystem bundles
 ci-doctor matchers verify [ROOT] [--update] [--min-positive N] [--min-negative N]
                           [--exempt FILE] [--cross-fire] [--json FILE]
-ci-doctor matchers schema [--version 1]      # the JSON Schema of a matcher file`;
+ci-doctor matchers schema [--version N | --out DIR]  # a matcher file's JSON Schema; --out writes every version`;
 
 const deterministic = `# Deterministic report, no model required:
 ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
@@ -167,7 +167,7 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         <code>official</code> falls back to its default address.
     </p>
     <p>
-        <code>try</code> runs one matcher, a <code>matcher.yaml</code> or an
+        <code>examine</code> runs one matcher, a <code>matcher.yaml</code> or an
         <code>alias/name</code>, over one log with the same engine
         <code>analyze</code> uses. A <code>.github.log</code> or
         <code>.gitlab.log</code> has that runner's framing stripped; anything else

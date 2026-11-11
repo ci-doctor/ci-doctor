@@ -5,10 +5,8 @@ that output alone selects from it; an empty `.expected` means it must not fire.
 `--update` writes them and the reviewer reads them in the PR diff, so "what this
 matcher catches" is reviewed as plain text. No LLM is involved.
 
-A fixture declares its framing by its name: `<case>.github.log` is a raw GitHub
-Actions log, `<case>.gitlab.log` a raw GitLab trace, and `<case>.log` plain tool
-output. The framing is stripped by that provider's segmenter, then the lines are
-denoised, so a `^` anchor sees what it sees in production. Nothing is guessed.
+A fixture declares its framing by its name (`matchers/logs.py`), so a `^` anchor sees
+what it sees in production.
 
 Every check here is about correctness, so it applies to any registry. How many
 fixtures are enough is a registry's policy, passed in as a `Policy`.
@@ -19,21 +17,14 @@ import hashlib
 import json
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from functools import cache
 from pathlib import Path
-from typing import Literal
 
-from ci_doctor.config.loader import default_config
-from ci_doctor.core.denoise import denoise
-from ci_doctor.core.models import walk_sections
 from ci_doctor.engine import Plan, Spec, compile_plan, run, select
 from ci_doctor.errors import SetupError
+from ci_doctor.matchers.logs import read_fixture
 from ci_doctor.matchers.validate import load_matcher, matcher_files
-from ci_doctor.providers.registry import segmenter_for
 
 MAX_FIXTURE_BYTES = 200 * 1024
-Framing = Literal["github", "gitlab", "plain"]
-FRAMINGS: tuple[Framing, ...] = ("github", "gitlab", "plain")
 
 #: The lines a runner prints when *any* step fails. A non-fallback output that fires on
 #: one of them fires on every failed job, whatever tool ran (GUIDELINES §7).
@@ -63,56 +54,6 @@ class Policy:
     min_negative: int = 2
     exempt: str = "verify-exempt.txt"
     cross_fire: bool = False
-
-
-#: The shipped config, read once: it is the same for every fixture, and it is all a
-#: fixture is read with (no repo file, no env), so a verify run is reproducible anywhere.
-_shipped = cache(default_config)
-
-
-def framing_of(path: Path) -> Framing:
-    """A fixture's framing, from its name.
-
-    Args:
-        path: `<case>.github.log`, `<case>.gitlab.log` or `<case>.log`.
-
-    Returns:
-        The framing its name declares.
-    """
-    tag = path.name.removesuffix(".log").rpartition(".")[2]
-    return tag if tag in ("github", "gitlab") else "plain"  # type: ignore[return-value]
-
-
-def read_log(raw: str, framing: Framing) -> list[str]:
-    """A log as the engine receives it in a real run.
-
-    Args:
-        raw: The log text.
-        framing: Which runner's framing to strip; "plain" strips none.
-
-    Returns:
-        Every content line in log order, framing stripped and denoised.
-    """
-    cfg = _shipped()
-    if framing == "plain":
-        return denoise(raw.splitlines(), cfg.denoise)
-    sections = segmenter_for(framing).segment(raw)
-    # Log order, not tree order: a segmenter files some lines under a synthetic
-    # trailer that walks before later steps, which would skew before/after and `until`.
-    lines = sorted((line for sec in walk_sections(sections) for line in sec.lines), key=lambda ln: ln.number)
-    return denoise([line.text for line in lines], cfg.denoise)
-
-
-def read_fixture(path: Path) -> list[str]:
-    """A fixture log, read with the framing its name declares.
-
-    Args:
-        path: The `.log` file.
-
-    Returns:
-        Its lines, as the engine sees them.
-    """
-    return read_log(path.read_text(encoding="utf-8", errors="replace"), framing_of(path))
 
 
 def selection(lines: list[str], plan: Plan) -> str:

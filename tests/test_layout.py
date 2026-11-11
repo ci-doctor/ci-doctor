@@ -52,10 +52,7 @@ def test_each_config_key_has_its_own_schema_module():
 
 
 def test_each_command_module_holds_one_command():
-    """`cli/<group…>/<name>.py` is one `Command` subclass named `name`; shared code lives in `_lib/`.
-
-    A keyword gets a trailing underscore: `try_.py` is `ci-doctor matchers try`.
-    """
+    """`cli/<group…>/<name>.py` is one `Command` subclass named `name`; shared code lives in `_lib/`."""
     import importlib
     import inspect
 
@@ -75,7 +72,7 @@ def test_each_command_module_holds_one_command():
             if issubclass(c, Command) and c.__module__ == module.__name__
         ]
         found[str(path.relative_to(cli))] = [(c.name, bool(inspect.getdoc(c))) for c in own]
-    assert found and all(v == [(Path(k).stem.removesuffix("_"), True)] for k, v in found.items()), found
+    assert found and all(v == [(Path(k).stem, True)] for k, v in found.items()), found
 
 
 ENGINE = PACKAGE / "engine"

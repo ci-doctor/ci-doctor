@@ -1,18 +1,17 @@
-"""`ci-doctor matchers try`: one matcher on one log, with the real engine, exactly as `verify` reads it.
+"""`ci-doctor matchers examine`: one matcher on one log, with the real engine, read as `verify` reads it.
 
 There is no browser playground: it would need a second engine kept equal to this one.
 This shows what each output selects, its anchors marked, and which variant fired.
 """
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from ci_doctor.engine import Output, Plan, Spec, compile_plan, run
-from ci_doctor.matchers.verify import Framing, framing_of, read_log
+from ci_doctor.matchers.logs import Framing, read_log
 
 
 @dataclass(frozen=True)
-class Tried:
+class Examined:
     """What one output selects from the log.
 
     Attributes:
@@ -52,7 +51,7 @@ def _render(lines: list[str], spans: list[tuple[int, int]], anchors: set[int]) -
     return out
 
 
-def try_matcher(spec: Spec, raw: str, framing: Framing) -> list[Tried]:
+def examine(spec: Spec, raw: str, framing: Framing) -> list[Examined]:
     """Run one matcher over one log and show what each output selects.
 
     Args:
@@ -70,23 +69,10 @@ def try_matcher(spec: Spec, raw: str, framing: Framing) -> list[Tried]:
         wins = sorted(run(Plan(plan.leaves, (op,)), lines), key=lambda w: w.anchor)
         variants = list(dict.fromkeys(w.variant for w in wins if w.variant))
         out.append(
-            Tried(
+            Examined(
                 op.output,
                 variants,
                 _render(lines, [(w.start, w.end) for w in wins], {w.anchor for w in wins}),
             )
         )
     return out
-
-
-def framing_for(log: Path, framing: str | None) -> Framing:
-    """The framing to read a log with: as asked, else from its name, else plain.
-
-    Args:
-        log: The log file.
-        framing: `--framing`, if given.
-
-    Returns:
-        The framing.
-    """
-    return framing if framing in ("github", "gitlab", "plain") else framing_of(log)  # type: ignore[return-value]

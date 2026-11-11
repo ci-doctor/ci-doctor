@@ -55,8 +55,8 @@ const pinned = `matchers:
   registries:
     acme: https://raw.githubusercontent.com/acme/matchers/v1.4.0/   # a tag or a commit SHA`;
 
-const tryIt = `ci-doctor matchers try matchers/python/ruff/matcher.yaml ./job.github.log
-ci-doctor matchers try official/ruff ./job.log --framing gitlab`;
+const examineIt = `ci-doctor matchers examine matchers/python/ruff/matcher.yaml ./job.github.log
+ci-doctor matchers examine official/ruff ./job.log --framing gitlab`;
 ---
 
 <Base
@@ -208,7 +208,7 @@ ci-doctor matchers try official/ruff ./job.log --framing gitlab`;
         <code>ci-doctor matchers info</code> read the same indexes. To see what a
         matcher selects from your own log, with the real engine:
     </p>
-    <Code code={tryIt} lang="sh" theme="github-dark" />
+    <Code code={examineIt} lang="sh" theme="github-dark" />
     <p>
         It marks each anchor and names the variant that fired. Writing and testing
         matchers in a registry of your own is on

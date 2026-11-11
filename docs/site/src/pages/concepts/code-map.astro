@@ -169,9 +169,9 @@ const packages = [
                 role: "`matchers verify`: runs each output alone over its matcher's fixture logs, framing stripped as each log's name declares, and compares with the committed `.expected` files; also checks variant coverage, runner trailers and cross-fire.",
             },
             {
-                path: "try_.py",
-                entry: "try_matcher()",
-                role: "`matchers try`: one matcher over one log, as `verify` reads it, each output's selection with its anchors marked.",
+                path: "examine.py",
+                entry: "examine()",
+                role: "`matchers examine`: one matcher over one log, as `verify` reads it, each output's selection with its anchors marked.",
             },
             {
                 path: "transports/",

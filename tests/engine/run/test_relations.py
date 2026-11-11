@@ -113,7 +113,7 @@ def test_window_while_extends_over_the_chain_up_to_max_lines():
 
 
 def test_variants_report_which_spelling_anchored():
-    """`try` and `verify` say `ruff.check (full)`, so a window knows its variant."""
+    """`examine` and `verify` say `ruff.check (full)`, so a window knows its variant."""
     m = v1(variants={"old": {"match": {"regex": "^npm ERR!"}}, "new": {"match": {"regex": "^npm error"}}})
     wins = run(compile_plan([m]), ["npm error code E404", "x", "npm ERR! code E404"])
     assert sorted((w.anchor, w.variant) for w in wins) == [(0, "new"), (2, "old")]

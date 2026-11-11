@@ -1,10 +1,11 @@
 """The JSON Schema of a matcher file, per schema version: for editors, and the docs' field tables.
 
-Attached to every release as `matcher-v<N>.schema.json`; a matcher file opts in with
+Every known version is attached to each release as `matcher-v<N>.schema.json`; a matcher file opts in with
 `# yaml-language-server: $schema=<SCHEMA_ID>` on its first line.
 """
 
 import json
+from pathlib import Path
 
 from ci_doctor.engine import SCHEMAS
 
@@ -32,3 +33,19 @@ def matcher_schema(version: int = 1) -> str:
         "$id": SCHEMA_ID.format(version=version),
     }
     return json.dumps(doc | schema, indent=2)
+
+
+def write_schemas(out: Path) -> list[Path]:
+    """Write `matcher-v<N>.schema.json` for every schema version this ci-doctor knows.
+
+    Args:
+        out: The directory; created if missing.
+
+    Returns:
+        The files written, by version.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    paths = [out / f"matcher-v{v}.schema.json" for v in sorted(SCHEMAS)]
+    for v, path in zip(sorted(SCHEMAS), paths, strict=True):
+        path.write_text(matcher_schema(v) + "\n", encoding="utf-8")
+    return paths

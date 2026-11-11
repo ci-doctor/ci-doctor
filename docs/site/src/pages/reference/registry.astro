@@ -12,7 +12,7 @@ matchers/<ecosystem>/<id>/fixtures/<case>.gitlab.log   # a raw GitLab CI trace
 matchers/<ecosystem>/<id>/fixtures/<case>.log          # plain tool output
 matchers/<ecosystem>/<id>/fixtures/<case>[.<output>].expected`;
 
-const build = `ci-doctor matchers try matchers/acme/deploy_cli/matcher.yaml ./job.log   # see what it selects
+const build = `ci-doctor matchers examine matchers/acme/deploy_cli/matcher.yaml ./job.log   # see what it selects
 ci-doctor matchers verify --update .     # write the .expected files, then read the diff
 ci-doctor matchers verify .              # every rule, every golden
 ci-doctor matchers index .               # write index.yaml and the ecosystem bundles
