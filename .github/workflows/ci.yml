@@ -110,7 +110,7 @@ jobs:
   contract:
     runs-on: ubuntu-latest
     env:
-      MATCHERS_REF: feat/E12   # the schema 1 migration; back to main once it merges
+      MATCHERS_REF: feat/E12-goldens   # the migration, goldens regenerated for this reader; main once merged
     steps:
       - uses: actions/checkout@v7
         with:

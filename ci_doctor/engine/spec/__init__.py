@@ -27,6 +27,6 @@ def load(data: Any) -> Spec:  # noqa: ANN401 - parsed YAML
         pydantic.ValidationError: For anything else wrong with the file.
     """
     version = data.get("schema") if isinstance(data, dict) else None
-    if isinstance(version, bool) or version not in SCHEMAS:
+    if type(version) is not int or version not in SCHEMAS:  # not bool, and hashable
         raise UnknownSchema(version)
     return SCHEMAS[version].model_validate(data)

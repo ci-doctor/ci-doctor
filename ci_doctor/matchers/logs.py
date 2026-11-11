@@ -1,8 +1,9 @@
 """Reading a log the way `analyze` does, with its framing declared rather than guessed.
 
 `<case>.github.log` is a raw GitHub Actions log, `<case>.gitlab.log` a raw GitLab trace,
-and any other `.log` plain tool output. The framing is stripped by that provider's
-segmenter, then the lines are denoised. `verify` reads fixtures this way and `examine`
+and any other `.log` plain tool output. A framed log is segmented by that provider's
+segmenter and attributed, and only the blamed section is kept, as `analyze` does; then the
+lines are denoised. `verify` reads fixtures this way and `examine`
 reads a user's log this way, so both see what production sees.
 """
 
@@ -11,8 +12,11 @@ from pathlib import Path
 from typing import Literal
 
 from ci_doctor.config.loader import default_config
+from ci_doctor.core.analyze import evidence_lines
+from ci_doctor.core.attribution import attribute
 from ci_doctor.core.denoise import denoise
-from ci_doctor.core.models import walk_sections
+from ci_doctor.core.models import FailureReason, Job
+from ci_doctor.core.phases import assign_phases
 from ci_doctor.providers.registry import segmenter_for
 
 Framing = Literal["github", "gitlab", "plain"]
@@ -38,23 +42,27 @@ def framing_of(path: Path) -> Framing:
 
 
 def read_log(raw: str, framing: Framing) -> list[str]:
-    """A log as the engine receives it in a real run.
+    """A log as the engine receives it in a real run of a failed job.
+
+    A framed log goes the way `analyze` takes it: segmented, phases assigned,
+    attributed, and only the blamed section kept. Plain output is one section.
 
     Args:
         raw: The log text.
         framing: Which runner's framing to strip; "plain" strips none.
 
     Returns:
-        Every content line in log order, framing stripped and denoised.
+        The lines the engine would match, denoised.
     """
     cfg = _shipped()
     if framing == "plain":
         return denoise(raw.splitlines(), cfg.denoise)
     sections = segmenter_for(framing).segment(raw)
-    # Log order, not tree order: a segmenter files some lines under a synthetic
-    # trailer that walks before later steps, which would skew before/after and `until`.
-    lines = sorted((line for sec in walk_sections(sections) for line in sec.lines), key=lambda ln: ln.number)
-    return denoise([line.text for line in lines], cfg.denoise)
+    assign_phases(sections, cfg.phases)
+    job = Job(
+        id="fixture", name="fixture", status="failed", failure_reason=FailureReason.SCRIPT_FAILURE, log=raw
+    )
+    return denoise(evidence_lines(sections, attribute(job, sections).phase), cfg.denoise)
 
 
 def read_fixture(path: Path) -> list[str]:

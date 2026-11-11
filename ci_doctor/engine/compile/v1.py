@@ -1,7 +1,7 @@
 """The schema 1 front end: a `schema: 1` matcher → its outputs in the Plan."""
 
 import functools
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 
 from ci_doctor.engine.compile.checks import check_regex, matches_empty_line
 from ci_doctor.engine.compile.defines import expand_regex, expand_template
@@ -141,21 +141,24 @@ def _window(spec: Window | None, defines: Mapping[str, str], leaves: Leaves, roo
     )
 
 
-def compile_v1(m: Matcher, leaves: Leaves) -> list[OutputPlan]:
+def compile_v1(m: Matcher, leaves: Leaves, exclude: Collection[str] = ()) -> list[OutputPlan]:
     """Compile a schema 1 matcher into its outputs.
 
     Args:
         m: The validated matcher.
         leaves: The Plan's leaf table, shared across matchers.
+        exclude: Output ids to skip, so their regexes never reach the leaf table.
 
     Returns:
-        One OutputPlan per output, in file order.
+        One OutputPlan per output kept, in file order.
 
     Raises:
         CompileError: With a path like `ruff › outputs.check › variants.full › match.all[1]`.
     """
     out = []
     for output_id, where, o in m.named_outputs():
+        if output_id in exclude:
+            continue
         root = _SEP.join(p for p in (m.id, where) if p)
         if o.match is not None:
             variants = [

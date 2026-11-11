@@ -98,3 +98,9 @@ def test_a_matcher_id_is_a_plain_token(bad_id):
     """The id is printed raw into the prompt too."""
     with pytest.raises(ValidationError):
         v1(id=bad_id, match={"regex": "a"})
+
+
+def test_a_schema_that_is_not_a_number_is_refused_cleanly():
+    """`schema: [1]` is unhashable; it must be a setup error, not a TypeError."""
+    with pytest.raises(UnknownSchema, match="must be a whole number"):
+        load({"schema": [1], "id": "x"})

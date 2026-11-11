@@ -99,7 +99,7 @@ def test_a_variant_window_overrides_its_outputs():
 
 
 def test_leaves_are_shared_and_exclude_drops_outputs():
-    """One regex in two matchers is one leaf; an excluded output is not in the Plan."""
+    """One regex in two matchers is one leaf; an excluded output, and its regexes, are not in the Plan."""
     plan = compile_plan(
         [
             v1(id="a", match={"regex": "boom"}),
@@ -113,5 +113,5 @@ def test_leaves_are_shared_and_exclude_drops_outputs():
         ],
         exclude={"b.p"},
     )
-    assert plan.leaves == ("boom", "bang")
+    assert plan.leaves == ("boom",)
     assert [o.output.id for o in plan.outputs] == ["a", "b.o"]

@@ -53,8 +53,9 @@ const config = `matchers:
         A fixture is a log plus, for each output, the <code>.expected</code> lines
         that output alone selects from it. An empty <code>.expected</code> means it
         must not fire. The log's name declares its framing: a
-        <code>.github.log</code> or <code>.gitlab.log</code> is stripped by that
-        runner's segmenter, and a plain <code>.log</code> is read as it is. A
+        <code>.github.log</code> or <code>.gitlab.log</code> is read the way
+        <code>analyze</code> reads a failed job, keeping only the step it blames, and a
+        plain <code>.log</code> is read as it is. A
         one-output matcher's golden is <code>&lt;case&gt;.expected</code>; with
         several outputs each has <code>&lt;case&gt;.&lt;output&gt;.expected</code>.
     </p>

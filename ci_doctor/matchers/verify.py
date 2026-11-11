@@ -332,6 +332,9 @@ def check(root: Path, *, update: bool = False, policy: Policy | None = None) -> 
         except SetupError as err:
             report.problems.append(str(err))
             continue
+        if spec.id in {m.spec.id for m in matchers}:
+            report.problems.append(f"{path.relative_to(root)}: matcher name {spec.id!r} is used twice")
+            continue
         m = _Matcher(path, spec, compile_plan([spec]), _fixtures(root, path, report))
         matchers.append(m)
         _goldens(root, m, report, update=update)

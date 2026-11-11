@@ -13,7 +13,9 @@ import hashlib
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 
+from ci_doctor.config.schemas.matchers import BARE_ID
 from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
 from ci_doctor.lib.files import atomic_write
@@ -190,7 +192,11 @@ def _generated_bundles(
     for eco, text in generated.items():
         if eco in matchers:
             problems.append(f"ecosystem {eco!r} has the same name as a matcher")
-        bundles[eco] = Bundle.model_validate(yaml.safe_load(text))
+        try:
+            bundles[eco] = Bundle.model_validate(yaml.safe_load(text))
+        except ValidationError:
+            problems.append(f"matchers/{eco}/: an ecosystem folder name must match {BARE_ID}")
+            continue
         entries[eco] = {
             "path": f"bundles/{eco}.yaml",
             "sha256": hashlib.sha256(text.encode()).hexdigest(),
@@ -215,8 +221,13 @@ def _load_bundles(
     """
     out = {}
     for path in sorted(root.glob(BUNDLE_GLOB)):
-        if path.stem in generated or _is_generated(path):
+        if _is_generated(path):
             continue  # rewritten from its folder, or stale and deleted on write
+        if path.stem in generated:
+            problems.append(
+                f"{path}: {path.stem!r} is an ecosystem, whose bundle is generated; rename this one"
+            )
+            continue
         try:
             b = load_bundle(path, author=True)
         except SetupError as err:

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from ci_doctor import cli
-from ci_doctor.engine import compile_plan, run
+from ci_doctor.engine import MatcherV1, compile_plan, run
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.index import write_index
 from ci_doctor.matchers.logs import read_fixture
@@ -215,37 +215,23 @@ def test_the_cli_exits_one_when_verify_fails(registry, monkeypatch):
     assert exc.value.code == 1
 
 
-def test_a_fixture_reads_in_log_order_not_section_order(tmp_path):
-    """Lines a segmenter files under the synthetic trailer must not jump ahead of later steps."""
+def test_a_framed_fixture_reads_only_the_blamed_step(tmp_path):
+    """As `analyze` does: context from an earlier step never reaches a relation or a window."""
     log = tmp_path / "x.github.log"
-    ts = "2026-07-24T20:04:00.0000000Z "
-    log.write_text(
-        "".join(
-            ts + line + "\n"
-            for line in [
-                "##[group]Operating System",
-                "Ubuntu",
-                "##[endgroup]",
-                "between groups",
-                "##[group]Run pytest",
-                "pytest",
-                "##[endgroup]",
-                "test output",
-                "##[error]Process completed with exit code 1.",
-                "Post job cleanup.",
-            ]
-        )
+    log.write_text(gh_log([("Run npm ci", ["added 842 packages"]), ("Run npm test", ["boom: test failed"])]))
+    lines = read_fixture(log)
+    assert "boom: test failed" in lines
+    assert "added 842 packages" not in lines
+    relation = MatcherV1.model_validate(
+        {
+            "schema": 1,
+            "id": "x",
+            "description": "A matcher whose context sits in an earlier step.",
+            "tags": ["t"],
+            "match": {"all": [{"regex": "^boom"}, {"preceded_by": {"regex": "added", "within": 50}}]},
+        }
     )
-    # The trailer opens at "between groups" and later collects the step's end, so tree
-    # order would put those two lines before "pytest".
-    assert read_fixture(log) == [
-        "Ubuntu",
-        "between groups",
-        "pytest",
-        "test output",
-        "##[error]Process completed with exit code 1.",
-        "Post job cleanup.",
-    ]
+    assert selection(lines, run(compile_plan([relation]), lines)) == ""
 
 
 @pytest.mark.parametrize("command", [verify, write_index])
