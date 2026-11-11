@@ -8,6 +8,7 @@ from typing_extensions import override
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import edit, editable, read
 from ci_doctor.cli._lib.outputs.message import done, skipped
+from ci_doctor.matchers.cache import Cache
 from ci_doctor.matchers.registry import Resolved, check_ref, session, via
 
 
@@ -25,7 +26,7 @@ class AddCommand(Command):
     ) -> None:
         cfg = editable().matchers
         current = list(read("matchers").get("include", []))
-        seen = Resolved()
+        seen = Resolved(cache=Cache.open(cfg))
         with session(cfg) as http:
             parsed = [str(check_ref(r, cfg, http, seen)) for r in refs]
             brought_by = via(cfg, current, http)

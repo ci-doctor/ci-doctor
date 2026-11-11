@@ -11,7 +11,9 @@ registry's alias and location, so every loading error has the same shape.
 
 import re
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from importlib import import_module
+from typing import ClassVar
 from urllib.parse import urlsplit
 
 import httpx
@@ -28,8 +30,39 @@ TRANSPORTS: dict[str, str] = {
 _USERINFO = re.compile(r"://[^/@\s]++@")
 
 
+@dataclass(frozen=True)
+class Validators:
+    """What a cached response is revalidated with (RFC 9110 conditional requests).
+
+    Attributes:
+        etag: The response's `ETag`, sent back as `If-None-Match`.
+        last_modified: Its `Last-Modified`, sent back as `If-Modified-Since` when there is no ETag.
+    """
+
+    etag: str | None = None
+    last_modified: str | None = None
+
+
+@dataclass(frozen=True)
+class Fetched:
+    """One file as a transport read it.
+
+    Attributes:
+        body: Its bytes, or None when the server answered `304`: unchanged since `since`.
+        validators: The response's validators, to revalidate it with next time.
+        max_age: Seconds the response stays fresh (`Cache-Control: max-age` minus `Age`); 0 if unsaid.
+    """
+
+    body: bytes | None
+    validators: Validators = field(default_factory=Validators)
+    max_age: float = 0.0
+
+
 class Transport(ABC):
     """Read files from one kind of registry location."""
+
+    #: Whether the registry cache keeps what this transport reads.
+    cacheable: ClassVar[bool] = False
 
     @abstractmethod
     def locate(self, value: str) -> str:
@@ -46,7 +79,16 @@ class Transport(ABC):
         """
 
     @abstractmethod
-    def read(self, alias: str, location: str, rel: str, *, cap: int, client: httpx.Client) -> bytes:
+    def read(
+        self,
+        alias: str,
+        location: str,
+        rel: str,
+        *,
+        cap: int,
+        client: httpx.Client,
+        since: Validators | None = None,
+    ) -> Fetched:
         """Read one file of a registry, as the bytes its index hashes.
 
         Args:
@@ -55,9 +97,11 @@ class Transport(ABC):
             rel: The file, relative to that directory (already path-checked by `Index`).
             cap: The most bytes accepted.
             client: The run's shared HTTP client.
+            since: A cached copy's validators: a transport that can ask "changed since?"
+                may answer with `body=None`. Others ignore it.
 
         Returns:
-            The file's bytes.
+            The file, or `body=None` if it is unchanged since `since`.
 
         Raises:
             SetupError: If it can't be read, is over `cap`, or leaves the registry.

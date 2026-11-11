@@ -63,3 +63,15 @@ def fx_registry(tmp_path_factory: pytest.TempPathFactory) -> Path:
         The registry directory. Tests that edit a registry write their own.
     """
     return support.py_registry(tmp_path_factory.mktemp("registry"))
+
+
+@pytest.fixture(autouse=True)
+def _private_cache(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test gets its own registry cache, never the user's.
+
+    Args:
+        tmp_path_factory: pytest fixture for a fresh directory.
+        monkeypatch: pytest fixture to swap the default cache location.
+    """
+    root = tmp_path_factory.mktemp("cache")
+    monkeypatch.setattr("ci_doctor.matchers.cache.default_root", lambda: root)

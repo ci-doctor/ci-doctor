@@ -86,6 +86,8 @@ matchers:
   exclude: []                    # alias/matcher.output to drop; one that names nothing exits 1
   timeout_seconds: 10            # per registry request
   fetch_workers: 8               # registry files fetched at once; 1 fetches in order
+  cache: true                    # keep http(s) registry files; a run fetches only what changed
+  cache_dir: null                # default: the OS cache dir; relative to the working directory
 
 extraction:
   tail_lines: 120                # lines kept from the end of the blamed section
@@ -354,6 +356,24 @@ redaction:
                 ><td><code>matchers.fetch_workers</code></td><td><code>8</code></td><td
                     >Registry files fetched at once, 1–32. Lower it for a registry
                     that rate-limits.</td
+                ></tr
+            >
+            <tr
+                ><td><code>matchers.cache</code></td><td><code>true</code></td><td
+                    >Keep fetched files from <code>http(s)://</code> registries, stored
+                    by the sha256 their index lists. A run revalidates each index (no
+                    request at all while the server's <code>max-age</code> holds) and
+                    fetches only files whose hash changed. Local registries are never
+                    copied.</td
+                ></tr
+            >
+            <tr
+                ><td><code>matchers.cache_dir</code></td><td>OS cache dir</td><td
+                    ><code>~/.cache/ci-doctor</code> (or <code>$XDG_CACHE_HOME</code>),
+                    <code>~/Library/Caches/ci-doctor</code>, or
+                    <code>%LOCALAPPDATA%\ci-doctor\Cache</code>. A relative path is
+                    relative to the working directory, so a CI cache step can keep it
+                    (<code>.cache/ci-doctor</code>).</td
                 ></tr
             >
         </tbody>

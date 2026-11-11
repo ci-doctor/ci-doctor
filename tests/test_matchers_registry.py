@@ -398,7 +398,7 @@ def test_each_bundle_and_matcher_file_is_fetched_once(tmp_path, monkeypatch):
 
     monkeypatch.setattr(registry, "fetch_file", counting)
     assert [m.id for m in load(cfg)] == ["r/x", "r/y"]  # include order survives the parallel fetch
-    assert len(seen) == len(set(seen)) == 6  # index, 3 bundles, 2 matchers
+    assert len(seen) == len(set(seen)) == 5  # 3 bundles, 2 matchers; the index is read on its own path
 
 
 def test_the_fetch_settings_come_from_the_config(monkeypatch):

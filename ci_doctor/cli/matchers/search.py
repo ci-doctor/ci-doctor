@@ -10,6 +10,7 @@ from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
 from ci_doctor.cli._lib.outputs.message import say
 from ci_doctor.cli._lib.outputs.table import Row, table
+from ci_doctor.matchers.cache import Cache
 from ci_doctor.matchers.models import Index
 from ci_doctor.matchers.registry import Resolved, index_for, session
 
@@ -39,7 +40,7 @@ class SearchCommand(Command):
         cfg = editable().matchers
         needle = term.lower()
         aliases = [registry] if registry else sorted(cfg.registries)
-        seen = Resolved()
+        seen = Resolved(cache=Cache.open(cfg))
         with session(cfg) as http:
             rows = [
                 hit

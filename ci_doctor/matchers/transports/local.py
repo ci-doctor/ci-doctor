@@ -6,7 +6,7 @@ from urllib.parse import unquote, urlsplit
 import httpx
 
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.transports import Transport
+from ci_doctor.matchers.transports import Fetched, Transport, Validators
 from ci_doctor.matchers.validate import contained
 
 
@@ -25,7 +25,16 @@ class LocalTransport(Transport):
         parts = urlsplit(value)
         return unquote(parts.path) if parts.scheme == "file" else value
 
-    def read(self, alias: str, location: str, rel: str, *, cap: int, client: httpx.Client) -> bytes:
+    def read(
+        self,
+        alias: str,
+        location: str,
+        rel: str,
+        *,
+        cap: int,
+        client: httpx.Client,
+        since: Validators | None = None,
+    ) -> Fetched:
         """Read a file from a registry on disk, contained by its real path.
 
         Args:
@@ -34,9 +43,10 @@ class LocalTransport(Transport):
             rel: The file, relative to it.
             cap: The most bytes accepted.
             client: Unused.
+            since: Unused; a disk read is never cached.
 
         Returns:
-            The file's bytes.
+            The file.
 
         Raises:
             SetupError: If it can't be read, is over `cap`, or resolves outside the registry.
@@ -51,4 +61,4 @@ class LocalTransport(Transport):
             raise SetupError(f"{rel}: {err.strerror or err}") from None
         if len(body) > cap:
             raise SetupError(f"{rel} is over the {cap}-byte cap")
-        return body
+        return Fetched(body)

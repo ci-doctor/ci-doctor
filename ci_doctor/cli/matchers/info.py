@@ -11,6 +11,7 @@ from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
 from ci_doctor.cli._lib.outputs.message import say
 from ci_doctor.cli._lib.outputs.table import Cell, Row, table
+from ci_doctor.matchers.cache import Cache
 from ci_doctor.matchers.models import Ref
 from ci_doctor.matchers.registry import Resolved, check_ref, fetch_outputs, redact, session, via
 
@@ -38,7 +39,7 @@ class InfoCommand(Command):
     @override
     def run(self, ref: str = typer.Argument(..., metavar="ALIAS/NAME")) -> None:
         cfg = editable().matchers
-        seen = Resolved()
+        seen = Resolved(cache=Cache.open(cfg))
         with session(cfg) as http:
             parsed = check_ref(ref, cfg, http, seen)
             is_matcher = parsed.name in seen.indexes[parsed.alias].matchers

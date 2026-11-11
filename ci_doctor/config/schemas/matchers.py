@@ -119,3 +119,18 @@ class MatchersConfig(Strict):
         le=32,
         description="Registry files fetched at once. Lower it for a registry that rate-limits; 1 fetches in order.",
     )
+    cache: bool = Field(
+        default=True,
+        description=(
+            "Keep fetched http(s) registry files in a local cache, so a run fetches only the index "
+            "and what changed. Files are stored by the sha256 their index lists."
+        ),
+    )
+    cache_dir: str | None = Field(
+        default=None,
+        description=(
+            "Where the cache lives. Default: the OS cache directory (`~/.cache/ci-doctor`, "
+            "`~/Library/Caches/ci-doctor`, `%LOCALAPPDATA%\\ci-doctor\\Cache`). A relative path "
+            "is relative to the working directory, so a CI cache step can keep it (`.cache/ci-doctor`)."
+        ),
+    )

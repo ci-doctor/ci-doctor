@@ -1,7 +1,8 @@
 """The user's side of a registry: resolving `matchers.include` and loading what it selects.
 
 Every `analyze` resolves `matchers.include` against the registries' indexes and
-fetches what it selected: no cache, so a registry is always read as it is now.
+fetches what it selected. An http(s) registry goes through the cache (`cache.py`):
+its index is revalidated, and only files whose hash changed are fetched.
 What comes back is someone else's file, so every fetch is bounded (scheme,
 redirects, size, path containment, in `transports/`), every matcher and bundle
 must match the sha256 its index lists, and every file is validated again
@@ -27,6 +28,7 @@ from pydantic import ValidationError
 from ci_doctor.config.schemas.matchers import MatchersConfig, unqualified
 from ci_doctor.engine import SCHEMAS, Output, Spec
 from ci_doctor.errors import SetupError
+from ci_doctor.matchers.cache import Cache
 from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
 from ci_doctor.matchers.transports import decode, redact, transport_for
 from ci_doctor.matchers.validate import bundle_from, matcher_from, parse_yaml
@@ -78,7 +80,14 @@ def registry_dir(alias: str, value: str) -> str:
 
 
 def fetch_file(
-    alias: str, location: str, rel: str, *, cap: int, client: httpx.Client, sha256: str | None = None
+    alias: str,
+    location: str,
+    rel: str,
+    *,
+    cap: int,
+    client: httpx.Client,
+    sha256: str | None = None,
+    cache: Cache | None = None,
 ) -> str:
     """Read one file of a registry through the transport its location calls for.
 
@@ -89,7 +98,7 @@ def fetch_file(
         cap: The most bytes accepted.
         client: The run's shared HTTP client.
         sha256: The hash the index lists for this file, checked against its bytes.
-            None for the index itself.
+        cache: Where a hashed file is looked up first and stored after; None to skip.
 
     Returns:
         The file's text.
@@ -99,21 +108,59 @@ def fetch_file(
             not match `sha256`, or is not UTF-8.
     """
     try:
-        body = transport_for(location).read(alias, location, rel, cap=cap, client=client)
+        transport = transport_for(location)
+        store = cache if sha256 is not None and transport.cacheable else None
+        if store is not None and sha256 is not None and (hit := store.blob(sha256)) is not None:
+            return decode(rel, hit)
+        body = transport.read(alias, location, rel, cap=cap, client=client).body or b""
         if sha256 is not None and (actual := hashlib.sha256(body).hexdigest()) != sha256:
             raise SetupError(f"{rel} has sha256 {actual}, but the index lists {sha256}")
+        if store is not None and sha256 is not None:
+            store.put_blob(sha256, body)
         return decode(rel, body)
     except SetupError as err:
         raise _fail(alias, location, err) from None
 
 
-def fetch_index(alias: str, location: str, client: httpx.Client) -> Index:
+def _index_body(alias: str, location: str, client: httpx.Client, cache: Cache | None) -> bytes:
+    """A registry's `index.yaml` bytes: cached while fresh, revalidated after, fetched when changed.
+
+    Args:
+        alias: The registry's alias.
+        location: Its directory.
+        client: The run's shared HTTP client.
+        cache: The run's cache, or None.
+
+    Returns:
+        The index's bytes.
+
+    Raises:
+        SetupError: If it can't be fetched.
+    """
+    transport = transport_for(location)
+    store = cache if transport.cacheable else None
+    cached = store.index(location) if store is not None else None
+    if cached is not None and time.time() < cached.fresh_until:
+        return cached.body
+    since = cached.validators if cached is not None else None
+    fetched = transport.read(alias, location, INDEX, cap=INDEX_CAP, client=client, since=since)
+    if fetched.body is None and cached is not None and store is not None:
+        store.revalidated(location, fetched.validators, fetched.max_age)
+        return cached.body
+    body = fetched.body or b""
+    if store is not None:
+        store.put_index(location, body, fetched.validators, fetched.max_age)
+    return body
+
+
+def fetch_index(alias: str, location: str, client: httpx.Client, cache: Cache | None = None) -> Index:
     """Fetch and validate a registry's `index.yaml`.
 
     Args:
         alias: The registry's alias.
         location: Its directory, from :func:`registry_dir`.
         client: The run's shared HTTP client.
+        cache: The run's cache, or None to always fetch.
 
     Returns:
         The validated index: entry count, names and path rules already checked.
@@ -121,7 +168,10 @@ def fetch_index(alias: str, location: str, client: httpx.Client) -> Index:
     Raises:
         SetupError: If it can't be fetched, parsed or validated.
     """
-    text = fetch_file(alias, location, INDEX, cap=INDEX_CAP, client=client)
+    try:
+        text = decode(INDEX, _index_body(alias, location, client, cache))
+    except SetupError as err:
+        raise _fail(alias, location, err) from None
     data = parse_yaml(text, redact(f"registry {alias!r} ({location}): {INDEX}"))
     try:
         return Index.model_validate(data)
@@ -157,11 +207,13 @@ class Resolved:
         indexes: Each referenced registry's index, by alias.
         matchers: Every selected `alias/name`, in include order, mapped to how it
             got in: `"direct"`, or the top-level bundle that pulled it in.
+        cache: Where registry files are cached, or None to always fetch.
     """
 
     locations: dict[str, str] = field(default_factory=dict)
     indexes: dict[str, Index] = field(default_factory=dict)
     matchers: dict[str, str] = field(default_factory=dict)
+    cache: Cache | None = None
 
 
 def unknown_registry(alias: str, registries: Mapping[str, str]) -> SetupError:
@@ -212,7 +264,7 @@ def index_for(cfg: MatchersConfig, alias: str, http: httpx.Client, seen: Resolve
         if alias not in cfg.registries:
             raise unknown_registry(alias, cfg.registries)
         seen.locations[alias] = registry_dir(alias, cfg.registries[alias])
-        seen.indexes[alias] = fetch_index(alias, seen.locations[alias], http)
+        seen.indexes[alias] = fetch_index(alias, seen.locations[alias], http, seen.cache)
     return seen.indexes[alias]
 
 
@@ -257,7 +309,9 @@ def _fetch_entry(ref: Ref, seen: Resolved, http: httpx.Client) -> tuple[Any, str
     index, location = seen.indexes[ref.alias], seen.locations[ref.alias]
     entry = index.matchers.get(ref.name) or index.bundles[ref.name]
     where = redact(f"registry {ref.alias!r} ({location}): {entry.path}")
-    text = fetch_file(ref.alias, location, entry.path, cap=FILE_CAP, client=http, sha256=entry.sha256)
+    text = fetch_file(
+        ref.alias, location, entry.path, cap=FILE_CAP, client=http, sha256=entry.sha256, cache=seen.cache
+    )
     return parse_yaml(text, where), where
 
 
@@ -317,7 +371,7 @@ def resolve(cfg: MatchersConfig, client: httpx.Client | None = None) -> Resolved
     if not cfg.include:
         raise SetupError(EMPTY_INCLUDE)
     refs = [Ref.parse(r) for r in cfg.include]
-    out = Resolved()
+    out = Resolved(cache=Cache.open(cfg))
     with session(cfg, client) as http:
         for alias in dict.fromkeys(r.alias for r in refs):
             index_for(cfg, alias, http, out)
