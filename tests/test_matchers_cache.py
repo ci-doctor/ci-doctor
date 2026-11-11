@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
+from ci_doctor.errors import SetupError
 from ci_doctor.matchers.cache import Cache, default_root  # bound before the autouse fixture swaps it
 from ci_doctor.matchers.index import write_index
 from ci_doctor.matchers.registry import load
@@ -31,11 +32,16 @@ class Server:
         """Serve `root`, with an ETag (else Last-Modified) and optional freshness headers."""
         self.root, self.etag, self.cache_control, self.age = root, etag, cache_control, age
         self.requests: list[tuple[str, dict[str, str]]] = []
+        self.down: int | Exception | None = None  # an outage: an HTTP status, or an error to raise
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         """Answer one request as a static host would."""
         rel = str(request.url).removeprefix(BASE)
         self.requests.append((rel, dict(request.headers)))
+        if isinstance(self.down, Exception):
+            raise self.down
+        if self.down:
+            return httpx.Response(self.down)
         path = self.root / rel
         if not path.is_file():
             return httpx.Response(404)
@@ -197,3 +203,78 @@ def test_a_cache_off_config_opens_no_cache(tmp_path):
     """`Cache.open` is the one place that decides; off means None, nothing created."""
     assert Cache.open(_cfg(tmp_path, cache=False)) is None
     assert Cache.open(_cfg(tmp_path)) is not None
+
+
+# --- an outage --------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("down", [503, httpx.ConnectError("connection refused")], ids=["5xx", "refused"])
+def test_an_outage_falls_back_to_the_cached_index_with_a_warning(tmp_path, registry, caplog, down):
+    """The registry's outage isn't the setup's: a run with everything cached carries on, and says so."""
+    server, cfg = Server(registry), _cfg(tmp_path)
+    cold = _load(cfg, server)
+    server.down = down
+    with caplog.at_level(logging.WARNING, logger="ci_doctor.matchers"):
+        assert _load(cfg, server) == cold
+    assert "registry 'fx' is unreachable" in caplog.text
+    assert "using its index cached 0s ago" in caplog.text
+
+
+def test_an_outage_with_nothing_cached_fails_setup(tmp_path, registry):
+    """No cached index, nothing to fall back on: the setup error it always was."""
+    server = Server(registry)
+    server.down = 503
+    with pytest.raises(SetupError, match="GET index.yaml: HTTP 503"):
+        _load(_cfg(tmp_path), server)
+
+
+def test_a_404_is_not_an_outage(tmp_path, registry):
+    """A missing index means the registry moved or is misconfigured; the cache doesn't hide that."""
+    server, cfg = Server(registry), _cfg(tmp_path)
+    _load(cfg, server)
+    server.down = 404
+    with pytest.raises(SetupError, match="GET index.yaml: HTTP 404"):
+        _load(cfg, server)
+
+
+def test_an_outage_with_a_file_missing_from_the_cache_fails_setup_naming_it(tmp_path, registry):
+    """The fallback covers only what is cached; anything else still has to be fetched."""
+    server, cfg = Server(registry), _cfg(tmp_path)
+    _load(cfg, server)
+    sha = hashlib.sha256((registry / "matchers/python/pytest/matcher.yaml").read_bytes()).hexdigest()
+    (tmp_path / "cache" / "blobs" / "sha256" / sha[:2] / sha).unlink()
+    server.down = 503
+    with pytest.raises(SetupError, match="GET matchers/python/pytest/matcher.yaml: HTTP 503"):
+        _load(cfg, server)
+
+
+# --- prune and clean ----------------------------------------------------------------
+
+
+def test_prune_keeps_what_a_cached_index_lists_and_drops_the_rest(tmp_path, registry):
+    """After a matcher changes, its old version is the only file no index lists."""
+    server, cfg = Server(registry), _cfg(tmp_path)
+    _load(cfg, server)
+    path = registry / "matchers/python/pytest/matcher.yaml"
+    old = hashlib.sha256(path.read_bytes()).hexdigest()
+    path.write_text(path.read_text().replace("short summary.", "short test summary line."))
+    write_index(registry)
+    _load(cfg, server)
+    cache = Cache(tmp_path / "cache")
+    assert len(cache.blob_paths()) == 5  # 2 bundles, 2 matchers, and the old pytest
+    assert [p.name for p in cache.prune()] == [old]
+    assert len(cache.blob_paths()) == 4
+    server.fetched()
+    _load(cfg, server)
+    assert server.fetched() == ["index.yaml"]  # nothing the index lists was pruned
+
+
+def test_clean_empties_everything_but_the_tagged_root(tmp_path, registry):
+    """The next run is a cold one."""
+    server, cfg = Server(registry), _cfg(tmp_path)
+    _load(cfg, server)
+    Cache(tmp_path / "cache").clean()
+    assert sorted(p.name for p in (tmp_path / "cache").iterdir()) == ["CACHEDIR.TAG"]
+    server.fetched()
+    _load(cfg, server)
+    assert len(server.fetched()) == 5

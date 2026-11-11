@@ -28,9 +28,9 @@ from pydantic import ValidationError
 from ci_doctor.config.schemas.matchers import MatchersConfig, unqualified
 from ci_doctor.engine import SCHEMAS, Output, Spec
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cache import Cache
+from ci_doctor.matchers.cache import Cache, ago
 from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
-from ci_doctor.matchers.transports import decode, redact, transport_for
+from ci_doctor.matchers.transports import Unreachable, decode, redact, transport_for
 from ci_doctor.matchers.validate import bundle_from, matcher_from, parse_yaml
 
 log = logging.getLogger("ci_doctor.matchers")
@@ -135,7 +135,7 @@ def _index_body(alias: str, location: str, client: httpx.Client, cache: Cache | 
         The index's bytes.
 
     Raises:
-        SetupError: If it can't be fetched.
+        SetupError: If it can't be fetched, and an outage has no cached index to fall back on.
     """
     transport = transport_for(location)
     store = cache if transport.cacheable else None
@@ -143,7 +143,15 @@ def _index_body(alias: str, location: str, client: httpx.Client, cache: Cache | 
     if cached is not None and time.time() < cached.fresh_until:
         return cached.body
     since = cached.validators if cached is not None else None
-    fetched = transport.read(alias, location, INDEX, cap=INDEX_CAP, client=client, since=since)
+    try:
+        fetched = transport.read(alias, location, INDEX, cap=INDEX_CAP, client=client, since=since)
+    except Unreachable as err:
+        if cached is None:
+            raise
+        log.warning(
+            f"registry {alias!r} is unreachable ({err}); using its index cached {ago(time.time() - cached.fetched_at)} ago"
+        )
+        return cached.body
     if fetched.body is None and cached is not None and store is not None:
         store.revalidated(location, fetched.validators, fetched.max_age)
         return cached.body

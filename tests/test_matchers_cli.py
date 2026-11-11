@@ -297,6 +297,23 @@ def test_ping_exits_1_when_a_registry_is_down(cfg, monkeypatch, capsys, fx_regis
     assert _run(monkeypatch, capsys, "registry", "ping", "ghost")[0] == 1
 
 
+def test_cache_info_prune_and_clean(cfg, monkeypatch, capsys, tmp_path):
+    """`matchers cache` reports what a run left behind, prunes what no index lists, and empties it."""
+    _write(cfg, f"matchers:\n  cache_dir: {tmp_path / 'c'}\n")
+    assert "1 files" not in _run(monkeypatch, capsys, "cache", "info")[1]
+    assert _run(monkeypatch, capsys, "info", "official/pytest")[0] == 0
+    code, out, _ = _run(monkeypatch, capsys, "cache", "info")
+    assert code == 0
+    assert f"cache: {tmp_path / 'c'}, 1 files" in out
+    assert "https://matchers.cidoc.dev/: index fetched 0s ago, 1/4 files cached" in out
+    orphan = tmp_path / "c" / "blobs" / "sha256" / "ab" / ("ab" + "0" * 62)
+    orphan.parent.mkdir(parents=True, exist_ok=True)
+    orphan.write_bytes(b"old")
+    assert "removed 1 file no cached index lists" in _run(monkeypatch, capsys, "cache", "prune")[1]
+    assert "emptied" in _run(monkeypatch, capsys, "cache", "clean")[1]
+    assert ", 0 files" in _run(monkeypatch, capsys, "cache", "info")[1]
+
+
 def test_an_invalid_config_is_a_setup_error(cfg, monkeypatch, capsys):
     """An invalid config is a setup error."""
     _write(cfg, "bogus_key: 1\n")

@@ -49,6 +49,10 @@ ci-doctor matchers registry remove NAME...        # refused while include still 
 ci-doctor matchers registry list
 ci-doctor matchers registry ping [NAME...]        # reachability, latency, matcher and bundle count
 
+ci-doctor matchers cache info    # where the cache is, its size, each registry's index age and files cached
+ci-doctor matchers cache prune   # delete files no cached index lists (old versions of changed matchers)
+ci-doctor matchers cache clean   # delete everything; the next run fetches every file again
+
 # The global ci-doctor -f PATH adds config files to read. The commands that edit the
 # config write your user config (~/.config/ci-doctor/config.yml on Linux), created if
 # missing; ci-doctor --write-to FILE matchers ... writes FILE instead, and reads it too.
@@ -165,6 +169,14 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         through a bundle, remove the bundle; to drop one output of a matcher, list
         it under <code>matchers.exclude</code>. Removing an override of
         <code>official</code> falls back to its default address.
+    </p>
+    <p>
+        <code>search</code>, <code>info</code>, <code>add</code> and
+        <code>examine</code> read registries through the same cache as
+        <code>analyze</code>; <code>registry ping</code> never does, since it is
+        there to test the registry. How the cache works is on <a
+            href={url("/concepts/matchers/")}>Matchers</a
+        >.
     </p>
     <p>
         <code>examine</code> runs one matcher, a <code>matcher.yaml</code> or an

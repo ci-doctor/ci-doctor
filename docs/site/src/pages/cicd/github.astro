@@ -50,6 +50,14 @@ const ghe = `      - uses: ci-doctor/ci-doctor@master
         with:
           api-url: https://ghe.internal/api/v3
           token: \${{ secrets.GHE_TOKEN }}`;
+
+const cache = `      # Keep ci-doctor's registry cache between runs: the next run revalidates
+      # the index and fetches only the matchers that changed.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ci-doctor
+          key: ci-doctor-matchers-\${{ github.run_id }}
+          restore-keys: ci-doctor-matchers-`;
 ---
 
 <Base
@@ -217,6 +225,16 @@ const ghe = `      - uses: ci-doctor/ci-doctor@master
         The outputs are the point: they let the <em>workflow</em> branch on what broke.
     </p>
     <Code code={outputs} lang="yaml" theme="github-dark" />
+
+    <h2>Keep the registry cache</h2>
+    <p>
+        ci-doctor caches registry files in <code>~/.cache/ci-doctor</code>, which a
+        hosted runner throws away after the job. Add a cache step before the action
+        and each run starts warm: one request revalidates the index, and only
+        matchers that changed are fetched. The key changes every run, so the cache is
+        saved fresh, and <code>restore-keys</code> picks up the latest one.
+    </p>
+    <Code code={cache} lang="yaml" theme="github-dark" />
 
     <h2>GitHub Enterprise</h2>
     <Code code={ghe} lang="yaml" theme="github-dark" />

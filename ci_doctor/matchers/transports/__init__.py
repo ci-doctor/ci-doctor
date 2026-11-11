@@ -30,6 +30,14 @@ TRANSPORTS: dict[str, str] = {
 _USERINFO = re.compile(r"://[^/@\s]++@")
 
 
+class Unreachable(SetupError):
+    """The registry didn't answer: a connection error, a timeout, or a 5xx.
+
+    Unlike a 404 or a bad file, an outage is the registry's, not the setup's, so
+    a run that has the index cached carries on with it.
+    """
+
+
 @dataclass(frozen=True)
 class Validators:
     """What a cached response is revalidated with (RFC 9110 conditional requests).

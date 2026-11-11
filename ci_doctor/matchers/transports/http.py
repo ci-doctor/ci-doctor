@@ -7,7 +7,7 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.transports import Fetched, Transport, Validators, redact
+from ci_doctor.matchers.transports import Fetched, Transport, Unreachable, Validators, redact
 
 log = logging.getLogger("ci_doctor.matchers")
 
@@ -55,8 +55,9 @@ class HttpTransport(Transport):
             The file with its validators and freshness, or `body=None` on a `304`.
 
         Raises:
-            SetupError: On a refused redirect, an answer other than 200 (or 304 to a
-                conditional request), an oversized body, or a transport error.
+            Unreachable: On a connection error, a timeout or a 5xx.
+            SetupError: On a refused redirect, any other answer than 200 (or 304 to a
+                conditional request), or an oversized body.
         """
         url = urljoin(location, rel)
         if not url.startswith(location):
@@ -70,7 +71,7 @@ class HttpTransport(Transport):
                         return _fetched(rel, resp, cap, since)
                     url = _follow(alias, rel, url, resp, host)
             except httpx.HTTPError as err:
-                raise SetupError(f"GET {rel}: {str(err) or type(err).__name__}") from None
+                raise Unreachable(f"GET {rel}: {str(err) or type(err).__name__}") from None
         raise SetupError(f"{rel}: more than {MAX_REDIRECTS} redirects")
 
 
@@ -170,6 +171,8 @@ def _body(rel: str, resp: httpx.Response, cap: int) -> bytes:
     Raises:
         SetupError: On a non-200 answer or a body over `cap`.
     """
+    if resp.status_code >= 500:
+        raise Unreachable(f"GET {rel}: HTTP {resp.status_code}")
     if resp.status_code != 200:
         raise SetupError(f"GET {rel}: HTTP {resp.status_code}")
     body = bytearray()
