@@ -15,6 +15,8 @@ import yaml
 
 from ci_doctor import cli
 from ci_doctor.cli.matchers import index
+from ci_doctor.config.schemas.matchers import MatchersConfig
+from ci_doctor.matchers.registry import load
 from tests import support
 
 
@@ -312,6 +314,43 @@ def test_cache_info_prune_and_clean(cfg, monkeypatch, capsys, tmp_path):
     assert "removed 1 file no cached index lists" in _run(monkeypatch, capsys, "cache", "prune")[1]
     assert "emptied" in _run(monkeypatch, capsys, "cache", "clean")[1]
     assert ", 0 files" in _run(monkeypatch, capsys, "cache", "info")[1]
+
+
+def test_pull_fills_the_cache_and_needs_it_on(cfg, monkeypatch, capsys, tmp_path):
+    """`pull` loads what it's given (or `include`) through the cache; with the cache off it refuses."""
+    _write(cfg, f"matchers:\n  cache_dir: {tmp_path / 'c'}\n")
+    code, out, _ = _run(monkeypatch, capsys, "pull", "official/all")
+    assert code == 0
+    assert f"cached 2 matchers from 1 registry in {tmp_path / 'c'}" in out
+    assert len(list((tmp_path / "c" / "blobs").rglob("*/*"))) >= 4  # 2 matchers, 2 bundles
+    assert _run(monkeypatch, capsys, "pull")[0] == 1  # nothing included, nothing named
+    _write(cfg, "matchers:\n  cache: false\n")
+    code, out, err = _run(monkeypatch, capsys, "pull", "official/all")
+    assert code == 1
+    assert "the cache is off" in out + err
+
+
+def test_mirror_writes_a_registry_that_loads_from_disk(cfg, monkeypatch, capsys, tmp_path, fx_registry):
+    """The copy is byte for byte, so it passes the hash check as a local registry; refreshing it works."""
+    dest = tmp_path / "mirror"
+    code, out, _ = _run(monkeypatch, capsys, "mirror", "official", str(dest))
+    assert code == 0
+    assert "mirrored 4 matchers and bundles from official" in out
+    for path in fx_registry.rglob("*.yaml"):
+        assert (dest / path.relative_to(fx_registry)).read_bytes() == path.read_bytes()
+    assert len(load(MatchersConfig(registries={"m": str(dest)}, include=["m/all"]))) == 2
+    assert _run(monkeypatch, capsys, "mirror", "official", str(dest))[0] == 0  # an earlier mirror: refreshed
+
+
+def test_mirror_refuses_a_folder_that_holds_something_else(cfg, monkeypatch, capsys, tmp_path):
+    """A mirror never writes over files that aren't a registry's."""
+    dest = tmp_path / "notes"
+    dest.mkdir()
+    (dest / "todo.txt").write_text("keep me")
+    code, out, err = _run(monkeypatch, capsys, "mirror", "official", str(dest))
+    assert code == 1
+    assert "not an empty folder or an earlier mirror" in out + err
+    assert sorted(p.name for p in dest.iterdir()) == ["todo.txt"]
 
 
 def test_an_invalid_config_is_a_setup_error(cfg, monkeypatch, capsys):

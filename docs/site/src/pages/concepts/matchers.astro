@@ -218,8 +218,11 @@ ci-doctor matchers examine official/ruff ./job.log --framing gitlab`;
     <Code code={pinned} lang="yaml" theme="github-dark" />
     <p>
         Registries are the one network dependency besides your CI provider and your
-        LLM. On an air-gapped network, clone the registry inside it and point the
-        alias at the local path; see <a href={url("/reference/registry/")}>Hosting a registry</a>.
+        LLM. On an air-gapped network, copy the registry inside it with
+        <code>ci-doctor matchers mirror official DIR</code> on a machine that can
+        reach both, and point the alias at that path or serve it; see <a
+            href={url("/reference/registry/")}>Hosting a registry</a>. The Docker image
+        ships with the official registry already in its cache, so a run starts warm.
     </p>
 
     <h2>Finding, trying and writing matchers</h2>

@@ -49,6 +49,9 @@ ci-doctor matchers registry remove NAME...        # refused while include still 
 ci-doctor matchers registry list
 ci-doctor matchers registry ping [NAME...]        # reachability, latency, matcher and bundle count
 
+ci-doctor matchers pull [ALIAS/NAME...]  # fetch into the cache without analysing; include when omitted
+ci-doctor matchers mirror NAME DIR       # copy a whole registry, hash-checked, to serve or use as a path
+
 ci-doctor matchers cache info    # where the cache is, its size, each registry's index age and files cached
 ci-doctor matchers cache prune   # delete files no cached index lists (old versions of changed matchers)
 ci-doctor matchers cache clean   # delete everything; the next run fetches every file again
@@ -174,7 +177,11 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         <code>search</code>, <code>info</code>, <code>add</code> and
         <code>examine</code> read registries through the same cache as
         <code>analyze</code>; <code>registry ping</code> never does, since it is
-        there to test the registry. How the cache works is on <a
+        there to test the registry. <code>pull</code> warms the cache ahead of a
+        run (a Docker build, a CI setup step). <code>mirror</code> writes every
+        file a registry serves into <code>DIR</code>, the index last, after every
+        file has passed its hash check; <code>DIR</code> must be empty, missing, or
+        an earlier mirror. How the cache works is on <a
             href={url("/concepts/matchers/")}>Matchers</a
         >.
     </p>

@@ -16,6 +16,7 @@ from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.cache import Cache, default_root  # bound before the autouse fixture swaps it
 from ci_doctor.matchers.index import write_index
+from ci_doctor.matchers.mirror import mirror
 from ci_doctor.matchers.registry import load
 from tests import support
 
@@ -278,3 +279,12 @@ def test_clean_empties_everything_but_the_tagged_root(tmp_path, registry):
     server.fetched()
     _load(cfg, server)
     assert len(server.fetched()) == 5
+
+
+def test_a_mirror_with_a_bad_file_writes_nothing(tmp_path, registry):
+    """Every file is fetched and hash-checked before the first one is written."""
+    path = registry / "bundles/all.yaml"
+    path.write_text(path.read_text() + "# altered after indexing\n")
+    with pytest.raises(SetupError, match="bundles/all.yaml has sha256"):
+        mirror(_cfg(tmp_path), "fx", tmp_path / "copy", client=Server(registry).client())
+    assert not (tmp_path / "copy").exists()

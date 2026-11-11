@@ -17,7 +17,6 @@ import logging
 import os
 import shutil
 import sys
-import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -25,6 +24,7 @@ from pathlib import Path
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
+from ci_doctor.lib.files import atomic_write_bytes
 from ci_doctor.matchers.models import INDEX
 from ci_doctor.matchers.transports import Validators, redact
 from ci_doctor.matchers.validate import parse_yaml
@@ -127,9 +127,9 @@ class Cache:
             root.mkdir(parents=True, exist_ok=True)
             tag = root / "CACHEDIR.TAG"
             if not tag.is_file():
-                _write(tag, CACHEDIR_TAG.encode())
-        except OSError as err:
-            log.warning(f"registry cache off for this run: {root}: {err.strerror or err}")
+                atomic_write_bytes(tag, CACHEDIR_TAG.encode())
+        except (OSError, SetupError) as err:
+            log.warning(f"registry cache off for this run: {root}: {getattr(err, 'strerror', None) or err}")
             return None
         return cls(root)
 
@@ -253,12 +253,14 @@ class Cache:
         """Write a cache file atomically; a failure warns once and is otherwise ignored."""
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            _write(path, body)
-        except OSError as err:
+            atomic_write_bytes(path, body)
+        except (OSError, SetupError) as err:
             with self._lock:
                 if not self._warned:
                     self._warned = True
-                    log.warning(f"registry cache: cannot write under {self.root}: {err.strerror or err}")
+                    log.warning(
+                        f"registry cache: cannot write under {self.root}: {getattr(err, 'strerror', None) or err}"
+                    )
 
 
 def root_for(cfg: MatchersConfig) -> Path:
@@ -316,19 +318,3 @@ def _hashes(index_body: bytes) -> set[str]:
         e for kind in ("matchers", "bundles") if isinstance(doc.get(kind), dict) for e in doc[kind].values()
     ]
     return {e["sha256"] for e in entries if isinstance(e, dict) and isinstance(e.get("sha256"), str)}
-
-
-def _write(path: Path, body: bytes) -> None:
-    """Replace `path` in one rename, so a parallel reader never sees half a file.
-
-    Raises:
-        OSError: If it can't be written.
-    """
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
-    try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(body)
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise

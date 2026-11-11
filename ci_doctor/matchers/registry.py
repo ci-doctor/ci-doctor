@@ -161,6 +161,48 @@ def _index_body(alias: str, location: str, client: httpx.Client, cache: Cache | 
     return body
 
 
+def index_text(alias: str, location: str, client: httpx.Client, cache: Cache | None = None) -> str:
+    """A registry's `index.yaml` as published, through the cache.
+
+    Args:
+        alias: The registry's alias.
+        location: Its directory, from :func:`registry_dir`.
+        client: The run's shared HTTP client.
+        cache: The run's cache, or None to always fetch.
+
+    Returns:
+        The index's text, unparsed.
+
+    Raises:
+        SetupError: If it can't be fetched, or isn't UTF-8.
+    """
+    try:
+        return decode(INDEX, _index_body(alias, location, client, cache))
+    except SetupError as err:
+        raise _fail(alias, location, err) from None
+
+
+def parse_index(alias: str, location: str, text: str) -> Index:
+    """Parse and validate an index's text.
+
+    Args:
+        alias: The registry's alias, for errors.
+        location: Its directory, for errors.
+        text: From :func:`index_text`.
+
+    Returns:
+        The validated index: entry count, names and path rules already checked.
+
+    Raises:
+        SetupError: If it isn't valid YAML or doesn't validate.
+    """
+    data = parse_yaml(text, redact(f"registry {alias!r} ({location}): {INDEX}"))
+    try:
+        return Index.model_validate(data)
+    except ValidationError as err:
+        raise _fail(alias, location, f"{INDEX}: {err}") from None
+
+
 def fetch_index(alias: str, location: str, client: httpx.Client, cache: Cache | None = None) -> Index:
     """Fetch and validate a registry's `index.yaml`.
 
@@ -171,20 +213,12 @@ def fetch_index(alias: str, location: str, client: httpx.Client, cache: Cache | 
         cache: The run's cache, or None to always fetch.
 
     Returns:
-        The validated index: entry count, names and path rules already checked.
+        The validated index.
 
     Raises:
         SetupError: If it can't be fetched, parsed or validated.
     """
-    try:
-        text = decode(INDEX, _index_body(alias, location, client, cache))
-    except SetupError as err:
-        raise _fail(alias, location, err) from None
-    data = parse_yaml(text, redact(f"registry {alias!r} ({location}): {INDEX}"))
-    try:
-        return Index.model_validate(data)
-    except ValidationError as err:
-        raise _fail(alias, location, f"{INDEX}: {err}") from None
+    return parse_index(alias, location, index_text(alias, location, client, cache))
 
 
 @contextlib.contextmanager
