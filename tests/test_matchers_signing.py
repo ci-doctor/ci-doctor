@@ -10,11 +10,13 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
+from nacl.signing import VerifyKey
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.mirror import mirror
 from ci_doctor.matchers.registry import load
+from ci_doctor.matchers.signing import OFFICIAL_KEYS as SHIPPED_KEYS  # bound before conftest swaps it
 from ci_doctor.matchers.signing import SIGNATURE, sign, verify
 from tests import support
 
@@ -148,3 +150,10 @@ def test_a_mirror_of_the_official_registry_still_verifies_as_official(tmp_path):
     assert mirror(_official(root, tmp_path), "official", dest) == 4
     assert (dest / SIGNATURE).read_bytes() == (root / SIGNATURE).read_bytes()
     assert len(load(_official(dest, tmp_path / "other"))) == 2
+
+
+def test_the_shipped_keys_are_ed25519_public_keys():
+    """Every key ci-doctor trusts decodes to a 32-byte Ed25519 key; `official-1` signs the official deploy."""
+    assert "official-1" in SHIPPED_KEYS
+    for key in SHIPPED_KEYS.values():
+        VerifyKey(base64.b64decode(key, validate=True))

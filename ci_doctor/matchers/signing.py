@@ -37,7 +37,9 @@ SIGNATURE_CAP = 4096
 OFFICIAL = "official"
 #: key_id -> the base64 Ed25519 public key the official registry's deploy signs with.
 #: The current key and the next one, so a rotation never leaves a gap.
-OFFICIAL_KEYS: dict[str, str] = {}
+OFFICIAL_KEYS: dict[str, str] = {
+    "official-1": "ZHE4h4GX9cXT1vpgZVGOHb+x4JP7smXwVQjYn7Md94M=",
+}
 
 
 @dataclass(frozen=True)
