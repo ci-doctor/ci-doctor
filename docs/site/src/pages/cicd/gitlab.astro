@@ -35,6 +35,14 @@ const gitlabSelfHosted = `  variables:
     CI_DOCTOR_GITLAB_TOKEN: "$CI_DOCTOR_TOKEN"
     CI_DOCTOR_GITLAB__BASE_URL: "https://gitlab.internal.example.com"
     CI_DOCTOR_GITLAB__CA_BUNDLE: "/etc/ssl/certs/internal-ca.pem"`;
+
+const gitlabCache = `  variables:
+    CI_DOCTOR_MATCHERS__CACHE_DIR: .cache/ci-doctor   # GitLab caches paths inside the project
+  cache:
+    key: ci-doctor-matchers
+    paths:
+      - .cache/ci-doctor
+    when: always`;
 ---
 
 <Base
@@ -87,6 +95,14 @@ const gitlabSelfHosted = `  variables:
         merge-request pipelines, and a token with <code>api</code> scope rather than
         <code>read_api</code>.
     </p>
+
+    <h2>Keep the registry cache</h2>
+    <p>
+        ci-doctor caches registry files so a run fetches only the matchers that
+        changed. GitLab keeps only paths inside the project between jobs, so point
+        the cache there and list it:
+    </p>
+    <Code code={gitlabCache} lang="yaml" theme="github-dark" />
 
     <h2>Self-hosted GitLab</h2>
     <p>

@@ -16,16 +16,21 @@ log?) is the matchers registry's job: it pins every matcher with fixture logs an
 provider-parametrized test then covers it.
 """
 
+import base64
+import hashlib
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
+from nacl.signing import SigningKey
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.core.models import Section
 from ci_doctor.engine import MatcherV1, Spec
 from ci_doctor.matchers.index import write_index
 from ci_doctor.matchers.registry import load
+from ci_doctor.matchers.signing import SIGNATURE, sign
 from ci_doctor.providers.registry import SEGMENTERS, segmenter_for
 
 #: A step or section: its name, then the lines it printed.
@@ -262,3 +267,34 @@ NPM = MatcherV1.model_validate(
         "window": {"before": 2, "after": 10},
     }
 )
+
+
+# --- the signed official index ---------------------------------------------------------
+
+#: A fixed Ed25519 test key; `conftest` makes it the only key ci-doctor trusts in tests.
+TEST_KEY_ID = "test"
+TEST_PRIVATE_KEY = base64.b64encode(hashlib.sha256(b"ci-doctor test signing key").digest()).decode()
+TEST_PUBLIC_KEY = base64.b64encode(bytes(SigningKey(base64.b64decode(TEST_PRIVATE_KEY)).verify_key)).decode()
+
+
+def sign_registry(root: Path, *, version: int = 1, expires: datetime | None = None) -> Path:
+    """Write `index.yaml.sig` for a registry's current index, with the test key.
+
+    Args:
+        root: A registry from :func:`write_registry`.
+        version: The signed version.
+        expires: When it stops being accepted; a year from now by default.
+
+    Returns:
+        `root`.
+    """
+    until = expires or datetime.now(UTC) + timedelta(days=365)
+    body = sign(
+        (root / "index.yaml").read_bytes(),
+        version=version,
+        expires=until,
+        key_id=TEST_KEY_ID,
+        private_key=TEST_PRIVATE_KEY,
+    )
+    (root / SIGNATURE).write_bytes(body)
+    return root

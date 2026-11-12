@@ -169,12 +169,13 @@ ci-doctor matchers examine official/ruff ./job.log --framing gitlab`;
         expands the bundles, and fetches, validates and compiles each selected
         matcher. Every read is bounded: an index of at most 1 MiB and 2,000
         entries, a file of at most 64 KiB, paths that cannot leave the registry,
-        and a redirect that cannot drop from <code>https</code> to
-        <code>http</code>. Anything wrong, including an empty <code>include</code>,
-        an unknown alias or name, an <code>exclude</code> that names no output, or
-        an unreachable registry, is a broken setup: the job exits 1, naming the
-        registry and the cause. <code>ci-doctor config --validate</code> runs the
-        same steps as a dry run.
+        a redirect that cannot drop from <code>https</code> to <code>http</code>,
+        and every matcher and bundle must match the <code>sha256</code> its index
+        lists. Anything wrong, including an empty <code>include</code>, an unknown
+        alias or name, an <code>exclude</code> that names no output, a file that
+        doesn't match its hash, or an unreachable registry with nothing cached, is a
+        broken setup: the job exits 1, naming the registry and the cause.
+        <code>ci-doctor config --validate</code> runs the same steps as a dry run.
     </p>
 
     <h2>Schema versions</h2>
@@ -186,18 +187,56 @@ ci-doctor matchers examine official/ruff ./job.log --framing gitlab`;
         bundle brings it in, and fails the setup when you included it by name.
     </p>
 
+    <h2>The cache</h2>
+    <p>
+        Files from an <code>http(s)://</code> registry are kept in a local cache,
+        stored by the <code>sha256</code> their index lists. A run revalidates each
+        index with a conditional request (none at all while the server's
+        <code>max-age</code> holds; GitHub Pages sends 10 minutes) and fetches only
+        the files whose hash changed, so a warm run of <code>official/all</code>
+        makes one request instead of over a hundred. A cached file is used only
+        while its bytes still match its hash. Local registries aren't cached.
+    </p>
+    <p>
+        If a registry can't be reached (a connection error, a timeout, a 5xx) and
+        its index is cached, the run warns with the index's age and uses the cache;
+        a file the cache doesn't have still fails the setup. The cache lives in the
+        OS cache directory (<code>~/.cache/ci-doctor</code> on Linux);
+        <code>matchers.cache_dir</code> moves it and <code>matchers.cache: false</code>
+        turns it off. On a CI runner it lasts as long as your pipeline keeps it: see
+        <a href={url("/cicd/github/")}>GitHub Actions</a> and
+        <a href={url("/cicd/gitlab/")}>GitLab CI</a>.
+    </p>
+
+    <h2>The official registry is signed</h2>
+    <p>
+        The hash check proves each file matches its index, but the index comes from
+        the same server as the files. So the official registry's deploy signs its
+        index: <code>index.yaml.sig</code> names the index's sha256, a version that
+        only goes up, and an expiry, signed with an Ed25519 key whose public half
+        ships inside ci-doctor. For the registry under the <code>official</code>
+        alias, a run refuses an index that isn't the one signed, a signature by any
+        other key, an expired signature (a frozen copy), and a version older than one
+        it has already seen (a rollback, remembered in the cache). The deploy
+        re-signs weekly. Your own registries aren't signed: they live in your network,
+        and are trusted as served.
+    </p>
+
     <h2>Pinning, and running with no network</h2>
     <p>
-        There is no cache and no lock file: every run reads each registry as it is
-        now. That keeps a fix to a matcher one push away from every pipeline, and it
+        There is no lock file: every run uses each registry's index as it is now.
+        That keeps a fix to a matcher one push away from every pipeline, and it
         means a registry change reaches your next run unreviewed. To hold a
         registry still, point at a URL that contains a fixed revision.
     </p>
     <Code code={pinned} lang="yaml" theme="github-dark" />
     <p>
         Registries are the one network dependency besides your CI provider and your
-        LLM. On an air-gapped network, clone the registry inside it and point the
-        alias at the local path; see <a href={url("/reference/registry/")}>Hosting a registry</a>.
+        LLM. On an air-gapped network, copy the registry inside it with
+        <code>ci-doctor matchers mirror official DIR</code> on a machine that can
+        reach both, and point the alias at that path or serve it; see <a
+            href={url("/reference/registry/")}>Hosting a registry</a>. The Docker image
+        ships with the official registry already in its cache, so a run starts warm.
     </p>
 
     <h2>Finding, trying and writing matchers</h2>

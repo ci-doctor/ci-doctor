@@ -9,13 +9,27 @@ from ci_doctor.errors import SetupError
 
 
 def atomic_write(path: Path, text: str) -> None:
+    """Replace a file's contents with text, in one rename (see :func:`atomic_write_bytes`).
+
+    Args:
+        path: The file; created if missing.
+        text: Its new contents, written as UTF-8 with no newline translation.
+
+    Raises:
+        SetupError: If the file can't be written, e.g. its directory is missing.
+    """
+    atomic_write_bytes(path, text.encode("utf-8"))
+
+
+def atomic_write_bytes(path: Path, body: bytes) -> None:
     """Replace a file's contents in one rename, keeping it the same file.
 
+    A concurrent reader sees the old file or the new one, never half of either.
     Writes through a symlink and keeps the mode; a new file gets `0o666 & ~umask`.
 
     Args:
         path: The file; created if missing.
-        text: Its new contents, written as UTF-8.
+        body: Its new contents, byte for byte.
 
     Raises:
         SetupError: If the file can't be written, e.g. its directory is missing.
@@ -32,8 +46,8 @@ def atomic_write(path: Path, text: str) -> None:
     except OSError as err:
         raise SetupError(f"{path}: cannot write: {err.strerror or err}") from None
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(body)
         os.chmod(tmp, mode)
         os.replace(tmp, real)
     except BaseException as err:

@@ -10,6 +10,7 @@ from ci_doctor.cli._lib.context import editable
 from ci_doctor.cli._lib.outputs.message import say
 from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
+from ci_doctor.matchers.cache import Cache
 from ci_doctor.matchers.examine import examine
 from ci_doctor.matchers.logs import Framing, framing_of
 from ci_doctor.matchers.registry import Resolved, check_ref, fetch_matcher, session
@@ -61,6 +62,6 @@ class ExamineCommand(Command):
         if path.is_file():
             return load_matcher(path)
         cfg = editable().matchers
-        seen = Resolved()
+        seen = Resolved(cache=Cache.open(cfg))
         with session(cfg) as http:
             return fetch_matcher(check_ref(matcher, cfg, http, seen), seen, http)

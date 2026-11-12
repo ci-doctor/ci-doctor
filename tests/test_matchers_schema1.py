@@ -1,5 +1,6 @@
 """Schema 1 in a registry: the index entry, skipping what this ci-doctor can't read, and `matchers.exclude`."""
 
+import hashlib
 import logging
 
 import pytest
@@ -113,8 +114,11 @@ def test_a_newer_schema_named_directly_fails_setup(registry):
 
 
 def test_a_newer_schema_in_the_file_itself_fails_setup(registry):
-    """An index that lags its file can't sneak an unknown schema past the loader."""
+    """An index whose `schema` lags its file can't sneak an unknown schema past the loader."""
     path = registry / "matchers/python/ruff/matcher.yaml"
     path.write_text(path.read_text().replace("schema: 1", "schema: 3"))
+    index = yaml.safe_load((registry / "index.yaml").read_text())
+    index["matchers"]["ruff"]["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()  # only `schema` lags
+    (registry / "index.yaml").write_text(yaml.safe_dump(index))
     with pytest.raises(SetupError, match=r"needs a newer ci-doctor \(schema 3\)"):
         load(_cfg(registry, ["fx/ruff"]))
