@@ -1,10 +1,8 @@
 """Which CI system a host belongs to, so a URL or a git remote picks its adapter.
 
 A host is matched against each vendor's *configured* API, never taken from the URL
-itself. That is what keeps a token on hosts the user chose: the API called is the
-shipped default or one the user named in their own config or environment, which a
-repository cannot set (`config.loader.UNTRUSTED_REPO_KEYS`). A pasted URL on any
-other host matches no vendor and is refused before an adapter, and its token, exist.
+itself: the API called is the shipped default or one named in config. A pasted URL
+on any other host matches no vendor and is refused before an adapter exists.
 
 Shared by every adapter. Lives here rather than in `core/` because it names vendors.
 """

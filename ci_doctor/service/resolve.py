@@ -85,8 +85,7 @@ def resolve(
     Args:
         target: A run or job URL, `#<PR>` / `!<MR>`, a run id, or None for "the run
             for my checkout's HEAD".
-        cfg: The effective config. Load it with `load_untrusted_repo_config` when
-            the workspace is not the caller's own choice.
+        cfg: The effective config.
         workspace: The checkout, or None when there is none.
         make_provider: Builds the adapter; tests inject a fake.
 
