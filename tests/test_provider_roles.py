@@ -80,7 +80,7 @@ def test_note_is_skipped_when_there_is_no_git_host():
     cfg = Config(ci="jenkins")
     cfg.output.mr_note = True
 
-    note = post_note(None, run, [JobResult(None, None, report)], cfg)
+    note = post_note(None, run, [JobResult(None, None, report, None)], cfg)
 
     assert "no git-host adapter for 'jenkins'" in note
 

@@ -284,6 +284,25 @@ def _handoff(job: Job, attr: Attribution, excerpt: str) -> str:
     )
 
 
+def instructions(attr: Attribution) -> str:
+    """The analyst's standing orders for one job: the phase is settled, explain within it.
+
+    The system half of the prompt, and what an agent reading a brief is handed in
+    its place (`service/brief.py`), so both are told the same thing.
+
+    Args:
+        attr: The classifier's verdict, stated as *settled*.
+
+    Returns:
+        The filled system template.
+    """
+    return Template(_load("analyze.system.txt")).safe_substitute(
+        phase=attr.phase,
+        rule_id=attr.rule_id,
+        confidence=attr.confidence,
+    )
+
+
 def _render_prompt(job: Job, attr: Attribution, bundle: EvidenceBundle) -> str:
     """Fill the system and user prompt templates.
 
@@ -300,11 +319,7 @@ def _render_prompt(job: Job, attr: Attribution, bundle: EvidenceBundle) -> str:
         The combined prompt. Still unredacted — the caller scrubs it before it
         leaves the process.
     """
-    system = Template(_load("analyze.system.txt")).safe_substitute(
-        phase=attr.phase,
-        rule_id=attr.rule_id,
-        confidence=attr.confidence,
-    )
+    system = instructions(attr)
     user = Template(_load("analyze.user.txt")).safe_substitute(
         job=job.name,
         stage=job.stage or "?",

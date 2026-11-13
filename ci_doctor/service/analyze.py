@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from ci_doctor.config.schemas import Config
+from ci_doctor.core.analyze import EvidenceBundle, build_bundle
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
@@ -30,11 +31,14 @@ class JobResult(NamedTuple):
         job: The failed job, log and sections attached.
         attribution: The classifier's verdict. Owns the phase; the LLM may not.
         report: The final report, validated and redacted.
+        bundle: The evidence the report was written from. Not redacted: whoever
+            hands it on scrubs it first (invariant #5).
     """
 
     job: Job
     attribution: Attribution
     report: Report
+    bundle: EvidenceBundle
 
 
 def process_job(
@@ -62,7 +66,6 @@ def process_job(
     Returns:
         The job, its verdict, and its report.
     """
-    from ci_doctor.core.analyze import build_bundle
     from ci_doctor.core.attribution import attribute
     from ci_doctor.core.phases import assign_phases
     from ci_doctor.llm.report import produce_report
@@ -79,7 +82,7 @@ def process_job(
     log.debug(
         f"job {job.name}: report category={report.category} confidence={report.confidence} infra={report.is_infra_not_code}",
     )
-    return JobResult(job, attr, report)
+    return JobResult(job, attr, report, bundle)
 
 
 def _ordered(jobs: list[Job]) -> list[Job]:

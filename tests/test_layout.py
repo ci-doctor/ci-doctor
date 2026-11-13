@@ -35,6 +35,21 @@ def test_service_has_no_terminal_in_it():
     assert _offenders((PACKAGE / "service").rglob("*.py"), ("typer", "click")) == {}
 
 
+def test_the_mcp_surface_has_no_terminal_in_it_and_owns_the_sdk():
+    """`mcp/` is a surface like `cli/`, without its terminal; nothing else imports the MCP SDK."""
+    assert _offenders((PACKAGE / "mcp").rglob("*.py"), ("typer", "click", "rich", "ci_doctor.cli")) == {}
+    outside = [p for p in PACKAGE.rglob("*.py") if PACKAGE / "mcp" not in p.parents]
+    assert _offenders(outside, ("mcp",)) == {}
+
+
+def test_only_the_mcp_command_imports_the_mcp_surface():
+    """A tool calls `service/`; a service reaching back into `mcp/` would turn that around."""
+    others = [
+        p for p in PACKAGE.rglob("*.py") if PACKAGE / "mcp" not in p.parents and p != PACKAGE / "cli/mcp.py"
+    ]
+    assert _offenders(others, ("ci_doctor.mcp",)) == {}
+
+
 def test_each_config_key_has_its_own_schema_module():
     """`config/schemas/` mirrors `.ci-doctor.yml`: the model for `llm:` lives in `schemas/llm.py`."""
     from pydantic import BaseModel
