@@ -73,6 +73,12 @@ ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
 # It prints the verdict, writes report.md + report.json, and (if configured
 # and confidence >= medium) posts/updates one idempotent MR/PR note.`;
 
+const mcpConfig = `{
+  "mcpServers": {
+    "ci-doctor": { "command": "ci-doctor", "args": ["mcp"] }
+  }
+}`;
+
 const verbose = `ci-doctor -v analyze failing-job.log
 
 ci-doctor [DEBUG] ci=gitlab scm=gitlab target=failing-job.log ...
@@ -88,8 +94,8 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
 >
     <h1>CLI</h1>
     <p class="lead">
-        Three commands: <code>analyze</code>, <code>config</code> and
-        <code>matchers</code>. A broken setup exits 1; once analysis starts,
+        The commands: <code>analyze</code>, <code>config</code>,
+        <code>matchers</code> and <code>mcp</code>. A broken setup exits 1; once analysis starts,
         the exit code is always 0.
     </p>
 
@@ -212,6 +218,33 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         matcher's fixture, and <code>--json</code> writes the whole report.
         <code>--update</code> rewrites the <code>.expected</code> files for review.
         Writing a registry is on <a href={url("/reference/registry/")}>Hosting a registry</a>.
+    </p>
+
+    <h2><code>mcp</code></h2>
+    <p>
+        <code>ci-doctor mcp</code> serves ci-doctor to a coding agent over
+        <a href="https://modelcontextprotocol.io">MCP</a>, on stdio. The agent is the
+        model: <code>analyze_run</code> and <code>analyze_log</code> return each failed
+        job's settled phase and redacted evidence, and the agent writes the explanation,
+        so the <code>llm:</code> block is ignored. Start it from the repository's root.
+    </p>
+    <Code code={mcpConfig} lang="json" theme="github-dark" />
+    <table>
+        <thead><tr><th>Tool</th><th>Does</th></tr></thead>
+        <tbody>
+            <tr><td><code>analyze_run</code></td><td>Briefs each failed job of a pipeline/run.</td></tr>
+            <tr><td><code>analyze_log</code></td><td>Briefs a job log saved on disk, offline.</td></tr>
+            <tr><td><code>search_matchers</code></td><td>Finds matchers and bundles in the configured registries.</td></tr>
+            <tr><td><code>list_matchers</code></td><td>Shows what the config selects, and via which bundle.</td></tr>
+            <tr><td><code>add_matchers</code></td><td>Adds entries to <code>matchers.include</code>.</td></tr>
+            <tr><td><code>remove_matchers</code></td><td>Drops entries from <code>matchers.include</code>.</td></tr>
+            <tr><td><code>check_setup</code></td><td>Validates the config and loads every selected matcher.</td></tr>
+        </tbody>
+    </table>
+    <p>
+        The two edit tools write only the <code>matchers:</code> block, to
+        <code>./.ci-doctor.yml</code> unless <code>--write-to</code> names another file.
+        Nothing else is written: no report files, no MR/PR note.
     </p>
 
     <h2>Reporting a bug</h2>

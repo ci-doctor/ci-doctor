@@ -120,6 +120,28 @@ When a pipeline has several failed jobs, the report is framed as a pipeline: a h
 with a code-vs-infra triage count, then each job under its own separator, in the order
 they ran.
 
+## Use it from a coding agent (MCP)
+
+`ci-doctor mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio, in the base
+install. Your agent is the model: ci-doctor hands it each failed job's phase and evidence
+and the agent explains the failure, so no `llm:` block is needed. Register it in your
+harness, from the repository's root (see [`examples/mcp.example.json`](examples/mcp.example.json)):
+
+```json
+{ "mcpServers": { "ci-doctor": { "command": "ci-doctor", "args": ["mcp"] } } }
+```
+
+| Tool | Does |
+|---|---|
+| `analyze_run`, `analyze_log` | Brief each failed job of a run, or a saved log, for the agent to explain |
+| `search_matchers`, `list_matchers` | Browse the registries; show what the config selects |
+| `add_matchers`, `remove_matchers` | Edit `matchers.include` in `./.ci-doctor.yml` (`--write-to` picks another file) |
+| `check_setup` | Validate the config and load every selected matcher |
+
+Ask the agent to "pick ci-doctor matchers for this project": it reads the repository,
+searches the registries and adds what fits. Only the two edit tools write anything, and
+only the `matchers:` block; the CI system and the repository are never touched.
+
 ## Configuration
 
 Layered and pydantic-validated — `defaults.yml` < your user config < repo `.ci-doctor.yml` < `CI_DOCTOR_*` env

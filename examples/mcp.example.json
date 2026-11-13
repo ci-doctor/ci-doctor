@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ci-doctor": {
+      "command": "ci-doctor",
+      "args": ["mcp"]
+    }
+  }
+}
