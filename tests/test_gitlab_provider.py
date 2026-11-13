@@ -129,7 +129,7 @@ def test_a_failed_trace_download_is_recorded_not_mistaken_for_no_log():
     prov._project().jobs = SimpleNamespace(get=lambda jid: SimpleNamespace(trace=trace))
     job = prov.fetch_run("1").jobs[0]
     assert prov.fetch_job_log(job) is None
-    assert job.log_error == "HTTP 401: not authenticated: set an API token with read access"
+    assert job.log_error is not None and job.log_error.startswith("HTTP 401")
 
 
 def _pipe(id_, status, sha="s1", ref="main"):

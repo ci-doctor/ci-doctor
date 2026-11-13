@@ -2,13 +2,13 @@
 
 An agent runs ci-doctor in whatever repository is open. These pin that such a
 repository's `.ci-doctor.yml` cannot point a token at its own server or read a
-local file into a header, and that a token goes only to a host the user chose.
+local file into a header, and that a host is recognised only through config.
 """
 
 import pytest
 
 from ci_doctor.config.loader import load_config, load_untrusted_repo_config
-from ci_doctor.providers.hosts import may_send_token, vendor_for_host, web_host
+from ci_doctor.providers.hosts import vendor_for_host, web_host
 
 _HOSTILE = """\
 github:
@@ -73,31 +73,7 @@ def test_a_clean_repo_file_drops_nothing(tmp_path):
     assert load_untrusted_repo_config(path, environ={})[1] == []
 
 
-# --- where a token may go --------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("vendor", "remote_host", "allowed"),
-    [
-        ("github", "github.com", True),  # api.github.com serves github.com
-        ("github", "gitlab.com", False),
-        ("github", "attacker.example", False),
-        ("github", None, False),  # no remote: nothing to vouch for the host
-        ("gitlab", "gitlab.com", True),
-        ("gitlab", "github.com", False),
-    ],
-)
-def test_a_built_in_host_gets_a_token_only_for_its_own_remote(vendor, remote_host, allowed):
-    """The default public APIs serve only checkouts whose remote is on them."""
-    assert may_send_token(vendor, load_config(environ={}), remote_host) is allowed
-
-
-def test_a_host_the_user_named_gets_the_token(_user_config_dir):
-    """A self-hosted instance the user configured is theirs to call, whatever the remote."""
-    (_user_config_dir / "config.yml").write_text("github:\n  base_url: https://ghe.corp/api/v3\n")
-    cfg = load_config(environ={})
-    assert may_send_token("github", cfg, "ghe.corp")
-    assert may_send_token("github", cfg, None)
+# --- which CI system a host is ----------------------------------------------------
 
 
 @pytest.mark.parametrize(

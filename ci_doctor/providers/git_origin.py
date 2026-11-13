@@ -123,6 +123,7 @@ def pushed(sha: str, cwd: Path | str | None = None) -> bool:
     Returns:
         True when some `refs/remotes/*` branch contains it.
     """
+    # ponytail: local remote-tracking refs, no fetch; ask the CI API's commit endpoint if stale refs bite
     return _git(["branch", "--remotes", "--contains", sha], cwd) is not None
 
 

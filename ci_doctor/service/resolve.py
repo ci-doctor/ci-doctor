@@ -14,7 +14,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
 from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import RunQuery, RunSummary
@@ -106,7 +105,7 @@ def resolve(
     res = Resolution(Outcome.NOT_FOUND, vendor=vendor, repo=found.repo if found else None, notes=notes)
     if found is not None and found.name != "origin":
         res.notes.append(f"using remote {found.name!r} ({found.repo}): origin is a fork of it")
-    provider = make_provider(cfg, vendor, **_where(res.repo, workspace))
+    provider = make_provider(cfg, vendor, repo=res.repo, cwd=workspace)
 
     if target is not None and (m := _CHANGE.match(target)):
         runs = provider.find_runs(RunQuery(mr=m[1], limit=_LOOKBACK))
@@ -144,7 +143,7 @@ def _from_url(
     ref = parser(url, host) if parser else None
     if ref is None:
         return Resolution(Outcome.NOT_FOUND, vendor=vendor, notes=[f"not a run or job URL: {url}"]), None
-    provider = make_provider(cfg, vendor, **_where(ref.repo, workspace))
+    provider = make_provider(cfg, vendor, repo=ref.repo, cwd=workspace)
     run_id = ref.run_id or provider.run_of_job(ref.job_id or "")
     return Resolution(
         Outcome.FOUND, vendor=vendor, repo=ref.repo, run_ids=[run_id], job_id=ref.job_id
@@ -277,16 +276,3 @@ def _vendor(found: Remote | None, cfg: Config) -> tuple[str, list[str]]:
         return vendor, []
     why = f"{found.host} is not a configured CI host" if found is not None else "no git remote"
     return cfg.ci, [f"{why}; using ci: {cfg.ci} from config"]
-
-
-def _where(repo: str | None, workspace: Path | None) -> dict[str, Any]:
-    """The adapter's `repo` and `cwd` arguments.
-
-    Args:
-        repo: The repository, when known.
-        workspace: The checkout, when there is one.
-
-    Returns:
-        Keyword arguments for the adapter.
-    """
-    return {"repo": repo, "cwd": workspace}

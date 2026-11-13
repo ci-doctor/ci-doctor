@@ -11,6 +11,7 @@ import logging
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import NamedTuple
 
@@ -48,7 +49,7 @@ class JobResult(NamedTuple):
         bundle: The evidence the report was built from: the blamed lines, the
             matchers that fired, what was truncated. For a caller doing its own
             explaining, which needs what the LLM would have seen, not just the
-            report. Not redacted: the caller redacts what it emits (invariant #5).
+            report. Redacted, like the report (invariant #5).
     """
 
     job: Job
@@ -99,7 +100,30 @@ def process_job(
     log.debug(
         f"job {job.name}: report category={report.category} confidence={report.confidence} infra={report.is_infra_not_code}",
     )
-    return JobResult(job, attr, report, bundle)
+    return JobResult(job, attr, report, _redacted(bundle, cfg))
+
+
+def _redacted(bundle: EvidenceBundle, cfg: Config) -> EvidenceBundle:
+    """The bundle with its log text scrubbed, for a caller that shows it (invariant #5).
+
+    The report was built from the raw bundle and redacted on its own; this is the
+    same scrub for the bundle that rides along with it.
+
+    Args:
+        bundle: The bundle the report was built from.
+        cfg: Config supplying the redaction settings.
+
+    Returns:
+        A copy whose blamed lines and terminal evidence are redacted.
+    """
+    from ci_doctor.core.redact import redact_text
+
+    evidence = bundle.metadata.get("terminal_evidence")
+    return replace(
+        bundle,
+        blamed_lines=[redact_text(line, cfg.redaction) for line in bundle.blamed_lines],
+        metadata={**bundle.metadata, "terminal_evidence": evidence and redact_text(evidence, cfg.redaction)},
+    )
 
 
 def _ordered(jobs: list[Job]) -> list[Job]:

@@ -170,3 +170,15 @@ def test_a_given_provider_is_used_and_results_carry_their_evidence(monkeypatch):
 def _unreachable():
     """Fail the test: the default factory must not be reached."""
     raise AssertionError("make_ci_provider was called although a provider was given")
+
+
+def test_the_evidence_on_a_result_is_redacted(monkeypatch):
+    """Invariant #5 holds for the bundle too: a secret in the log never rides along raw."""
+    secret = "ghp_" + "A" * 36
+    log = support.script_log("github", [f"curl -H 'Authorization: token {secret}' https://x", *support.FAIL])
+    given = _FakeProvider([Job(id="x", name="x", status="failed")], log)
+    _run, _provider, results = analyze_run("42", load_config(environ={}), [], provider=given)  # ty: ignore[invalid-argument-type]
+    bundle = results[0].bundle
+    assert bundle is not None
+    text = "\n".join(bundle.blamed_lines) + str(bundle.metadata)
+    assert secret not in text
