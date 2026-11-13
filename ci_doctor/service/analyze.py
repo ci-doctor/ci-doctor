@@ -247,7 +247,7 @@ def _analyze(
     client = client_for_run(cfg)
     done, lock = 0, threading.Lock()
 
-    def one(job: Job) -> JobResult:
+    def analyze_one(job: Job) -> JobResult:
         nonlocal done
         _check(should_cancel)
         result = process_job(job, cfg, plan, segmenter, client)
@@ -260,12 +260,12 @@ def _analyze(
     try:
         workers = min(cfg.analysis.max_parallel_jobs, len(jobs))
         if workers <= 1:
-            return [one(job) for job in jobs]
+            return [analyze_one(job) for job in jobs]
         log.debug(f"analyzing {len(jobs)} job(s) across {workers} workers")
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ci-doctor") as pool:
             # `map` yields in submission order, so the report reads chronologically even
             # though the jobs finished in whatever order the endpoint answered them.
-            return list(pool.map(one, jobs))
+            return list(pool.map(analyze_one, jobs))
     finally:
         if client is not None:
             client.close()
