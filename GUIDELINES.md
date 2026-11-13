@@ -26,7 +26,7 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 ci_doctor/
   cli/              the command line, laid out like the command tree (§2.1)
   service/          what each command does, with no terminal in it: analyze, deliver,
-                    setup, report, resolve (a URL, `#PR`, run id or HEAD -> runs)
+                    setup, report
   config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit
   core/             provider-neutral: models, ports, attribution (pure), denoise,
                     redact, analyze
@@ -40,13 +40,9 @@ ci_doctor/
                     verify (the author's side), registry (resolve + load)
     transports/     local, http: how a registry's files are read
   providers/
-    registry.py     vendor name -> adapter / segmenter / URL parser, imported on demand
-    git_origin.py   remotes and HEAD of a named checkout (§5.5)
-    hosts.py        which CI system a host is, matched against the configured APIs
-    log_errors.py   a failed log download, said safely; the one rate-limit retry
-    tokens.py       API token from a file, else the environment
-    gitlab/         python-gitlab adapter + segmenter + reasons + urls
-    github/         PyGithub adapter + segmenter + reasons + urls
+    registry.py     vendor name -> adapter / segmenter, imported on demand
+    gitlab/         python-gitlab adapter + segmenter + reasons
+    github/         PyGithub adapter + segmenter + reasons
 tests/              synthetic-log builders (support.py) + unit and e2e tests
 docs/site/          Astro documentation site — see docs/site/GUIDELINES.md before editing
 examples/           .gitlab-ci.yml + GitHub Actions workflows
@@ -57,7 +53,6 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | A CI system (Jenkins, Bitbucket…) | `providers/<name>/` | Implements ports. **Never** touch `core/`. |
 | Log-format parsing | `providers/<name>/segmenter.py` | Emits the canonical `Section` tree. |
 | Provider failure-reason mapping | `providers/<name>/reasons.py` | Maps vendor strings → `FailureReason`. |
-| Parsing a CI system's run/job links | `providers/<name>/urls.py` | Pure: no API call. One line in `URL_PARSERS`. |
 | Something every provider needs | `providers/<shared>.py` | Provider-neutral, but does I/O, so not `core/` (see `git_origin.py`). |
 | Blame/classification logic | `core/attribution.py` | Pure function. No I/O, network, or clock. |
 | Evidence selection | `core/denoise.py`, `engine/` | Config-driven where possible; `engine/` stays pure (§2.3). |
@@ -160,10 +155,6 @@ invariants go on the end. The first three, and #10, are load-bearing:
 10. **Read-only.** Every provider method is a read. The single exception in the whole
     tool is `SCMProvider.post_note`, which writes to a discussion thread. Nothing
     retries, cancels, restarts, pushes or merges anything — see `core/ports.py`.
-    "Retries" means a CI **job**: re-sending a rate-limited *read* is not a write.
-    The SDKs already do it for their API calls, and GitHub's raw log download, which
-    bypasses PyGithub, gets one retry after the `Retry-After` the server asked for
-    (`providers/log_errors.py`).
 11. **A released matcher schema version never changes how it compiles.** Every
     ci-doctor compiles every schema version it knows; a change to the format is a new
     version. Pinned by the frozen Plan snapshots in `tests/engine/v1/cases/`, and by the
@@ -225,11 +216,6 @@ parametrized over `support.PROVIDERS` then covers the format.
 | Attribution verdict for a scenario | `test_attribution.py` — one `CASES` row per provider |
 | A matcher/language pack | the [matchers registry](https://github.com/ci-doctor/matchers), not here |
 | Log-format parsing | `test_segmenter.py` |
-| Finding a run from a URL, `#PR`, id or HEAD | `test_resolve.py` |
-| Git remotes and HEAD of a checkout | `test_git_origin.py` |
-| What a repo config may not set; host -> CI system | `test_trust.py` |
-| Describing a failed log download; the retry | `test_log_errors.py` |
-| Progress, cancellation, what a result carries | `test_pipeline.py` |
 | Config layering / validation | `test_config.py` |
 | Report shape, category, LLM fallback | `test_report.py` |
 | Terminal/markdown output | `test_render.py` |
@@ -375,19 +361,14 @@ token read and a second version probe for nothing.
    (`checkout`, `run`, `post`, …) so phase assignment needs no core change.
 3. One line in `providers/registry.py`'s `ADAPTERS`, and one in `SEGMENTERS` if it
    is a CI. `make_ci_provider` / `make_scm_provider` sort out which ports the class
-   implements; a CI with no git host simply posts no note. The adapter's
-   constructor takes `(config, client=None, environ=None, *, repo=None, cwd=None)`.
-4. Optional, for finding a run without its id: `CIProvider.find_runs` and
-   `run_of_job` (both reads, not abstract), `providers/<name>/urls.py` with one line
-   in `URL_PARSERS`, and the vendor's public API host in `hosts.BUILT_IN_API` if it
-   has one. Without them the CI still analyzes a run by id.
-5. `SEGMENTERS` keys on `ci`, never on `scm` — log framing is whatever the *runner*
+   implements; a CI with no git host simply posts no note.
+4. `SEGMENTERS` keys on `ci`, never on `scm` — log framing is whatever the *runner*
    printed, which is why one segmenter can serve several CI systems (Forgejo and
    Gitea Actions both run act_runner and emit GitHub's `##[group]`).
-6. Add a log builder for the format to `support.LOGS` (§4.2).
+5. Add a log builder for the format to `support.LOGS` (§4.2).
    `test_every_segmenter_has_a_log_builder` matches it against the same `SEGMENTERS`
    table. Builders are keyed on log format, so a git-host-only adapter owes none.
-7. `test_core_carries_no_vendor_name_in_its_code` must stay green — add the new
+6. `test_core_carries_no_vendor_name_in_its_code` must stay green — add the new
    vendor to its regex. If it fires, the abstraction broke.
 
 **Prefer the vendor's own SDK** over hand-rolled REST calls — `python-gitlab` and
@@ -398,20 +379,9 @@ allowed to know what they look like.
 ### 5.5 Resolve the repository outside CI
 
 ci-doctor runs on a laptop too, where a CI system's predefined variables do not exist.
-Adapters resolve the repository as: the `repo` they were given, *then the env var,
-then* `providers/git_origin.py`, which reads the `origin` remote of the `cwd`
-checkout and **warns** that it guessed. Any new provider should do the same rather
-than hard-failing on a missing variable.
-
-Every git lookup takes the checkout as an explicit `cwd`. `None` means the process's
-own directory, which is right for the CLI; a long-lived process serving several
-projects is not guaranteed to start in any of them, and must say which one it means.
-
-A caller running in a repository it did not choose loads config with
-`load_untrusted_repo_config`: the repo's `.ci-doctor.yml` then cannot set where API
-calls, tokens or registry fetches go (`UNTRUSTED_REPO_KEYS`), only the project's own
-keys. A pasted URL is matched to a vendor through `hosts.vendor_for_host`, against the
-*configured* APIs, so the API called is never one a URL names.
+Adapters resolve the repository as *env var first, then* `providers/git_origin.py`,
+which reads the `origin` remote and **warns** that it guessed. Any new provider should
+do the same rather than hard-failing on a missing variable.
 
 ## 6. Style
 
