@@ -18,7 +18,7 @@ const byProvider = [...new Set(phaseMap.map((p) => p.provider))].map(
 const rules = [
     {
         id: "empty_log_no_runner",
-        when: "The log is empty or absent — the job never really ran.",
+        when: "The log is empty or absent — the job never really ran. Only when nothing failed while downloading it: a log ci-doctor could not fetch says nothing about the runner.",
         phase: "provision",
         conf: "high",
     },
@@ -33,6 +33,12 @@ const rules = [
         when: 'The provider said `script_failure`. This is the rule that kills the "blamed the cache" bug — the noisy fetch and prepare warnings are never even looked at.',
         phase: "script",
         conf: "high",
+    },
+    {
+        id: "log_unavailable",
+        when: "No reason given, and the log could not be downloaded (a 401, a rate limit, an expired log). The report names the HTTP status and skips the LLM: there is nothing for it to explain.",
+        phase: "unknown",
+        conf: "low",
     },
     {
         id: "unclosed_section",
