@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from ci_doctor.providers.log_errors import describe
+from ci_doctor.providers.log_errors import describe, retry_after
 
 _SIGNED = "https://results-receiver.example/logs/1?sig=SECRET&se=2026"
 
@@ -42,3 +42,20 @@ def test_the_signed_log_url_never_reaches_the_description():
         f"404 Client Error for url: {_SIGNED}", response=SimpleNamespace(status_code=404)
     )
     assert "SECRET" not in describe(exc)
+
+
+@pytest.mark.parametrize(
+    ("status", "headers", "wait"),
+    [
+        (429, {}, 1.0),
+        (429, {"Retry-After": "3"}, 3.0),
+        (403, {"Retry-After": "0"}, 0.0),
+        (403, {}, None),  # a 403 without Retry-After is a permission problem, not a rate limit
+        (429, {"Retry-After": "11"}, None),  # past the cap
+        (429, {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}, None),
+        (500, {"Retry-After": "1"}, None),
+    ],
+)
+def test_only_a_short_rate_limit_is_worth_one_retry(status, headers, wait):
+    """Retry a rate limit the server says will pass soon; report everything else."""
+    assert retry_after(status, headers) == wait

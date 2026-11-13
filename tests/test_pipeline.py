@@ -1,9 +1,11 @@
-"""Pipeline orchestration: chronological ordering of the analyzed jobs."""
+"""Pipeline orchestration: job order, progress, cancellation, and what each result carries."""
+
+import pytest
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Job, Run
 from ci_doctor.core.ports import LLMClient
-from ci_doctor.service.analyze import _ordered, analyze_run, run_from_file
+from ci_doctor.service.analyze import Cancelled, _ordered, analyze_run, run_from_file
 from tests import support
 
 
@@ -126,3 +128,45 @@ def test_a_log_with_a_non_utf8_byte_still_loads(tmp_path):
     path.write_bytes(b"$ make\ncaf\xe9 au lait\nERROR: Job failed: exit code 1\n")
     log = run_from_file(path).jobs[0].log
     assert "caf� au lait" in log
+
+
+def test_progress_counts_every_log_then_every_job(monkeypatch):
+    """A caller sees each fetch and each analysis, in order, with the total."""
+    _wire_provider(monkeypatch, ["a", "b"])
+    seen = []
+    cfg = load_config(environ={}, overrides={"analysis": {"max_parallel_jobs": 1}})
+    analyze_run("42", cfg, [], on_progress=lambda *event: seen.append(event))
+    assert seen == [("log", 1, 2), ("log", 2, 2), ("job", 1, 2), ("job", 2, 2)]
+
+
+def test_parallel_progress_still_counts_up_by_one(monkeypatch):
+    """Workers finish in any order; the count never skips or repeats."""
+    _wire_provider(monkeypatch, [f"j{i}" for i in range(6)])
+    seen = []
+    cfg = load_config(environ={}, overrides={"analysis": {"max_parallel_jobs": 3}})
+    analyze_run("42", cfg, [], on_progress=lambda stage, done, total: stage == "job" and seen.append(done))
+    assert seen == [1, 2, 3, 4, 5, 6]
+
+
+def test_cancel_stops_between_steps(monkeypatch):
+    """Asked to stop after the first log, nothing more is fetched and nothing is analyzed."""
+    provider = _wire_provider(monkeypatch, ["a", "b", "c"])
+    with pytest.raises(Cancelled):
+        analyze_run("42", load_config(environ={}), [], should_cancel=lambda: len(provider.fetched) >= 1)
+    assert provider.fetched == ["a"]
+
+
+def test_a_given_provider_is_used_and_results_carry_their_evidence(monkeypatch):
+    """A caller that resolved the run hands its adapter over; each result keeps its bundle."""
+    log = support.script_log("github", support.FAIL)
+    given = _FakeProvider([Job(id="x", name="x", status="failed")], log)
+    monkeypatch.setattr("ci_doctor.service.analyze.make_ci_provider", lambda cfg: _unreachable())
+    _run, provider, results = analyze_run("42", load_config(environ={}), [], provider=given)  # ty: ignore[invalid-argument-type]
+    assert provider is given and given.fetched == ["x"]
+    bundle = results[0].bundle
+    assert bundle is not None and bundle.blamed_lines
+
+
+def _unreachable():
+    """Fail the test: the default factory must not be reached."""
+    raise AssertionError("make_ci_provider was called although a provider was given")

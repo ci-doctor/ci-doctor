@@ -12,6 +12,7 @@ target for the log blob, and we fetch that ourselves.
 import logging
 import os
 import re
+import time
 from collections.abc import Mapping
 from datetime import datetime
 from itertools import islice
@@ -28,7 +29,7 @@ from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo, RunQuer
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.github.reasons import to_failure_reason
-from ci_doctor.providers.log_errors import describe
+from ci_doctor.providers.log_errors import describe, retry_after
 from ci_doctor.providers.tokens import read_token
 
 log = logging.getLogger("ci_doctor.github")
@@ -179,6 +180,12 @@ class GitHubProvider(CIProvider, SCMProvider):
             # Logs expire, and a job that never started never wrote any: 404 here.
             url = raw.logs_url()
             resp = requests.get(url, verify=self.verify, timeout=self.cfg.timeout_seconds)
+            # PyGithub retries its own API calls; this download bypasses it, so a rate
+            # limit gets the one retry here, after the wait the server asked for.
+            if (wait := retry_after(resp.status_code, resp.headers)) is not None:
+                log.info(f"job {job.id}: log download rate-limited; retrying once in {wait:g}s")
+                time.sleep(wait)
+                resp = requests.get(url, verify=self.verify, timeout=self.cfg.timeout_seconds)
             # The redirect target is a short-lived signed URL; an expired one answers
             # with an XML error body, which would otherwise be analyzed as the log.
             resp.raise_for_status()

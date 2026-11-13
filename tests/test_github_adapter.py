@@ -279,3 +279,60 @@ def test_an_explicit_repo_wins_over_the_environment():
     )
     provider._repo()
     assert seen == ["given/repo"]
+
+
+def _log_job_provider(responses, monkeypatch):
+    """A provider whose one job's log download answers `responses` in turn; sleeps recorded."""
+    calls, slept = iter(responses), []
+    monkeypatch.setattr("ci_doctor.providers.github.provider.requests.get", lambda *a, **k: next(calls))
+    monkeypatch.setattr("ci_doctor.providers.github.provider.time.sleep", slept.append)
+    provider = GitHubProvider(
+        load_config(environ={}),
+        client=_fake_client(
+            [
+                _job(
+                    id=11,
+                    name="b",
+                    status="completed",
+                    conclusion="failure",
+                    logs_url=lambda: "https://logs/1",
+                )
+            ]
+        ),
+        environ={"GITHUB_REPOSITORY": "acme/app"},
+    )
+    return provider, provider.fetch_run("999").jobs[0], slept
+
+
+def _resp(status, text="", **headers):
+    """A requests.Response double."""
+    error = requests.HTTPError(response=SimpleNamespace(status_code=status)) if status >= 400 else None
+
+    def raise_for_status():
+        if error is not None:
+            raise error
+
+    return SimpleNamespace(status_code=status, headers=headers, text=text, raise_for_status=raise_for_status)
+
+
+def test_a_rate_limited_log_download_is_retried_once_after_the_wait_asked(monkeypatch):
+    """429 with Retry-After: 2 waits two seconds, then the second answer is the log."""
+    provider, job, slept = _log_job_provider(
+        [_resp(429, **{"Retry-After": "2"}), _resp(200, "the log")], monkeypatch
+    )
+    assert provider.fetch_job_log(job) == "the log"
+    assert slept == [2.0]
+
+
+def test_a_second_rate_limit_is_reported_not_retried_again(monkeypatch):
+    """One retry only: the second 429 becomes the recorded reason."""
+    provider, job, slept = _log_job_provider([_resp(429), _resp(429)], monkeypatch)
+    assert provider.fetch_job_log(job) is None
+    assert slept == [1.0] and job.log_error is not None and job.log_error.startswith("HTTP 429")
+
+
+def test_a_long_wait_is_not_slept(monkeypatch):
+    """A Retry-After past the cap is reported at once: an interactive caller has a deadline."""
+    provider, job, slept = _log_job_provider([_resp(429, **{"Retry-After": "600"})], monkeypatch)
+    assert provider.fetch_job_log(job) is None
+    assert slept == []

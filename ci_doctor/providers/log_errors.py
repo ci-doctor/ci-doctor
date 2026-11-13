@@ -1,4 +1,4 @@
-"""Why a job log could not be downloaded, said safely.
+"""Why a job log could not be downloaded, said safely, and whether to try once more.
 
 Shared by every adapter, so the wording is the same whoever failed. Lives here
 rather than in `core/` because it reads vendor exceptions; it names no provider,
@@ -8,6 +8,12 @@ The exception's own text is never used: GitHub serves a log through a short-live
 signed URL, and an HTTP error's message carries that URL, query string and all. A
 status code and an exception type say enough to act on and leak nothing.
 """
+
+from collections.abc import Mapping
+
+#: The longest a rate-limited log download waits before its one retry. An
+#: interactive caller has a deadline; a longer `Retry-After` is reported, not slept.
+MAX_RETRY_WAIT = 10.0
 
 #: Status codes with a fix the user can act on, phrased as that fix.
 _HINTS = {
@@ -55,3 +61,28 @@ def _status(exc: BaseException) -> int | None:
         if isinstance(value, int):
             return value
     return None
+
+
+def retry_after(status: int, headers: Mapping[str, str]) -> float | None:
+    """How long to wait before retrying a rate-limited request, if it is worth retrying.
+
+    A re-sent read is not what invariant #10 forbids, which is re-running a CI job.
+
+    Args:
+        status: The response's HTTP status.
+        headers: Its headers.
+
+    Returns:
+        Seconds to wait, when the status is a rate limit (429, or 403 with a
+        `Retry-After`) and the wait is at most :data:`MAX_RETRY_WAIT`; else None.
+    """
+    if status not in (403, 429):
+        return None
+    raw = headers.get("Retry-After")
+    if raw is None:
+        return 1.0 if status == 429 else None
+    try:
+        wait = float(raw)
+    except ValueError:  # an HTTP date: too far ahead to be worth waiting for here
+        return None
+    return wait if 0 <= wait <= MAX_RETRY_WAIT else None

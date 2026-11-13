@@ -155,6 +155,10 @@ invariants go on the end. The first three, and #10, are load-bearing:
 10. **Read-only.** Every provider method is a read. The single exception in the whole
     tool is `SCMProvider.post_note`, which writes to a discussion thread. Nothing
     retries, cancels, restarts, pushes or merges anything — see `core/ports.py`.
+    "Retries" means a CI **job**: re-sending a rate-limited *read* is not a write.
+    The SDKs already do it for their API calls, and GitHub's raw log download, which
+    bypasses PyGithub, gets one retry after the `Retry-After` the server asked for
+    (`providers/log_errors.py`).
 11. **A released matcher schema version never changes how it compiles.** Every
     ci-doctor compiles every schema version it knows; a change to the format is a new
     version. Pinned by the frozen Plan snapshots in `tests/engine/v1/cases/`, and by the

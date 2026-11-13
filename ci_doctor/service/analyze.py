@@ -8,11 +8,14 @@ pure and provider-neutral (invariant #2). This is the layer that knows both.
 """
 
 import logging
+import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import NamedTuple
 
 from ci_doctor.config.schemas import Config
+from ci_doctor.core.analyze import EvidenceBundle
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
@@ -22,6 +25,18 @@ from ci_doctor.providers.registry import make_ci_provider, make_segmenter, segme
 
 log = logging.getLogger("ci_doctor.service.analyze")
 
+#: Called as the analysis moves: ``(stage, done, total)``. Stages are "log" (one
+#: job's log fetched) and "job" (one job analyzed). Called from worker threads
+#: when jobs run in parallel; `done` still counts up by one each time.
+Progress = Callable[[str, int, int], None]
+
+#: Asked between steps, never inside one: True stops the analysis with :class:`Cancelled`.
+CancelCheck = Callable[[], bool]
+
+
+class Cancelled(Exception):
+    """The caller asked to stop. Raised between steps, so nothing is left half-done."""
+
 
 class JobResult(NamedTuple):
     """One analyzed job: what failed, where, and what to tell the reader.
@@ -30,11 +45,16 @@ class JobResult(NamedTuple):
         job: The failed job, log and sections attached.
         attribution: The classifier's verdict. Owns the phase; the LLM may not.
         report: The final report, validated and redacted.
+        bundle: The evidence the report was built from: the blamed lines, the
+            matchers that fired, what was truncated. For a caller doing its own
+            explaining, which needs what the LLM would have seen, not just the
+            report. Not redacted: the caller redacts what it emits (invariant #5).
     """
 
     job: Job
     attribution: Attribution
     report: Report
+    bundle: EvidenceBundle | None = None
 
 
 def process_job(
@@ -79,7 +99,7 @@ def process_job(
     log.debug(
         f"job {job.name}: report category={report.category} confidence={report.confidence} infra={report.is_infra_not_code}",
     )
-    return JobResult(job, attr, report)
+    return JobResult(job, attr, report, bundle)
 
 
 def _ordered(jobs: list[Job]) -> list[Job]:
@@ -102,7 +122,14 @@ def _ordered(jobs: list[Job]) -> list[Job]:
 
 
 def analyze_run(
-    run_id: str, cfg: Config, matchers: list[Spec], job_id: str | None = None
+    run_id: str,
+    cfg: Config,
+    matchers: list[Spec],
+    job_id: str | None = None,
+    *,
+    provider: CIProvider | None = None,
+    on_progress: Progress | None = None,
+    should_cancel: CancelCheck | None = None,
 ) -> tuple[Run, CIProvider, list[JobResult]]:
     """Fetch a run from the provider and analyze its failed jobs.
 
@@ -111,14 +138,22 @@ def analyze_run(
         cfg: The effective config.
         matchers: The evidence matchers, loaded from the configured registries.
         job_id: Restrict to a single job id, or None for all failed ones.
+        provider: An adapter already connected to the right repository (as
+            `service.resolve` returns one), or None to build one from `cfg`.
+        on_progress: Told as each log is fetched and each job analyzed.
+        should_cancel: Asked between steps; True stops with :class:`Cancelled`.
 
     Returns:
         A ``(run, provider, results)`` tuple. The provider is returned so the
         caller can post an MR note without reconnecting.
+
+    Raises:
+        Cancelled: When `should_cancel` said so.
     """
     from ci_doctor.core.select import select_failed_jobs
 
-    provider = make_ci_provider(cfg)
+    provider = provider or make_ci_provider(cfg)
+    _check(should_cancel)
     run = provider.fetch_run(run_id)
     jobs = select_failed_jobs(run.jobs, cfg.analysis.include_allowed_failures)
     if job_id is not None:
@@ -128,13 +163,39 @@ def analyze_run(
     selected = _ordered(jobs)[: cfg.analysis.max_jobs_analyzed]
     log.info(f"analyzing {len(selected)} failed job(s) from run {run_id}")
     # Sequential on purpose: python-gitlab and PyGithub make no thread-safety promise.
-    for job in selected:
+    for done, job in enumerate(selected, 1):
+        _check(should_cancel)
         job.log = provider.fetch_job_log(job)
-    return run, provider, _analyze(selected, cfg, matchers)
+        if on_progress is not None:
+            on_progress("log", done, len(selected))
+    return (
+        run,
+        provider,
+        _analyze(selected, cfg, matchers, on_progress=on_progress, should_cancel=should_cancel),
+    )
+
+
+def _check(should_cancel: CancelCheck | None) -> None:
+    """Stop here if the caller asked to.
+
+    Args:
+        should_cancel: The caller's check, or None.
+
+    Raises:
+        Cancelled: When it says so.
+    """
+    if should_cancel is not None and should_cancel():
+        raise Cancelled
 
 
 def _analyze(
-    jobs: list[Job], cfg: Config, matchers: list[Spec], segmenter: LogSegmenter | None = None
+    jobs: list[Job],
+    cfg: Config,
+    matchers: list[Spec],
+    segmenter: LogSegmenter | None = None,
+    *,
+    on_progress: Progress | None = None,
+    should_cancel: CancelCheck | None = None,
 ) -> list[JobResult]:
     """Analyze every job, concurrently when the config allows it.
 
@@ -147,23 +208,40 @@ def _analyze(
         cfg: The effective config; `analysis.max_parallel_jobs` sets the width.
         matchers: The evidence matchers, loaded from the configured registries.
         segmenter: Parser for the log format, or None to derive it per job.
+        on_progress: Told as each job is analyzed.
+        should_cancel: Asked before each job; True stops with :class:`Cancelled`.
 
     Returns:
         One result per job, in the order given.
+
+    Raises:
+        Cancelled: When `should_cancel` said so. Jobs already running finish first.
     """
     from ci_doctor.llm.report import client_for_run
 
     plan = compile_plan(matchers, cfg.matchers.exclude)
     client = client_for_run(cfg)
+    done, lock = 0, threading.Lock()
+
+    def one(job: Job) -> JobResult:
+        nonlocal done
+        _check(should_cancel)
+        result = process_job(job, cfg, plan, segmenter, client)
+        if on_progress is not None:
+            with lock:  # workers finish in any order; the count still goes up by one
+                done += 1
+                on_progress("job", done, len(jobs))
+        return result
+
     try:
         workers = min(cfg.analysis.max_parallel_jobs, len(jobs))
         if workers <= 1:
-            return [process_job(job, cfg, plan, segmenter, client) for job in jobs]
+            return [one(job) for job in jobs]
         log.debug(f"analyzing {len(jobs)} job(s) across {workers} workers")
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ci-doctor") as pool:
             # `map` yields in submission order, so the report reads chronologically even
             # though the jobs finished in whatever order the endpoint answered them.
-            return list(pool.map(lambda job: process_job(job, cfg, plan, segmenter, client), jobs))
+            return list(pool.map(one, jobs))
     finally:
         if client is not None:
             client.close()
