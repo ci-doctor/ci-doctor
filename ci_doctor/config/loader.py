@@ -198,6 +198,20 @@ def _file_layer(path: Path) -> dict:
     return layer
 
 
+#: What a repository's own config file may not set when the repository is not
+#: trusted: where API calls and tokens go (`github`, `gitlab`), what a model is sent
+#: and where (`llm`), and where matcher files are fetched from (`matchers.registries`).
+#: An agent runs ci-doctor in whatever repository is open, so a hostile
+#: `.ci-doctor.yml` could otherwise point the token at its own server, or name a
+#: local file as `token_file` and receive its contents as the header.
+UNTRUSTED_REPO_KEYS: tuple[tuple[str, ...], ...] = (
+    ("github",),
+    ("gitlab",),
+    ("llm",),
+    ("matchers", "registries"),
+)
+
+
 def load_config(
     repo_config: str | Path | Iterable[str | Path] | None = None,
     overrides: dict | None = None,
@@ -220,15 +234,93 @@ def load_config(
         SetupError: If a file is missing, unreadable or not YAML, or the result
             doesn't validate (an unknown or ill-typed key).
     """
+    return _assemble(repo_config, overrides, environ, trust_repo=True)[0]
+
+
+def load_untrusted_repo_config(
+    repo_config: str | Path | Iterable[str | Path] | None,
+    overrides: dict | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[Config, list[str]]:
+    """Like :func:`load_config`, but without letting the repository choose where anything goes.
+
+    For a caller that runs in a repository it did not choose: the keys in
+    :data:`UNTRUSTED_REPO_KEYS` are taken from the user's own config, the
+    environment and ``overrides`` only, and dropped from every repo file. The repo
+    file still sets what is about the project itself: which matchers, the phases,
+    analysis and redaction settings.
+
+    Args:
+        repo_config: The repository's config file(s), as for :func:`load_config`.
+        overrides: The caller's own layer, applied last and trusted.
+        environ: Environment to read. Defaults to :data:`os.environ`.
+
+    Returns:
+        The validated config, and the dotted keys dropped from the repo files, in
+        file order, so the caller can say what it ignored.
+
+    Raises:
+        SetupError: As for :func:`load_config`.
+    """
+    return _assemble(repo_config, overrides, environ, trust_repo=False)
+
+
+def _assemble(
+    repo_config: str | Path | Iterable[str | Path] | None,
+    overrides: dict | None,
+    environ: Mapping[str, str] | None,
+    *,
+    trust_repo: bool,
+) -> tuple[Config, list[str]]:
+    """Merge and validate every layer; see :func:`load_config` for the order.
+
+    Args:
+        repo_config: The repo file(s).
+        overrides: The last layer.
+        environ: The environment, or None for :data:`os.environ`.
+        trust_repo: False to drop :data:`UNTRUSTED_REPO_KEYS` from the repo files.
+
+    Returns:
+        The config, and the dotted keys dropped (always empty when trusted).
+
+    Raises:
+        SetupError: On any missing, unreadable or invalid layer.
+    """
     layers = [_shipped_defaults()]
+    dropped: list[str] = []
     try:
         user = [p for p in [user_config()] if p.is_file()]
-        layers += [_file_layer(path) for path in [*user, *_repo_paths(repo_config)]]
+        layers += [_file_layer(path) for path in user]
+        for path in _repo_paths(repo_config):
+            layer = _file_layer(path)
+            if not trust_repo:
+                dropped += _drop_untrusted(layer)
+            layers.append(layer)
         layers.append(_env_overlay(os.environ if environ is None else environ))
         layers.append(overrides or {})
         merged: dict = {}
         for layer in layers:
             merged = _deep_merge(merged, layer)
-        return Config(**merged)  # extra="forbid" -> unknown keys raise ValidationError
+        return Config(**merged), dropped  # extra="forbid" -> unknown keys raise ValidationError
     except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:  # ValidationError is a ValueError
         raise SetupError(f"invalid config: {exc}") from None
+
+
+def _drop_untrusted(layer: dict) -> list[str]:
+    """Remove :data:`UNTRUSTED_REPO_KEYS` from one repo layer, in place.
+
+    Args:
+        layer: A parsed repo file.
+
+    Returns:
+        The dotted keys it removed.
+    """
+    removed = []
+    for path in UNTRUSTED_REPO_KEYS:
+        parent = layer
+        for key in path[:-1]:
+            parent = parent.get(key) if isinstance(parent, dict) else None
+        if isinstance(parent, dict) and path[-1] in parent:
+            del parent[path[-1]]
+            removed.append(".".join(path))
+    return removed
