@@ -8,8 +8,7 @@ from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
 from ci_doctor.cli._lib.outputs.message import say
 from ci_doctor.cli._lib.outputs.table import Row, table
-from ci_doctor.matchers.models import Ref
-from ci_doctor.matchers.registry import resolve, session
+from ci_doctor.service.matchers import included
 
 
 class ListCommand(Command):
@@ -32,14 +31,7 @@ class ListCommand(Command):
         if not cfg.include:
             say("nothing included. Run `ci-doctor matchers add <registry>/<name>`.", "yellow")
             return
-        with session(cfg) as http:
-            resolved = resolve(cfg, http)
-        rows = []
-        for key, via in resolved.matchers.items():
-            ref = Ref.parse(key)
-            tags = ", ".join(resolved.indexes[ref.alias].matchers[ref.name].tags)
-            rows.append(self._Included(key, via, tags))
-        table(self._Included, rows)
+        table(self._Included, [self._Included(i.matcher, i.via, ", ".join(i.tags)) for i in included(cfg)])
         if cfg.exclude:
             say("excluded outputs:", "bold")
             for ref in cfg.exclude:
