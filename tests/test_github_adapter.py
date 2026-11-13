@@ -156,7 +156,9 @@ def test_repository_falls_back_to_git_origin(monkeypatch):
 
     git_origin.origin_repo.cache_clear()
     monkeypatch.setattr(
-        git_origin.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout="git@github.com:acme/app.git\n")
+        git_origin.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=0, stdout="git@github.com:acme/app.git\n"),
     )
     seen = []
     provider = GitHubProvider(
@@ -175,7 +177,9 @@ def test_origin_keeps_nested_gitlab_groups(monkeypatch):
     monkeypatch.setattr(
         git_origin.subprocess,
         "run",
-        lambda *a, **k: SimpleNamespace(stdout="https://gitlab.example.com/group/sub/project.git\n"),
+        lambda *a, **k: SimpleNamespace(
+            returncode=0, stdout="https://gitlab.example.com/group/sub/project.git\n"
+        ),
     )
     assert git_origin.origin_repo("CI_PROJECT_ID") == "group/sub/project"
     git_origin.origin_repo.cache_clear()
