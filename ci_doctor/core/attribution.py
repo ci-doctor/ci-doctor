@@ -102,8 +102,12 @@ def attribute(job: Job, sections: list[Section]) -> Attribution:
     """
     trailer = _find(sections, TRAILER)
 
-    # Rule 1 — no / empty log => the job never really ran.
-    if not job.log or not job.log.strip():
+    log_missing = not job.log or not job.log.strip()
+
+    # Rule 1 — no / empty log => the job never really ran. Only when the log was
+    # genuinely absent: a log we failed to *download* says nothing about the runner,
+    # and reading it as "no runner" was a confident, wrong verdict.
+    if log_missing and job.log_error is None:
         return Attribution(Phase.PROVISION, FailureReason.NO_RUNNER, "high", None, "empty_log_no_runner")
 
     reason = job.failure_reason
@@ -128,6 +132,11 @@ def attribute(job: Job, sections: list[Section]) -> Attribution:
         )
 
     # --- reason is UNKNOWN: fall back to log structure ---
+
+    # Rule 3b — no structure to read: the log could not be downloaded. Say so rather
+    # than letting "no_signal" imply the log was read and was clean.
+    if log_missing:
+        return Attribution(Phase.UNKNOWN, reason or FailureReason.UNKNOWN, "low", None, "log_unavailable")
 
     # Rule 4 — an unclosed section is where execution died (hard abort).
     open_sec = _last_open_section(sections)

@@ -49,6 +49,9 @@ class CIProvider(ABC):
         Returns:
             The raw log, or None when the job genuinely produced none. None is
             valid data, not an error — it identifies the "never got a runner" case.
+            A fetch that *fails* also returns None, but must first set
+            ``job.log_error`` to why: attribution reads a missing log as "no
+            runner" only when no error was recorded.
         """
 
 

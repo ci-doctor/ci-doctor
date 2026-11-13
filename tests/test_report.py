@@ -325,3 +325,16 @@ def test_the_prompt_names_the_output_that_fired_not_the_matcher():
     _, _, bundle, _ = _pipeline(log, matchers=[ruff])
     assert [m.id for m in bundle.matchers] == ["fx/ruff.check"]
     assert '"id": "fx/ruff.check", "role": "tool"' in _packs(bundle)
+
+
+def test_an_unreadable_log_skips_the_model_and_says_why():
+    """No log to explain means no LLM call, and the report names the download failure."""
+    job = Job(id="1", name="build", status="failed", log_error="HTTP 401: not authenticated")
+    cfg = load_config(environ={}, overrides=_LLM_ON)
+    attr = attribute(job, [])
+    bundle = build_bundle(job, attr, [], cfg, compile_plan([], cfg.matchers.exclude))
+    client = FakeClient([_GOOD])
+    report = produce_report(job, attr, bundle, cfg, client=client)
+    assert client.calls == 0
+    assert report.failure_phase == "unknown"
+    assert any("could not be downloaded" in f and "HTTP 401" in f for f in report.contributing_factors)

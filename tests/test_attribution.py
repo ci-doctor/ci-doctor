@@ -307,3 +307,40 @@ def test_every_segmenter_has_a_log_builder():
     silently skip the new format instead of failing.
     """
     assert set(support.SEGMENTERS) == set(support.LOGS)
+
+
+# --- a log that could not be downloaded ---------------------------------------
+# Rule 1 reads a missing log as "never got a runner". That is only true when the
+# runner wrote nothing; a 401 or an expired log says nothing about the runner, and
+# used to come out as a confident, wrong `no_runner` verdict.
+
+
+def _unreadable(reason):
+    """Classify a job whose log fetch failed: no log, and an error saying why."""
+    job = Job(
+        id="1", name="j", status="failed", failure_reason=reason, log_error="HTTP 401: not authenticated"
+    )
+    return attribute(job, [])
+
+
+def test_a_log_that_failed_to_download_is_not_no_runner():
+    """With no reason to go on, the verdict says the log was unavailable, at low confidence."""
+    attr = _unreadable(U)
+    assert (attr.phase, attr.reason, attr.rule_id, attr.confidence) == (
+        Phase.UNKNOWN,
+        U,
+        "log_unavailable",
+        "low",
+    )
+
+
+def test_the_providers_reason_still_decides_when_the_log_is_unreadable():
+    """The provider's own verdict needs no log, so it still stands."""
+    assert _unreadable(R.SCRIPT_FAILURE).phase == Phase.SCRIPT
+    assert _unreadable(R.NO_RUNNER).rule_id == "reason_no_runner"
+
+
+def test_an_empty_log_with_no_error_is_still_no_runner():
+    """The genuine case is unchanged: the runner wrote nothing and nothing failed to download."""
+    attr = attribute(Job(id="1", name="j", status="failed", failure_reason=U), [])
+    assert attr.rule_id == "empty_log_no_runner"

@@ -20,6 +20,7 @@ from ci_doctor.core.models import FailureReason, Job, MergeRequestRef, Run, Runn
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.gitlab.reasons import to_failure_reason
+from ci_doctor.providers.log_errors import describe
 from ci_doctor.providers.tokens import read_token
 
 log = logging.getLogger("ci_doctor.gitlab")
@@ -153,8 +154,9 @@ class GitLabProvider(CIProvider, SCMProvider):
         # A missing/empty trace is valid data (the "never got a runner" case), not an error.
         try:
             raw = self._project().jobs.get(int(job.id)).trace()
-        except Exception as exc:  # noqa: BLE001
-            log.warning(f"could not fetch trace for job {job.id}: {exc}")
+        except Exception as exc:  # noqa: BLE001 - any SDK failure is a missing log, never a crash
+            job.log_error = describe(exc)
+            log.warning(f"could not fetch trace for job {job.id}: {job.log_error}")
             return None
         if not raw:
             return None

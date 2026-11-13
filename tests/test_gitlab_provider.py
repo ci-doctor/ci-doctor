@@ -114,3 +114,19 @@ def test_blank_base_url_raises_on_connect():
     cfg = load_config(environ={}, overrides={"gitlab": {"base_url": ""}})
     with pytest.raises(ValueError, match="base_url"):
         GitLabProvider(cfg, environ={})  # no injected client -> _connect() runs
+
+
+def test_a_failed_trace_download_is_recorded_not_mistaken_for_no_log():
+    """An API error leaves `log` None but records why, so attribution won't say "no runner"."""
+
+    class Refused(Exception):
+        response_code = 401
+
+    def trace():
+        raise Refused("401: unauthorized")
+
+    prov = _provider([_pipeline_job(id=101, name="build")], {})
+    prov._project().jobs = SimpleNamespace(get=lambda jid: SimpleNamespace(trace=trace))
+    job = prov.fetch_run("1").jobs[0]
+    assert prov.fetch_job_log(job) is None
+    assert job.log_error == "HTTP 401: not authenticated: set an API token with read access"

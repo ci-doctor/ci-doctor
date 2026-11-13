@@ -26,6 +26,7 @@ from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.github.reasons import to_failure_reason
+from ci_doctor.providers.log_errors import describe
 from ci_doctor.providers.tokens import read_token
 
 log = logging.getLogger("ci_doctor.github")
@@ -147,6 +148,7 @@ class GitHubProvider(CIProvider, SCMProvider):
         raw = self._raw_jobs.get(job.id)
         if raw is None:
             log.warning(f"no raw job cached for {job.id}; cannot fetch its log")
+            job.log_error = "log download failed (job not loaded from its run)"
             return None
         try:
             # Logs expire, and a job that never started never wrote any: 404 here.
@@ -157,7 +159,9 @@ class GitHubProvider(CIProvider, SCMProvider):
             resp.raise_for_status()
             text = resp.text
         except (GithubException, requests.RequestException) as exc:
-            log.warning(f"could not fetch log for job {job.id}: {exc}")
+            # Not the exception's text: it carries the signed log URL. log_errors says why.
+            job.log_error = describe(exc)
+            log.warning(f"could not fetch log for job {job.id}: {job.log_error}")
             return None
         log.debug(f"job {job.id} log: {len(text)} chars")
         return text or None

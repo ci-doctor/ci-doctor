@@ -223,6 +223,11 @@ class Job:
         web_url: Browser URL for the job.
         log: Raw trace. None means there genuinely is no log — itself the answer
             in the "never got a runner" case, not an error.
+        log_error: Why the log could not be read (a 401, a rate limit, an expired
+            log), set by the adapter when the fetch failed. None when the log was
+            read or genuinely absent. Kept apart from ``log`` because the two Nones
+            mean opposite things: "the runner wrote nothing" is a verdict, "we
+            could not download it" is not.
         sections: Filled by the provider's segmenter.
     """
 
@@ -240,6 +245,7 @@ class Job:
     needs: list[str] = field(default_factory=list)  # for cascade detection
     web_url: str = ""
     log: str | None = None  # None when there is genuinely no log
+    log_error: str | None = None  # set when the fetch failed, so a missing log is not a verdict
     sections: list[Section] = field(default_factory=list)  # filled by the segmenter
 
 

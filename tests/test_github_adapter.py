@@ -6,6 +6,8 @@ The full run through the GitHub path proves core needed no changes for it.
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import requests
+
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.attribution import attribute
 from ci_doctor.core.models import FailureReason, Job, Phase
@@ -177,3 +179,25 @@ def test_origin_keeps_nested_gitlab_groups(monkeypatch):
     )
     assert git_origin.origin_repo("CI_PROJECT_ID") == "group/sub/project"
     git_origin.origin_repo.cache_clear()
+
+
+def test_a_failed_log_download_is_recorded_not_mistaken_for_no_log():
+    """A 404 on the log leaves `log` None but says why, without the signed URL in it."""
+
+    def refuse():
+        raise requests.HTTPError(
+            "404 Client Error for url: https://logs.example/1?sig=SECRET",
+            response=SimpleNamespace(status_code=404),
+        )
+
+    provider = GitHubProvider(
+        load_config(environ={}),
+        client=_fake_client(
+            [_job(id=11, name="build", status="completed", conclusion="failure", logs_url=refuse)]
+        ),
+        environ={"GITHUB_REPOSITORY": "acme/app"},
+    )
+    job = provider.fetch_run("999").jobs[0]
+    assert provider.fetch_job_log(job) is None
+    assert job.log_error is not None and job.log_error.startswith("HTTP 404")
+    assert "SECRET" not in job.log_error

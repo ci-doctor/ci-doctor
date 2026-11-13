@@ -122,6 +122,11 @@ def produce_report(
         log.debug(f"reason {attr.reason} is in analysis.skip_llm_for -> deterministic report")
         return redact_report(deterministic_report(job, attr, bundle), cfg.redaction, environ)
 
+    if job.log_error is not None and not (job.log or "").strip():
+        # The log could not be downloaded: a model would be explaining nothing.
+        log.debug(f"job {job.name}: log unavailable ({job.log_error}) -> deterministic report")
+        return redact_report(deterministic_report(job, attr, bundle), cfg.redaction, environ)
+
     if not (cfg.llm.enabled and (client is not None or backend_ready(cfg.llm))):
         log.debug(f"LLM disabled/not ready (backend={cfg.llm.backend}) -> deterministic report")
         return redact_report(deterministic_report(job, attr, bundle), cfg.redaction, environ)
@@ -232,6 +237,10 @@ def deterministic_report(
         remediation = "Reduce memory use or raise the runner memory limit (exit 137 = OOM/SIGKILL)."
 
     factors = [f"warnings in the {p} phase (non-causal)" for p in attr.secondary_phases]
+    if job.log_error is not None:
+        factors.append(
+            f"The job log could not be downloaded ({job.log_error}); this verdict rests on the CI system's metadata alone."
+        )
     if degraded:
         factors.append("ci-doctor could not reach the LLM; this is the deterministic fallback report.")
 
