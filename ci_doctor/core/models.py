@@ -249,6 +249,67 @@ class Job:
     sections: list[Section] = field(default_factory=list)  # filled by the segmenter
 
 
+#: A run's normalised status, whatever the CI system calls it. "running" covers
+#: queued and pending too: not finished, so more jobs may still fail.
+RunStatus = Literal["failed", "running", "success", "cancelled", "other"]
+
+
+@dataclass(frozen=True)
+class RunQuery:
+    """Which runs to list. Set one of `sha`, `branch` or `mr`.
+
+    Attributes:
+        sha: Runs for this commit.
+        branch: Runs on this branch.
+        mr: Runs for this merge/pull request's head commit, by its number.
+        limit: At most this many, newest first.
+    """
+
+    sha: str | None = None
+    branch: str | None = None
+    mr: str | None = None
+    limit: int = 10
+
+
+@dataclass(frozen=True)
+class RunSummary:
+    """One run, as a list of runs shows it: enough to choose, before fetching jobs.
+
+    Attributes:
+        id: Provider's run id, what `CIProvider.fetch_run` takes.
+        name: The workflow or pipeline name.
+        ref: Branch or tag.
+        sha: Commit the run built.
+        status: Normalised status.
+        web_url: Browser URL for the run.
+        created_at: ISO timestamp, or None when the provider gives none.
+    """
+
+    id: str
+    name: str
+    ref: str
+    sha: str
+    status: RunStatus
+    web_url: str = ""
+    created_at: str | None = None
+
+
+@dataclass(frozen=True)
+class RunRef:
+    """What a pasted CI URL points at.
+
+    Attributes:
+        repo: The repository path in the URL ("owner/name", "group/sub/project").
+        run_id: The run, when the URL names it.
+        job_id: The job, when the URL names one. A job URL may name no run
+            (GitLab's `/-/jobs/<id>`): `CIProvider.run_of_job` finds it.
+    """
+
+    repo: str
+    run_id: str | None = None
+    job_id: str | None = None
+
+
 @dataclass
 class Run:
     """A whole CI execution — a "pipeline" on one provider, a "workflow run" on another.

@@ -14,10 +14,12 @@ Actions both run act_runner, which emits GitHub's `##[group]` markers).
 
 import logging
 import re
+from collections.abc import Callable
 from importlib import import_module
 from typing import Any
 
 from ci_doctor.config.schemas import Config
+from ci_doctor.core.models import RunRef
 from ci_doctor.core.ports import CIProvider, LogSegmenter, SCMProvider
 
 log = logging.getLogger("ci_doctor.providers")
@@ -34,6 +36,12 @@ ADAPTERS: dict[str, str] = {
 SEGMENTERS: dict[str, str] = {
     "gitlab": "ci_doctor.providers.gitlab.segmenter:GitLabSegmenter",
     "github": "ci_doctor.providers.github.segmenter:GitHubSegmenter",
+}
+
+#: CI system -> a pure `parse_run_url(url, web_host) -> RunRef | None` for its web URLs.
+URL_PARSERS: dict[str, str] = {
+    "gitlab": "ci_doctor.providers.gitlab.urls:parse_run_url",
+    "github": "ci_doctor.providers.github.urls:parse_run_url",
 }
 
 #: Segmenter used when the configured CI system has none of its own.
@@ -62,26 +70,31 @@ def _load(spec: str) -> Any:  # noqa: ANN401 - an import resolved by name cannot
     return getattr(import_module(module), name)
 
 
-def make_adapter(vendor: str, cfg: Config) -> CIProvider | SCMProvider | None:
+def make_adapter(vendor: str, cfg: Config, **where: Any) -> CIProvider | SCMProvider | None:  # noqa: ANN401 - passed through to the adapter
     """Build the adapter for one vendor, whichever ports it implements.
 
     Args:
         vendor: The vendor name from `ci` or `scm`.
         cfg: The effective config.
+        **where: `repo` and `cwd`, passed through to the adapter.
 
     Returns:
         The adapter, or None when no adapter exists for that name. The caller
         checks which ports it got.
     """
     spec = ADAPTERS.get(vendor)
-    return _load(spec)(cfg) if spec else None
+    return _load(spec)(cfg, **where) if spec else None
 
 
-def make_ci_provider(cfg: Config) -> CIProvider:
+def make_ci_provider(cfg: Config, vendor: str | None = None, **where: Any) -> CIProvider:  # noqa: ANN401 - passed through to the adapter
     """Build the adapter that reads the run, named by `config.ci`.
 
     Args:
         cfg: The effective config.
+        vendor: The CI system, when the caller worked it out (from a URL or a git
+            remote). Defaults to `config.ci`.
+        **where: `repo` and `cwd`, passed to the adapter, for a caller that knows
+            which repository it means rather than leaving it to the environment.
 
     Returns:
         A :class:`~ci_doctor.core.ports.CIProvider`.
@@ -89,10 +102,24 @@ def make_ci_provider(cfg: Config) -> CIProvider:
     Raises:
         ValueError: When no adapter reads that CI system.
     """
-    adapter = make_adapter(cfg.ci, cfg)
+    name = vendor or cfg.ci
+    adapter = make_adapter(name, cfg, **where)
     if not isinstance(adapter, CIProvider):
-        raise ValueError(f"unsupported CI system: {cfg.ci}")  # noqa: TRY004 - an unknown name, not a type error
+        raise ValueError(f"unsupported CI system: {name}")  # noqa: TRY004 - an unknown name, not a type error
     return adapter
+
+
+def run_url_parser(vendor: str) -> Callable[[str, str], RunRef | None] | None:
+    """The URL parser for a CI system's web links.
+
+    Args:
+        vendor: The CI system.
+
+    Returns:
+        `parse_run_url(url, web_host)`, or None when the CI system has no parser.
+    """
+    spec = URL_PARSERS.get(vendor)
+    return _load(spec) if spec else None
 
 
 def make_scm_provider(cfg: Config, ci_provider: object = None) -> SCMProvider | None:

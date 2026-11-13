@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, TypeVar
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
-    from ci_doctor.core.models import Job, MergeRequestRef, Run, Section
+    from ci_doctor.core.models import Job, MergeRequestRef, Run, RunQuery, RunSummary, Section
     from ci_doctor.llm.schema import Report
 
 _T = TypeVar("_T", bound="BaseModel")
@@ -53,6 +53,38 @@ class CIProvider(ABC):
             ``job.log_error`` to why: attribution reads a missing log as "no
             runner" only when no error was recorded.
         """
+
+    def find_runs(self, query: "RunQuery") -> "list[RunSummary]":
+        """List runs for a commit, a branch, or a merge/pull request.
+
+        What lets a caller find "the run that failed for my last push" without
+        being handed a run id. Not abstract: an adapter that cannot list runs
+        still analyzes one by id.
+
+        Args:
+            query: Which runs; exactly one of `sha`, `branch`, `mr` is set.
+
+        Returns:
+            At most `query.limit` runs, newest first. Empty when there are none.
+
+        Raises:
+            NotImplementedError: When this CI system cannot list runs.
+        """
+        raise NotImplementedError(f"{type(self).__name__} cannot list runs; pass a run id")
+
+    def run_of_job(self, job_id: str) -> str:
+        """The run a job belongs to, for a URL that names only the job.
+
+        Args:
+            job_id: The CI system's job id.
+
+        Returns:
+            The run id, as :meth:`fetch_run` takes it.
+
+        Raises:
+            NotImplementedError: When this CI system cannot look a job up.
+        """
+        raise NotImplementedError(f"{type(self).__name__} cannot look a job up; pass its run id")
 
 
 class SCMProvider(ABC):

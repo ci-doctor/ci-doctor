@@ -14,6 +14,8 @@ import os
 import re
 from collections.abc import Mapping
 from datetime import datetime
+from itertools import islice
+from pathlib import Path
 
 import requests
 from github import Auth, Github, GithubException
@@ -22,7 +24,7 @@ from github.WorkflowJob import WorkflowJob
 from github.WorkflowRun import WorkflowRun
 
 from ci_doctor.config.schemas import Config
-from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo
+from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo, RunQuery, RunStatus, RunSummary
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.github.reasons import to_failure_reason
@@ -41,6 +43,16 @@ _CONCLUSION_STATUS = {
     "cancelled": "cancelled",
 }
 
+#: A workflow run's conclusion -> the domain's run status. A run not yet
+#: `completed` is "running" whatever its conclusion field says.
+_RUN_STATUS: dict[str | None, RunStatus] = {
+    "failure": "failed",
+    "timed_out": "failed",
+    "startup_failure": "failed",
+    "success": "success",
+    "cancelled": "cancelled",
+}
+
 
 class GitHubProvider(CIProvider, SCMProvider):
     """Read-only GitHub Actions adapter over PyGithub.
@@ -54,6 +66,9 @@ class GitHubProvider(CIProvider, SCMProvider):
         config: Config,
         client: Github | None = None,
         environ: Mapping[str, str] | None = None,
+        *,
+        repo: str | None = None,
+        cwd: Path | str | None = None,
     ) -> None:
         """Connect to GitHub, unless a client is injected.
 
@@ -61,9 +76,15 @@ class GitHubProvider(CIProvider, SCMProvider):
             config: The effective config; only `config.github` is used.
             client: Pre-built `github.Github`, used by tests to stay offline.
             environ: Environment for the token and GITHUB_* vars. Defaults to os.environ.
+            repo: The repository ("owner/name"), when the caller already knows it.
+                Wins over `GITHUB_REPOSITORY` and the git origin.
+            cwd: The checkout whose origin names the repository when nothing else
+                does. None for the process's own directory.
         """
         self.cfg = config.github
         self.environ = os.environ if environ is None else environ
+        self._repo_name = repo
+        self._cwd = cwd
         self.verify: bool | str = self.cfg.ca_bundle or self.cfg.verify_ssl
         self._repo_obj: Repository | None = None
         #: Raw PyGithub jobs kept from fetch_run, keyed by id: the log lives behind
@@ -103,7 +124,11 @@ class GitHubProvider(CIProvider, SCMProvider):
                 by a git origin to fall back on.
         """
         if self._repo_obj is None:
-            name = self.environ.get("GITHUB_REPOSITORY") or origin_repo("GITHUB_REPOSITORY")
+            name = (
+                self._repo_name
+                or self.environ.get("GITHUB_REPOSITORY")
+                or origin_repo("GITHUB_REPOSITORY", self._cwd)
+            )
             if not name:
                 raise ValueError("GITHUB_REPOSITORY is not set and git origin gave no repository")
             self._repo_obj = self.gh.get_repo(name)
@@ -166,6 +191,41 @@ class GitHubProvider(CIProvider, SCMProvider):
         log.debug(f"job {job.id} log: {len(text)} chars")
         return text or None
 
+    def find_runs(self, query: RunQuery) -> list[RunSummary]:
+        """List workflow runs for a commit, a branch or a pull request, newest first.
+
+        A pull request is resolved to its head commit: its runs are the runs for
+        that commit, whichever workflows built it.
+
+        Args:
+            query: Which runs.
+
+        Returns:
+            At most `query.limit` runs.
+        """
+        repo = self._repo()
+        if query.mr is not None:
+            runs = repo.get_workflow_runs(head_sha=repo.get_pull(int(query.mr)).head.sha)
+        elif query.sha is not None:
+            runs = repo.get_workflow_runs(head_sha=query.sha)
+        elif query.branch is not None:
+            # PyGithub types `branch` as a Branch object but sends a str through as the name.
+            runs = repo.get_workflow_runs(branch=query.branch)  # ty: ignore[invalid-argument-type]
+        else:
+            return []
+        return [self._to_summary(wr) for wr in islice(runs, query.limit)]
+
+    def run_of_job(self, job_id: str) -> str:
+        """Look a job up and return its workflow run.
+
+        Args:
+            job_id: The job id.
+
+        Returns:
+            The run id.
+        """
+        return str(self._repo().get_workflow_job(int(job_id)).run_id)
+
     # --- SCMProvider ------------------------------------------------------
 
     def post_note(self, mr: MergeRequestRef, body: str, marker: str) -> None:
@@ -204,6 +264,27 @@ class GitHubProvider(CIProvider, SCMProvider):
             return MergeRequestRef(iid=str(pr.number))
         m = re.match(r"refs/pull/(\d+)/", self.environ.get("GITHUB_REF", ""))
         return MergeRequestRef(iid=m.group(1)) if m else None
+
+    @staticmethod
+    def _to_summary(wr: WorkflowRun) -> RunSummary:
+        """Map a PyGithub workflow run onto the neutral run summary.
+
+        Args:
+            wr: A PyGithub `WorkflowRun`.
+
+        Returns:
+            The summary, its status normalised.
+        """
+        status: RunStatus = _RUN_STATUS.get(wr.conclusion, "other") if wr.status == "completed" else "running"
+        return RunSummary(
+            id=str(wr.id),
+            name=wr.name or "",
+            ref=wr.head_branch or "",
+            sha=wr.head_sha or "",
+            status=status,
+            web_url=wr.html_url or "",
+            created_at=_iso(wr.created_at),
+        )
 
     def _to_job(self, j: WorkflowJob) -> Job:
         """Map a PyGithub workflow job onto the domain model.

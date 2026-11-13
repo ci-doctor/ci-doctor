@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.core.models import FailureReason
+from ci_doctor.core.models import FailureReason, RunQuery
 from ci_doctor.core.select import select_failed_jobs
 from ci_doctor.providers.gitlab.provider import GitLabProvider
 
@@ -130,3 +130,58 @@ def test_a_failed_trace_download_is_recorded_not_mistaken_for_no_log():
     job = prov.fetch_run("1").jobs[0]
     assert prov.fetch_job_log(job) is None
     assert job.log_error == "HTTP 401: not authenticated: set an API token with read access"
+
+
+def _pipe(id_, status, sha="s1", ref="main"):
+    """A python-gitlab pipeline double, as a list returns it."""
+    return SimpleNamespace(
+        id=id_,
+        status=status,
+        sha=sha,
+        ref=ref,
+        web_url=f"http://gl/p/{id_}",
+        created_at="2026-01-01T00:00:00Z",
+    )
+
+
+def test_find_runs_normalises_status_and_asks_by_the_right_filter():
+    """Waiting pipelines are running; an MR is asked through its own pipeline list."""
+    seen = []
+    pipes = [_pipe(3, "waiting_for_resource"), _pipe(2, "failed"), _pipe(1, "canceled"), _pipe(0, "manual")]
+
+    def listing(**kw):
+        seen.append(kw)
+        return pipes
+
+    prov = _provider([], {})
+    project = prov._project()
+    project.pipelines.list = listing
+    project.mergerequests = SimpleNamespace(
+        get=lambda iid: SimpleNamespace(pipelines=SimpleNamespace(list=listing))
+    )
+    found = prov.find_runs(RunQuery(sha="s1", limit=4))
+    assert [(r.id, r.status) for r in found] == [
+        ("3", "running"),
+        ("2", "failed"),
+        ("1", "cancelled"),
+        ("0", "other"),
+    ]
+    prov.find_runs(RunQuery(branch="dev", limit=2))
+    prov.find_runs(RunQuery(mr="5", limit=2))
+    assert seen[0]["sha"] == "s1" and seen[1]["ref"] == "dev" and "sha" not in seen[2]
+    assert len(prov.find_runs(RunQuery(mr="5", limit=2))) == 2
+
+
+def test_run_of_job_reads_the_jobs_pipeline():
+    """A job URL names no pipeline; the job does."""
+    prov = _provider([], {})
+    prov._project().jobs = SimpleNamespace(get=lambda jid: SimpleNamespace(pipeline={"id": 31}))
+    assert prov.run_of_job("8") == "31"
+
+
+def test_an_explicit_project_wins_over_the_environment():
+    """A caller that knows the project is not second-guessed by CI_PROJECT_ID."""
+    seen = []
+    gl = SimpleNamespace(projects=SimpleNamespace(get=lambda pid: seen.append(pid)))
+    GitLabProvider(load_config(environ={}), client=gl, environ={"CI_PROJECT_ID": "42"}, repo="g/p")._project()
+    assert seen == ["g/p"]

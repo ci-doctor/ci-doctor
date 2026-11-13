@@ -10,13 +10,23 @@ on older instances degrade to sensible defaults instead of crashing.
 import logging
 import os
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import gitlab
 from gitlab.v4.objects import Project, ProjectPipelineJob
 
 from ci_doctor.config.schemas import Config
-from ci_doctor.core.models import FailureReason, Job, MergeRequestRef, Run, RunnerInfo
+from ci_doctor.core.models import (
+    FailureReason,
+    Job,
+    MergeRequestRef,
+    Run,
+    RunnerInfo,
+    RunQuery,
+    RunStatus,
+    RunSummary,
+)
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.gitlab.reasons import to_failure_reason
@@ -24,6 +34,27 @@ from ci_doctor.providers.log_errors import describe
 from ci_doctor.providers.tokens import read_token
 
 log = logging.getLogger("ci_doctor.gitlab")
+
+#: Pipeline status -> the domain's run status. Everything not finished is
+#: "running": a waiting pipeline can still fail.
+_RUN_STATUS: dict[str, RunStatus] = {
+    "failed": "failed",
+    "success": "success",
+    "canceled": "cancelled",
+    "canceling": "cancelled",
+    **dict.fromkeys(
+        (
+            "created",
+            "pending",
+            "preparing",
+            "running",
+            "scheduled",
+            "waiting_for_resource",
+            "waiting_for_callback",
+        ),
+        "running",
+    ),
+}
 
 
 class GitLabProvider(CIProvider, SCMProvider):
@@ -39,6 +70,9 @@ class GitLabProvider(CIProvider, SCMProvider):
         config: Config,
         client: gitlab.Gitlab | None = None,
         environ: Mapping[str, str] | None = None,
+        *,
+        repo: str | None = None,
+        cwd: Path | str | None = None,
     ) -> None:
         """Connect to GitLab, unless a client is injected.
 
@@ -46,12 +80,18 @@ class GitLabProvider(CIProvider, SCMProvider):
             config: The effective config; only `config.gitlab` is used.
             client: Pre-built `gitlab.Gitlab`, used by tests to stay offline.
             environ: Environment for the token and CI_* vars. Defaults to os.environ.
+            repo: The project ("group/sub/project" or its id), when the caller
+                already knows it. Wins over `CI_PROJECT_ID` and the git origin.
+            cwd: The checkout whose origin names the project when nothing else
+                does. None for the process's own directory.
 
         Raises:
             ValueError: If `gitlab.base_url` is empty.
         """
         self.cfg = config.gitlab
         self.environ = os.environ if environ is None else environ
+        self._repo_name = repo
+        self._cwd = cwd
         self._project_obj: Project | None = None
         self.gl = client if client is not None else self._connect()
 
@@ -96,7 +136,11 @@ class GitLabProvider(CIProvider, SCMProvider):
                 a git origin to fall back on.
         """
         if self._project_obj is None:
-            pid = self.environ.get("CI_PROJECT_ID") or origin_repo("CI_PROJECT_ID")
+            pid = (
+                self._repo_name
+                or self.environ.get("CI_PROJECT_ID")
+                or origin_repo("CI_PROJECT_ID", self._cwd)
+            )
             if not pid:
                 raise ValueError("CI_PROJECT_ID is not set and git origin gave no project")
             self._project_obj = self.gl.projects.get(pid)
@@ -126,6 +170,44 @@ class GitLabProvider(CIProvider, SCMProvider):
             mr=self._merge_request_ref(),
             jobs=jobs,
         )
+
+    def find_runs(self, query: RunQuery) -> list[RunSummary]:
+        """List pipelines for a commit, a branch or a merge request, newest first.
+
+        Args:
+            query: Which pipelines.
+
+        Returns:
+            At most `query.limit` pipelines.
+        """
+        project = self._project()
+        if query.mr is not None:
+            # The MR's own pipeline list: detached and merged-result pipelines included.
+            pipelines = project.mergerequests.get(int(query.mr)).pipelines.list(
+                get_all=False, per_page=query.limit
+            )
+        elif query.sha is not None:
+            pipelines = project.pipelines.list(
+                get_all=False, per_page=query.limit, order_by="id", sort="desc", sha=query.sha
+            )
+        elif query.branch is not None:
+            pipelines = project.pipelines.list(
+                get_all=False, per_page=query.limit, order_by="id", sort="desc", ref=query.branch
+            )
+        else:
+            return []
+        return [self._to_summary(p) for p in list(pipelines)[: query.limit]]
+
+    def run_of_job(self, job_id: str) -> str:
+        """Look a job up and return its pipeline: a GitLab job URL names no pipeline.
+
+        Args:
+            job_id: The job id.
+
+        Returns:
+            The pipeline id.
+        """
+        return str(self._project().jobs.get(int(job_id)).pipeline["id"])
 
     def _merge_request_ref(self) -> MergeRequestRef | None:
         """Resolve the MR from the predefined CI variable.
@@ -187,6 +269,26 @@ class GitLabProvider(CIProvider, SCMProvider):
         mr_obj.notes.create({"body": full})
 
     # --- mapping ----------------------------------------------------------
+
+    @staticmethod
+    def _to_summary(pipeline: Any) -> RunSummary:  # noqa: ANN401 - project and MR pipelines are different classes
+        """Map a python-gitlab pipeline onto the neutral run summary.
+
+        Args:
+            pipeline: A project pipeline, or one from a merge request's list.
+
+        Returns:
+            The summary, its status normalised.
+        """
+        return RunSummary(
+            id=str(pipeline.id),
+            name=getattr(pipeline, "name", None) or "",
+            ref=getattr(pipeline, "ref", "") or "",
+            sha=getattr(pipeline, "sha", "") or "",
+            status=_RUN_STATUS.get(getattr(pipeline, "status", ""), "other"),
+            web_url=getattr(pipeline, "web_url", "") or "",
+            created_at=getattr(pipeline, "created_at", None),
+        )
 
     def _to_job(self, pj: ProjectPipelineJob) -> Job:
         """Map a python-gitlab job onto the domain model.

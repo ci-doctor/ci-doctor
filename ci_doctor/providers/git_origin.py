@@ -109,6 +109,23 @@ def head(cwd: Path | str | None = None) -> Head:
     )
 
 
+def pushed(sha: str, cwd: Path | str | None = None) -> bool:
+    """Whether any remote-tracking branch contains a commit, as far as this checkout knows.
+
+    Read from the local remote-tracking refs, without fetching: a commit pushed from
+    another clone reads as unpushed until the next fetch. Good enough to tell
+    "you haven't pushed yet" from "CI has not picked it up".
+
+    Args:
+        sha: The commit.
+        cwd: The checkout, or None for the process's own directory.
+
+    Returns:
+        True when some `refs/remotes/*` branch contains it.
+    """
+    return _git(["branch", "--remotes", "--contains", sha], cwd) is not None
+
+
 @cache
 def origin_repo(env_var: str, cwd: Path | str | None = None) -> str | None:
     """Derive "owner/name" (or "group/sub/project") from the `origin` remote.

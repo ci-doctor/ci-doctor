@@ -10,7 +10,7 @@ import requests
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.attribution import attribute
-from ci_doctor.core.models import FailureReason, Job, Phase
+from ci_doctor.core.models import FailureReason, Job, Phase, RunQuery
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.core.select import select_failed_jobs
 from ci_doctor.providers.github.provider import GitHubProvider
@@ -205,3 +205,77 @@ def test_a_failed_log_download_is_recorded_not_mistaken_for_no_log():
     assert provider.fetch_job_log(job) is None
     assert job.log_error is not None and job.log_error.startswith("HTTP 404")
     assert "SECRET" not in job.log_error
+
+
+def _wr(id_, status, conclusion, sha="s1", branch="main"):
+    """A stand-in for a PyGithub WorkflowRun, as a run list returns it."""
+    return SimpleNamespace(
+        id=id_,
+        name="CI",
+        head_branch=branch,
+        head_sha=sha,
+        status=status,
+        conclusion=conclusion,
+        html_url=f"http://gh/run/{id_}",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
+def _lister(runs):
+    """A repo double whose `get_workflow_runs` records its filters; PR 12's head is `s1`."""
+    seen = []
+
+    def get_workflow_runs(**kw):
+        seen.append(kw)
+        return iter(runs)
+
+    repo = SimpleNamespace(
+        get_workflow_runs=get_workflow_runs,
+        get_pull=lambda n: SimpleNamespace(head=SimpleNamespace(sha="s1")),
+        get_workflow_job=lambda jid: SimpleNamespace(run_id=777),
+    )
+    provider = GitHubProvider(
+        load_config(environ={}),
+        client=SimpleNamespace(get_repo=lambda name: repo),
+        environ={},
+        repo="acme/app",
+    )
+    return provider, seen
+
+
+def test_find_runs_normalises_status_and_asks_by_the_right_filter():
+    """A run not yet completed is running; a PR is asked for by its head commit."""
+    runs = [
+        _wr(3, "in_progress", None),
+        _wr(2, "completed", "failure"),
+        _wr(1, "completed", "success"),
+        _wr(0, "completed", "skipped"),
+    ]
+    provider, seen = _lister(runs)
+    found = provider.find_runs(RunQuery(sha="s1", limit=3))
+    assert [(r.id, r.status) for r in found] == [("3", "running"), ("2", "failed"), ("1", "success")]
+    assert found[0].created_at == "2026-01-01T00:00:00+00:00"
+    provider.find_runs(RunQuery(mr="12"))
+    provider.find_runs(RunQuery(branch="dev"))
+    assert seen == [{"head_sha": "s1"}, {"head_sha": "s1"}, {"branch": "dev"}]
+    assert provider.find_runs(RunQuery())[0:0] == []  # nothing asked, nothing listed
+    assert provider.find_runs(RunQuery(sha="s1", limit=4))[-1].status == "other"
+
+
+def test_run_of_job_reads_the_jobs_run():
+    """A check-run link names only the job; the API knows its run."""
+    provider, _ = _lister([])
+    assert provider.run_of_job("9") == "777"
+
+
+def test_an_explicit_repo_wins_over_the_environment():
+    """A caller that knows the repository is not second-guessed by GITHUB_REPOSITORY."""
+    seen = []
+    provider = GitHubProvider(
+        load_config(environ={}),
+        client=SimpleNamespace(get_repo=lambda name: seen.append(name)),
+        environ={"GITHUB_REPOSITORY": "env/repo"},
+        repo="given/repo",
+    )
+    provider._repo()
+    assert seen == ["given/repo"]
