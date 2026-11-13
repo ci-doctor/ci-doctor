@@ -15,7 +15,7 @@ from ci_doctor.config.schemas import Config
 #: A self-hosted instance is never built in: its user names it in config.
 BUILT_IN_API = {"api.github.com": "github.com", "gitlab.com": "gitlab.com"}
 
-#: Vendor -> the config block holding its connection settings.
+#: The vendors with a connection block in config (`github:`, `gitlab:`), in lookup order.
 _VENDORS = ("github", "gitlab")
 
 

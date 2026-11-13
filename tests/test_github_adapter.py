@@ -6,11 +6,12 @@ The full run through the GitHub path proves core needed no changes for it.
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
 import requests
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.attribution import attribute
-from ci_doctor.core.models import FailureReason, Job, Phase, RunQuery
+from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.core.select import select_failed_jobs
 from ci_doctor.providers.github.provider import GitHubProvider
@@ -243,23 +244,35 @@ def _lister(runs):
     return provider, seen
 
 
-def test_find_runs_normalises_status_and_asks_by_the_right_filter():
-    """A run not yet completed is running; a PR is asked for by its head commit."""
+def test_find_runs_normalises_the_status():
+    """A run not yet completed is running, whatever its conclusion; an unmapped conclusion is other."""
     runs = [
         _wr(3, "in_progress", None),
         _wr(2, "completed", "failure"),
         _wr(1, "completed", "success"),
         _wr(0, "completed", "skipped"),
     ]
-    provider, seen = _lister(runs)
-    found = provider.find_runs(RunQuery(sha="s1", limit=3))
-    assert [(r.id, r.status) for r in found] == [("3", "running"), ("2", "failed"), ("1", "success")]
+    provider, _ = _lister(runs)
+    found = provider.find_runs(sha="s1")
+    assert [r.status for r in found] == ["running", "failed", "success", "other"]
     assert found[0].created_at == "2026-01-01T00:00:00+00:00"
-    provider.find_runs(RunQuery(mr="12"))
-    provider.find_runs(RunQuery(branch="dev"))
-    assert seen == [{"head_sha": "s1"}, {"head_sha": "s1"}, {"branch": "dev"}]
-    assert provider.find_runs(RunQuery())[0:0] == []  # nothing asked, nothing listed
-    assert provider.find_runs(RunQuery(sha="s1", limit=4))[-1].status == "other"
+    assert len(provider.find_runs(sha="s1", limit=2)) == 2
+
+
+@pytest.mark.parametrize(
+    ("asked", "sent"),
+    [
+        ({"sha": "s1"}, [{"head_sha": "s1"}]),
+        ({"mr": "12"}, [{"head_sha": "s1"}]),  # PR 12's head commit is s1
+        ({"branch": "dev"}, [{"branch": "dev"}]),
+        ({}, []),  # nothing asked, nothing listed
+    ],
+)
+def test_find_runs_sends_the_right_filter(asked, sent):
+    """A pull request is asked for by its head commit."""
+    provider, seen = _lister([])
+    provider.find_runs(**asked)
+    assert seen == sent
 
 
 def test_run_of_job_reads_the_jobs_run():

@@ -2,8 +2,10 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from ci_doctor.config.loader import load_config
-from ci_doctor.core.models import FailureReason, RunQuery
+from ci_doctor.core.models import FailureReason
 from ci_doctor.core.select import select_failed_jobs
 from ci_doctor.providers.gitlab.provider import GitLabProvider
 
@@ -144,10 +146,9 @@ def _pipe(id_, status, sha="s1", ref="main"):
     )
 
 
-def test_find_runs_normalises_status_and_asks_by_the_right_filter():
-    """Waiting pipelines are running; an MR is asked through its own pipeline list."""
+def _listing(pipes):
+    """A provider whose project and MR pipeline lists answer `pipes`; `seen` records each query."""
     seen = []
-    pipes = [_pipe(3, "waiting_for_resource"), _pipe(2, "failed"), _pipe(1, "canceled"), _pipe(0, "manual")]
 
     def listing(**kw):
         seen.append(kw)
@@ -159,17 +160,30 @@ def test_find_runs_normalises_status_and_asks_by_the_right_filter():
     project.mergerequests = SimpleNamespace(
         get=lambda iid: SimpleNamespace(pipelines=SimpleNamespace(list=listing))
     )
-    found = prov.find_runs(RunQuery(sha="s1", limit=4))
-    assert [(r.id, r.status) for r in found] == [
-        ("3", "running"),
-        ("2", "failed"),
-        ("1", "cancelled"),
-        ("0", "other"),
-    ]
-    prov.find_runs(RunQuery(branch="dev", limit=2))
-    prov.find_runs(RunQuery(mr="5", limit=2))
-    assert seen[0]["sha"] == "s1" and seen[1]["ref"] == "dev" and "sha" not in seen[2]
-    assert len(prov.find_runs(RunQuery(mr="5", limit=2))) == 2
+    return prov, seen
+
+
+def test_find_runs_normalises_the_status():
+    """Waiting pipelines are running, `canceled` is the domain's `cancelled`, the rest is other."""
+    pipes = [_pipe(3, "waiting_for_resource"), _pipe(2, "failed"), _pipe(1, "canceled"), _pipe(0, "manual")]
+    prov, _ = _listing(pipes)
+    assert [r.status for r in prov.find_runs(sha="s1")] == ["running", "failed", "cancelled", "other"]
+    assert len(prov.find_runs(sha="s1", limit=2)) == 2
+
+
+@pytest.mark.parametrize(
+    ("asked", "filters"),
+    [
+        ({"sha": "s1"}, {"sha": "s1", "ref": None}),
+        ({"branch": "dev"}, {"sha": None, "ref": "dev"}),
+        ({"mr": "5"}, {}),  # the MR's own list: no commit or branch filter sent
+    ],
+)
+def test_find_runs_sends_the_right_filter(asked, filters):
+    """A commit or branch filters the project's list; an MR asks its own list."""
+    prov, seen = _listing([])
+    prov.find_runs(**asked)
+    assert {k: v for k, v in seen[0].items() if k in ("sha", "ref")} == filters
 
 
 def test_run_of_job_reads_the_jobs_pipeline():

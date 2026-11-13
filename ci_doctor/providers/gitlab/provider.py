@@ -14,19 +14,11 @@ from pathlib import Path
 from typing import Any
 
 import gitlab
+from gitlab.base import RESTObject
 from gitlab.v4.objects import Project, ProjectPipelineJob
 
 from ci_doctor.config.schemas import Config
-from ci_doctor.core.models import (
-    FailureReason,
-    Job,
-    MergeRequestRef,
-    Run,
-    RunnerInfo,
-    RunQuery,
-    RunStatus,
-    RunSummary,
-)
+from ci_doctor.core.models import FailureReason, Job, MergeRequestRef, Run, RunnerInfo, RunStatus, RunSummary
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.gitlab.reasons import to_failure_reason
@@ -171,32 +163,31 @@ class GitLabProvider(CIProvider, SCMProvider):
             jobs=jobs,
         )
 
-    def find_runs(self, query: RunQuery) -> list[RunSummary]:
-        """List pipelines for a commit, a branch or a merge request, newest first.
+    def find_runs(
+        self, *, sha: str | None = None, branch: str | None = None, mr: str | None = None, limit: int = 20
+    ) -> list[RunSummary]:
+        """List pipelines; a merge request's come from its own list.
 
         Args:
-            query: Which pipelines.
+            sha: Pipelines for this commit.
+            branch: Pipelines on this branch.
+            mr: This merge request's pipelines, detached and merged-result ones included.
+            limit: At most this many.
 
         Returns:
-            At most `query.limit` pipelines.
+            The pipelines, newest first.
         """
         project = self._project()
-        if query.mr is not None:
-            # The MR's own pipeline list: detached and merged-result pipelines included.
-            pipelines = project.mergerequests.get(int(query.mr)).pipelines.list(
-                get_all=False, per_page=query.limit
-            )
-        elif query.sha is not None:
+        if mr is not None:
+            pipelines = project.mergerequests.get(int(mr)).pipelines.list(get_all=False, per_page=limit)
+        elif sha is not None or branch is not None:
+            # requests leaves a None filter out of the query string.
             pipelines = project.pipelines.list(
-                get_all=False, per_page=query.limit, order_by="id", sort="desc", sha=query.sha
-            )
-        elif query.branch is not None:
-            pipelines = project.pipelines.list(
-                get_all=False, per_page=query.limit, order_by="id", sort="desc", ref=query.branch
+                get_all=False, per_page=limit, order_by="id", sort="desc", sha=sha, ref=branch
             )
         else:
             return []
-        return [self._to_summary(p) for p in list(pipelines)[: query.limit]]
+        return [self._to_summary(p) for p in list(pipelines)[:limit]]
 
     def run_of_job(self, job_id: str) -> str:
         """Look a job up and return its pipeline: a GitLab job URL names no pipeline.
@@ -271,23 +262,23 @@ class GitLabProvider(CIProvider, SCMProvider):
     # --- mapping ----------------------------------------------------------
 
     @staticmethod
-    def _to_summary(pipeline: Any) -> RunSummary:  # noqa: ANN401 - project and MR pipelines are different classes
-        """Map a python-gitlab pipeline onto the neutral run summary.
+    def _to_summary(pipeline: RESTObject) -> RunSummary:
+        """Map a python-gitlab pipeline, from a project's or a merge request's list.
 
         Args:
-            pipeline: A project pipeline, or one from a merge request's list.
+            pipeline: The pipeline.
 
         Returns:
             The summary, its status normalised.
         """
         return RunSummary(
             id=str(pipeline.id),
-            name=getattr(pipeline, "name", None) or "",
-            ref=getattr(pipeline, "ref", "") or "",
-            sha=getattr(pipeline, "sha", "") or "",
-            status=_RUN_STATUS.get(getattr(pipeline, "status", ""), "other"),
-            web_url=getattr(pipeline, "web_url", "") or "",
-            created_at=getattr(pipeline, "created_at", None),
+            name=getattr(pipeline, "name", None) or "",  # added in GitLab 16.3
+            ref=pipeline.ref or "",
+            sha=pipeline.sha,
+            status=_RUN_STATUS.get(pipeline.status, "other"),
+            web_url=pipeline.web_url,
+            created_at=pipeline.created_at,
         )
 
     def _to_job(self, pj: ProjectPipelineJob) -> Job:

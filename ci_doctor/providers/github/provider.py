@@ -24,7 +24,7 @@ from github.WorkflowJob import WorkflowJob
 from github.WorkflowRun import WorkflowRun
 
 from ci_doctor.config.schemas import Config
-from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo, RunQuery, RunStatus, RunSummary
+from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo, RunStatus, RunSummary
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.github.reasons import to_failure_reason
@@ -191,29 +191,31 @@ class GitHubProvider(CIProvider, SCMProvider):
         log.debug(f"job {job.id} log: {len(text)} chars")
         return text or None
 
-    def find_runs(self, query: RunQuery) -> list[RunSummary]:
-        """List workflow runs for a commit, a branch or a pull request, newest first.
-
-        A pull request is resolved to its head commit: its runs are the runs for
-        that commit, whichever workflows built it.
+    def find_runs(
+        self, *, sha: str | None = None, branch: str | None = None, mr: str | None = None, limit: int = 20
+    ) -> list[RunSummary]:
+        """List workflow runs; a pull request's are those for its head commit.
 
         Args:
-            query: Which runs.
+            sha: Runs for this commit.
+            branch: Runs on this branch.
+            mr: Runs for this pull request's head commit.
+            limit: At most this many.
 
         Returns:
-            At most `query.limit` runs.
+            The runs, newest first.
         """
         repo = self._repo()
-        if query.mr is not None:
-            runs = repo.get_workflow_runs(head_sha=repo.get_pull(int(query.mr)).head.sha)
-        elif query.sha is not None:
-            runs = repo.get_workflow_runs(head_sha=query.sha)
-        elif query.branch is not None:
+        if mr is not None:
+            sha = repo.get_pull(int(mr)).head.sha
+        if sha is not None:
+            runs = repo.get_workflow_runs(head_sha=sha)
+        elif branch is not None:
             # PyGithub types `branch` as a Branch object but sends a str through as the name.
-            runs = repo.get_workflow_runs(branch=query.branch)  # ty: ignore[invalid-argument-type]
+            runs = repo.get_workflow_runs(branch=branch)  # ty: ignore[invalid-argument-type]
         else:
             return []
-        return [self._to_summary(wr) for wr in islice(runs, query.limit)]
+        return [self._to_summary(wr) for wr in islice(runs, limit)]
 
     def run_of_job(self, job_id: str) -> str:
         """Look a job up and return its workflow run.

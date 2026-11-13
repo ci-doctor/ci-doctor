@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, TypeVar
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
-    from ci_doctor.core.models import Job, MergeRequestRef, Run, RunQuery, RunSummary, Section
+    from ci_doctor.core.models import Job, MergeRequestRef, Run, RunSummary, Section
     from ci_doctor.llm.schema import Report
 
 _T = TypeVar("_T", bound="BaseModel")
@@ -54,18 +54,24 @@ class CIProvider(ABC):
             runner" only when no error was recorded.
         """
 
-    def find_runs(self, query: "RunQuery") -> "list[RunSummary]":
-        """List runs for a commit, a branch, or a merge/pull request.
+    def find_runs(
+        self, *, sha: str | None = None, branch: str | None = None, mr: str | None = None, limit: int = 20
+    ) -> "list[RunSummary]":
+        """List the runs for a commit, a branch, or a merge/pull request's head commit.
 
         What lets a caller find "the run that failed for my last push" without
         being handed a run id. Not abstract: an adapter that cannot list runs
         still analyzes one by id.
 
         Args:
-            query: Which runs; exactly one of `sha`, `branch`, `mr` is set.
+            sha: Runs for this commit.
+            branch: Runs on this branch.
+            mr: Runs for this merge/pull request's newest commit, by its number.
+            limit: At most this many.
 
         Returns:
-            At most `query.limit` runs, newest first. Empty when there are none.
+            Runs for whichever of `mr`, `sha`, `branch` is given first, newest
+            first. Empty when none is given or there are none.
 
         Raises:
             NotImplementedError: When this CI system cannot list runs.

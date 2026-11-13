@@ -16,6 +16,7 @@ import logging
 import re
 from collections.abc import Callable
 from importlib import import_module
+from pathlib import Path
 from typing import Any
 
 from ci_doctor.config.schemas import Config
@@ -70,31 +71,36 @@ def _load(spec: str) -> Any:  # noqa: ANN401 - an import resolved by name cannot
     return getattr(import_module(module), name)
 
 
-def make_adapter(vendor: str, cfg: Config, **where: Any) -> CIProvider | SCMProvider | None:  # noqa: ANN401 - passed through to the adapter
+def make_adapter(
+    vendor: str, cfg: Config, *, repo: str | None = None, cwd: Path | None = None
+) -> CIProvider | SCMProvider | None:
     """Build the adapter for one vendor, whichever ports it implements.
 
     Args:
         vendor: The vendor name from `ci` or `scm`.
         cfg: The effective config.
-        **where: `repo` and `cwd`, passed through to the adapter.
+        repo: The repository, when the caller knows it; else the adapter finds it.
+        cwd: The checkout to read the git origin from, or None for this process's.
 
     Returns:
         The adapter, or None when no adapter exists for that name. The caller
         checks which ports it got.
     """
     spec = ADAPTERS.get(vendor)
-    return _load(spec)(cfg, **where) if spec else None
+    return _load(spec)(cfg, repo=repo, cwd=cwd) if spec else None
 
 
-def make_ci_provider(cfg: Config, vendor: str | None = None, **where: Any) -> CIProvider:  # noqa: ANN401 - passed through to the adapter
+def make_ci_provider(
+    cfg: Config, vendor: str | None = None, *, repo: str | None = None, cwd: Path | None = None
+) -> CIProvider:
     """Build the adapter that reads the run, named by `config.ci`.
 
     Args:
         cfg: The effective config.
         vendor: The CI system, when the caller worked it out (from a URL or a git
             remote). Defaults to `config.ci`.
-        **where: `repo` and `cwd`, passed to the adapter, for a caller that knows
-            which repository it means rather than leaving it to the environment.
+        repo: The repository, when the caller knows it; else the adapter finds it.
+        cwd: The checkout to read the git origin from, or None for this process's.
 
     Returns:
         A :class:`~ci_doctor.core.ports.CIProvider`.
@@ -103,7 +109,7 @@ def make_ci_provider(cfg: Config, vendor: str | None = None, **where: Any) -> CI
         ValueError: When no adapter reads that CI system.
     """
     name = vendor or cfg.ci
-    adapter = make_adapter(name, cfg, **where)
+    adapter = make_adapter(name, cfg, repo=repo, cwd=cwd)
     if not isinstance(adapter, CIProvider):
         raise ValueError(f"unsupported CI system: {name}")  # noqa: TRY004 - an unknown name, not a type error
     return adapter

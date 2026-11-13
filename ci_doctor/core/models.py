@@ -255,23 +255,6 @@ RunStatus = Literal["failed", "running", "success", "cancelled", "other"]
 
 
 @dataclass(frozen=True)
-class RunQuery:
-    """Which runs to list. Set one of `sha`, `branch` or `mr`.
-
-    Attributes:
-        sha: Runs for this commit.
-        branch: Runs on this branch.
-        mr: Runs for this merge/pull request's head commit, by its number.
-        limit: At most this many, newest first.
-    """
-
-    sha: str | None = None
-    branch: str | None = None
-    mr: str | None = None
-    limit: int = 10
-
-
-@dataclass(frozen=True)
 class RunSummary:
     """One run, as a list of runs shows it: enough to choose, before fetching jobs.
 
