@@ -129,7 +129,7 @@ def build(files: ConfigFiles) -> MCPServer:
     @server.tool(annotations=_READ_REMOTE)
     @_reported
     def check_setup() -> str:
-        """Validate the config and load every selected matcher; returns a one-line summary."""
+        """Validate the config, load every selected matcher, and say whether the CI API token is set."""
         return validate(files.paths())
 
     return server

@@ -228,3 +228,15 @@ def test_stdout_carries_only_protocol(project):
     )
     replies = [json.loads(line) for line in proc.stdout.splitlines()]
     assert replies and replies[0]["result"]["serverInfo"]["name"] == "ci-doctor"
+
+
+def test_check_setup_says_when_the_api_token_is_missing(project, monkeypatch):
+    """The agent learns up front that live runs need a token, and which variable, instead of a 403 later."""
+    monkeypatch.delenv("CI_DOCTOR_GITHUB_TOKEN", raising=False)
+    project.write_text(project.read_text() + "ci: github\n")
+    summary = _result(project, "check_setup")
+    assert summary.startswith("config ok") and "No API token: set CI_DOCTOR_GITHUB_TOKEN" in summary
+
+    monkeypatch.setenv("CI_DOCTOR_GITHUB_TOKEN", SECRET)
+    summary = _result(project, "check_setup")
+    assert summary.endswith("API token: set.") and SECRET not in summary
