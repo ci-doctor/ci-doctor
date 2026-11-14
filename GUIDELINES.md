@@ -425,6 +425,24 @@ do the same rather than hard-failing on a missing variable.
   value that never changes.
 - `# noqa: <CODE>` needs a trailing reason (see existing `BLE001` uses).
 
+### 6.1 Comments and docstrings
+
+Write them for a colleague reading the code for the first time.
+
+- **Short.** One idea per comment. A docstring's first line fits on one line; its
+  body is a few sentences at most. If it needs more, the code or the design needs work.
+- **Plain words.** Say it the way you would say it out loud. No metaphors, no
+  emphasis, no selling.
+- **Why, not what.** Skip what the code already says. A name that needs a comment
+  needs a better name.
+- **Now, not history.** "Used to", "was" and "no longer" belong in the commit message.
+  The one exception is §7, which records what bit us so it does not bite again.
+- **Args, Returns, Raises: one line each** where the value allows. Describe the
+  value, not its type; the annotation already says that.
+- **Cite, don't repeat.** Name an invariant by number (`invariant #5`) or a section
+  (`§7`) instead of restating it.
+- **Keep them true.** Change a comment with the code it describes, or delete it.
+
 ## 7. Gotchas that have already bitten us
 
 Real bugs, kept here so they don't recur:
