@@ -3,22 +3,25 @@
 The full run through the GitHub path proves core needed no changes for it.
 """
 
-from datetime import UTC, datetime
+import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
-import requests
-from github import GithubException
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.attribution import attribute
-from ci_doctor.core.models import FailureReason, Job, Phase
+from ci_doctor.core.models import FailureReason, Job, MergeRequestRef, Phase
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.core.ports import LogUnavailable
 from ci_doctor.core.select import select_failed_jobs
+from ci_doctor.providers.api_client import ApiError
 from ci_doctor.providers.github.provider import GitHubProvider
 from ci_doctor.providers.github.reasons import to_failure_reason
 from ci_doctor.providers.github.segmenter import GitHubSegmenter
+from tests.support import FakeApi, json_reply
+
+MARKER = "<!-- ci-doctor:pipeline:999 -->"
 
 
 def test_reason_mapping():
@@ -76,62 +79,59 @@ def test_full_attribution_through_github_path():
     assert attr.reason == FailureReason.SCRIPT_FAILURE
 
 
-def _job(**kw):
-    """A stand-in for a PyGithub WorkflowJob, with every attribute we read."""
-    return SimpleNamespace(
-        **{
-            "runner_name": None,
-            "runner_id": None,
-            "started_at": None,
-            "completed_at": None,
-            "html_url": "",
-            **kw,
-        }
-    )
+REPO = "/repos/acme/app"
+RUN = f"{REPO}/actions/runs/999"
+BLOB = "https://blob.example.net/log?sig=secret"
 
 
-def _fake_client(jobs, *, pull_requests=()):
-    """An in-memory stand-in for `github.Github`, down to the workflow run."""
-    run = SimpleNamespace(
-        id=999,
-        head_branch="main",
-        head_sha="deadbeef",
-        html_url="http://gh/run/999",
-        pull_requests=list(pull_requests),
-        jobs=lambda: jobs,
-    )
-    return SimpleNamespace(get_repo=lambda name: SimpleNamespace(get_workflow_run=lambda rid: run))
+def _gh_job(**kw):
+    """A workflow job as the API returns it, with fields overridden by kwargs."""
+    base = {"id": 0, "name": "", "status": "completed", "conclusion": None, "runner_name": None}
+    return {**base, "runner_id": None, "started_at": None, "completed_at": None, "html_url": "", **kw}
+
+
+def _run_routes(jobs, **run):
+    """The two calls `fetch_run` makes: the run, then its jobs."""
+    body = {"id": 999, "head_branch": "main", "head_sha": "deadbeef", "html_url": "http://gh/run/999"}
+    return {
+        ("GET", RUN): json_reply({**body, "pull_requests": [], **run}),
+        ("GET", f"{RUN}/jobs"): json_reply({"total_count": len(jobs), "jobs": jobs}),
+    }
+
+
+def _github(routes, environ=None):
+    """A GitHubProvider on a FakeApi serving `routes`. Returns both."""
+    api = FakeApi(routes)
+    env = {"GITHUB_REPOSITORY": "acme/app"} if environ is None else environ
+    return GitHubProvider(load_config(environ={}), env, transport=api.transport), api
 
 
 def test_provider_maps_jobs_and_normalizes_status():
-    """PyGithub jobs map to the domain model and failing conclusions become "failed"."""
+    """Jobs map to the domain model, and failing conclusions become "failed"."""
     jobs = [
-        _job(
+        _gh_job(
             id=11,
             name="build",
-            status="completed",
             conclusion="failure",
             runner_name="gh-runner-1",
             runner_id=7,
             html_url="http://gh/11",
-            started_at=datetime(2024, 1, 1, tzinfo=UTC),
+            started_at="2024-01-01T00:00:00Z",
         ),
-        _job(id=12, name="flaky", status="completed", conclusion="timed_out"),
-        _job(id=13, name="ok", status="completed", conclusion="success"),
-        _job(id=14, name="slow", status="completed", conclusion="cancelled"),
+        _gh_job(id=12, name="flaky", conclusion="timed_out"),
+        _gh_job(id=13, name="ok", conclusion="success"),
+        _gh_job(id=14, name="slow", conclusion="cancelled"),
     ]
-    provider = GitHubProvider(
-        load_config(environ={}),
-        client=_fake_client(jobs),
-        environ={"GITHUB_REPOSITORY": "acme/app", "GITHUB_REF": "refs/pull/42/merge"},
+    provider, _ = _github(
+        _run_routes(jobs), {"GITHUB_REPOSITORY": "acme/app", "GITHUB_REF": "refs/pull/42/merge"}
     )
     run = provider.fetch_run("999")
 
     build = run.jobs[0]
     assert build.status == "failed"  # normalized from conclusion
     assert build.failure_reason == FailureReason.SCRIPT_FAILURE
-    assert build.runner.description == "gh-runner-1"
-    assert build.started_at == "2024-01-01T00:00:00+00:00"  # datetime -> ISO string
+    assert build.runner.description == "gh-runner-1" and build.runner.id == "7"
+    assert build.started_at == "2024-01-01T00:00:00Z"  # kept as the API sends it
     assert run.jobs[1].failure_reason == FailureReason.TIMEOUT
     assert run.jobs[2].status == "completed"  # success conclusion stays non-failed
     # A cancellation keeps its own status rather than being flattened into
@@ -143,12 +143,41 @@ def test_provider_maps_jobs_and_normalizes_status():
     assert run.mr is not None and run.mr.iid == "42"  # PR resolved from GITHUB_REF
 
 
+def test_a_runs_jobs_are_read_across_every_page():
+    """Jobs on later pages are read by following `Link`."""
+    second = "https://api.github.com/repositories/1/actions/runs/999/jobs?page=2"
+    routes = _run_routes([])
+    routes[("GET", f"{RUN}/jobs")] = json_reply(
+        {"jobs": [_gh_job(id=1, name="a")]}, link=f'<{second}>; rel="next"'
+    )
+    routes[("GET", "/repositories/1/actions/runs/999/jobs")] = json_reply({"jobs": [_gh_job(id=2, name="b")]})
+    provider, _ = _github(routes)
+    assert [j.name for j in provider.fetch_run("999").jobs] == ["a", "b"]
+
+
+def test_requests_carry_the_token_and_githubs_headers():
+    """The token goes in `Authorization`, with GitHub's API headers."""
+    provider, api = _github(
+        _run_routes([]), {"GITHUB_REPOSITORY": "acme/app", "CI_DOCTOR_GITHUB_TOKEN": "ghp_t"}
+    )
+    provider.fetch_run("999")
+    headers = api.sent("GET", RUN)[0].headers
+    assert headers["authorization"] == "Bearer ghp_t"
+    assert headers["x-github-api-version"] and headers["accept"] == "application/vnd.github+json"
+
+
+def test_a_missing_run_is_an_error_naming_github():
+    """A missing run raises an error with GitHub's message."""
+    provider, _ = _github({})
+    with pytest.raises(ApiError, match="GitHub API: HTTP 404: Not Found"):
+        provider.fetch_run("999")
+
+
 def test_pull_request_on_the_run_wins_over_the_ref():
     """The run's own PR list is authoritative; GITHUB_REF is only the fork fallback."""
-    provider = GitHubProvider(
-        load_config(environ={}),
-        client=_fake_client([], pull_requests=[SimpleNamespace(number=7)]),
-        environ={"GITHUB_REPOSITORY": "acme/app", "GITHUB_REF": "refs/pull/42/merge"},
+    provider, _ = _github(
+        _run_routes([], pull_requests=[{"number": 7}]),
+        {"GITHUB_REPOSITORY": "acme/app", "GITHUB_REF": "refs/pull/42/merge"},
     )
     assert provider.fetch_run("999").mr.iid == "7"
 
@@ -161,12 +190,8 @@ def test_repository_falls_back_to_git_origin(monkeypatch):
     monkeypatch.setattr(
         git_origin.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout="git@github.com:acme/app.git\n")
     )
-    seen = []
-    provider = GitHubProvider(
-        load_config(environ={}), client=SimpleNamespace(get_repo=lambda name: seen.append(name)), environ={}
-    )
-    provider._repo()
-    assert seen == ["acme/app"]
+    provider, _ = _github({}, environ={})
+    assert provider._repo() == REPO
     git_origin.origin_repo.cache_clear()
 
 
@@ -184,79 +209,89 @@ def test_origin_keeps_nested_gitlab_groups(monkeypatch):
     git_origin.origin_repo.cache_clear()
 
 
-def _refused(status, message=None):
-    """What PyGithub raises when GitHub answers the log request with `status`."""
-
-    def logs_url():
-        raise GithubException(status, {"message": message} if message else None, {})
-
-    return logs_url
+REDIRECT = httpx.Response(302, headers={"location": BLOB})
 
 
-def _log_of(monkeypatch, logs_url, response=None):
-    """Fetch the log of one failed job whose `logs_url` is given; `response` answers the blob request."""
-    job = _job(id=11, name="build", status="completed", conclusion="failure", logs_url=logs_url)
-    provider = GitHubProvider(
-        load_config(environ={}), client=_fake_client([job]), environ={"GITHUB_REPOSITORY": "acme/app"}
+def test_a_log_is_read_from_the_redirect_target_without_the_token():
+    """The log is read from the redirect target, without the token."""
+    provider, api = _github(
+        {
+            ("GET", f"{REPO}/actions/jobs/11/logs"): REDIRECT,
+            ("GET", "/log"): httpx.Response(200, text="boom\n"),
+        },
+        {"GITHUB_REPOSITORY": "acme/app", "CI_DOCTOR_GITHUB_TOKEN": "ghp_t"},
     )
-    monkeypatch.setattr("ci_doctor.providers.github.provider.requests.get", lambda *a, **kw: response)
-    return provider.fetch_job_log(provider.fetch_run("999").jobs[0])
-
-
-def _blob(status, text=""):
-    """A response from the log's short-lived signed URL."""
-    resp = requests.Response()
-    resp.status_code, resp._content = status, text.encode()
-    resp.url = "https://blob.example/log?sig=secret"
-    return resp
-
-
-def test_a_log_is_returned_as_text(monkeypatch):
-    """The happy path: the redirect target's body is the log."""
-    assert _log_of(monkeypatch, lambda: "https://blob.example/log", _blob(200, "boom\n")) == "boom\n"
+    assert provider.fetch_job_log(Job(id="11", name="build", status="failed")) == "boom\n"
+    blob = api.sent("GET", "/log")[0]
+    assert blob.url.host == "blob.example.net" and "authorization" not in blob.headers
 
 
 @pytest.mark.parametrize("status", [404, 410])
-def test_a_missing_or_expired_log_is_none(monkeypatch, status):
+def test_a_missing_or_expired_log_is_none(status):
     """A job that never started wrote no log, and an old one expired: both are valid data, not errors."""
-    assert _log_of(monkeypatch, _refused(status)) is None
-    assert _log_of(monkeypatch, lambda: "https://blob.example/log", _blob(status)) is None
-    assert _log_of(monkeypatch, lambda: "https://blob.example/log", _blob(200, "")) is None
+    gone = httpx.Response(status)
+    for log_route, blob in ((gone, None), (REDIRECT, gone), (REDIRECT, httpx.Response(200, text=""))):
+        routes = {("GET", f"{REPO}/actions/jobs/11/logs"): log_route}
+        if blob is not None:
+            routes[("GET", "/log")] = blob
+        provider, _ = _github(routes)
+        assert provider.fetch_job_log(Job(id="11", name="build", status="failed")) is None
 
 
-def test_a_refused_log_is_unavailable_not_missing(monkeypatch):
+def test_a_refused_log_is_unavailable_not_missing():
     """A 403 says nothing about the job: reading it as "no log" made attribution blame a missing runner."""
-    with pytest.raises(LogUnavailable, match="HTTP 403: Must have admin rights"):
-        _log_of(monkeypatch, _refused(403, "Must have admin rights to Repository."))
+    refused = json_reply({"message": "Must have admin rights to Repository."}, 403)
+    provider, _ = _github({("GET", f"{REPO}/actions/jobs/11/logs"): refused})
+    with pytest.raises(LogUnavailable, match=r"^HTTP 403: Must have admin rights to Repository\.$"):
+        provider.fetch_job_log(Job(id="11", name="build", status="failed"))
 
 
-def test_a_failed_blob_download_is_unavailable_and_never_names_the_signed_url(monkeypatch):
+def test_a_failed_blob_download_is_unavailable_and_never_names_the_signed_url():
     """The blob URL is short-lived and signed; it must not reach a report or an agent."""
+    provider, _ = _github(
+        {("GET", f"{REPO}/actions/jobs/11/logs"): REDIRECT, ("GET", "/log"): httpx.Response(500)}
+    )
     with pytest.raises(LogUnavailable) as err:
-        _log_of(monkeypatch, lambda: "https://blob.example/log", _blob(500))
-    assert str(err.value) == "HTTP 500" and "secret" not in str(err.value)
+        provider.fetch_job_log(Job(id="11", name="build", status="failed"))
+    assert str(err.value) == "HTTP 500: Internal Server Error" and "secret" not in str(err.value)
 
 
-def test_a_timeout_is_unavailable(monkeypatch):
+def test_a_timeout_is_unavailable():
     """No response at all: the message is the error's type, since there is no status to give."""
 
-    def slow(*args, **kwargs):
-        raise requests.Timeout("read timed out: https://blob.example/log?sig=secret")
+    def slow(request):
+        raise httpx.ReadTimeout("timed out", request=request)
 
-    job = _job(id=11, name="build", status="completed", conclusion="failure", logs_url=lambda: "u")
-    provider = GitHubProvider(
-        load_config(environ={}), client=_fake_client([job]), environ={"GITHUB_REPOSITORY": "acme/app"}
+    provider, _ = _github({("GET", f"{REPO}/actions/jobs/11/logs"): slow})
+    with pytest.raises(LogUnavailable, match="^ReadTimeout$"):
+        provider.fetch_job_log(Job(id="11", name="build", status="failed"))
+
+
+def test_the_pr_comment_is_created_when_absent():
+    """With no earlier report, one comment is posted with the marker."""
+    comments = f"{REPO}/issues/7/comments"
+    provider, api = _github(
+        {("GET", comments): json_reply([]), ("POST", comments): json_reply({"id": 1}, 201)}
     )
-    monkeypatch.setattr("ci_doctor.providers.github.provider.requests.get", slow)
-    with pytest.raises(LogUnavailable) as err:
-        provider.fetch_job_log(provider.fetch_run("999").jobs[0])
-    assert str(err.value) == "Timeout"
+    provider.post_note(MergeRequestRef(iid="7"), "the report", MARKER)
+    [posted] = api.sent("POST", comments)
+    assert json.loads(posted.content)["body"] == f"the report\n\n{MARKER}"
 
 
-def test_a_job_outside_the_fetched_run_is_unavailable():
-    """Asking for a log the run never listed is a caller's mistake, not a job with no log."""
-    provider = GitHubProvider(
-        load_config(environ={}), client=_fake_client([]), environ={"GITHUB_REPOSITORY": "acme/app"}
+def test_the_pr_comment_is_edited_in_place_wherever_it_is_listed():
+    """Our earlier comment is found by its marker, even on page 2, and edited."""
+    comments = f"{REPO}/issues/7/comments"
+    page_two = f"https://api.github.com{comments}?page=2"
+    provider, api = _github(
+        {
+            ("GET", comments): [
+                json_reply([{"id": 1, "body": "lgtm"}], link=f'<{page_two}>; rel="next"'),
+                json_reply([{"id": 2, "body": f"old\n\n{MARKER}"}]),
+            ],
+            ("PATCH", f"{REPO}/issues/comments/2"): json_reply({"id": 2}),
+        }
     )
-    with pytest.raises(LogUnavailable, match="not in the run"):
-        provider.fetch_job_log(Job(id="99", name="x", status="failed"))
+    provider.post_note(MergeRequestRef(iid="7"), "new report", MARKER)
+    [edited] = api.sent("PATCH", f"{REPO}/issues/comments/2")
+    assert json.loads(edited.content)["body"].startswith("new report")
+    assert api.sent("POST", comments) == []

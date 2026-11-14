@@ -43,8 +43,9 @@ ci_doctor/
     transports/     local, http: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
-    gitlab/         python-gitlab adapter + segmenter + reasons
-    github/         PyGithub adapter + segmenter + reasons
+    api_client.py   the HTTP client every provider calls its API through
+    gitlab/         REST adapter + segmenter + reasons
+    github/         REST adapter + segmenter + reasons
 tests/              synthetic-log builders (support.py) + unit and e2e tests
 docs/site/          Astro documentation site — see docs/site/GUIDELINES.md before editing
 examples/           .gitlab-ci.yml + GitHub Actions workflows
@@ -399,10 +400,11 @@ token read and a second version probe for nothing.
 6. `test_core_carries_no_vendor_name_in_its_code` must stay green — add the new
    vendor to its regex. If it fires, the abstraction broke.
 
-**Prefer the vendor's own SDK** over hand-rolled REST calls — `python-gitlab` and
-`PyGithub` are already dependencies, and pagination, retries and auth are not worth
-re-implementing. Keep the SDK's objects inside the adapter: `_to_job` is the only place
-allowed to know what they look like.
+**Call the vendor's REST API through `providers/api_client.py`, not an SDK.** A
+provider needs only a few calls, and `ApiClient` already handles auth, TLS,
+pagination, rate limits and redirects. A new adapter only names its endpoints and maps
+the JSON in `_to_job`. On a log, turn an `ApiError` into `None` (no log) or
+`LogUnavailable` (could not read it), per §7. Test it with `support.FakeApi`.
 
 ### 5.5 Resolve the repository outside CI
 

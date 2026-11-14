@@ -31,8 +31,10 @@ from tests import support
 
 
 def _gitlab_provider():
-    """A GitLabProvider on an injected client, so nothing touches the network."""
-    return GitLabProvider(load_config(environ={}), client=SimpleNamespace(), environ={"CI_PROJECT_ID": "1"})
+    """A GitLabProvider on an in-memory API."""
+    return GitLabProvider(
+        load_config(environ={}), {"CI_PROJECT_ID": "1"}, transport=support.FakeApi({}).transport
+    )
 
 
 def test_bundled_vendor_implements_both_ports():

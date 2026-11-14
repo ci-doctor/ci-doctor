@@ -130,7 +130,8 @@ def analyze_run(
 
     selected = _ordered(jobs)[: cfg.analysis.max_jobs_analyzed]
     log.info(f"analyzing {len(selected)} failed job(s) from run {run_id}")
-    # Sequential on purpose: python-gitlab and PyGithub make no thread-safety promise.
+    # ponytail: one log at a time, to stay well under rate limits. The client is
+    # thread-safe, so these fetches can run in parallel if this gets slow.
     for job in selected:
         try:
             job.log = provider.fetch_job_log(job)

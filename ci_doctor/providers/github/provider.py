@@ -1,68 +1,34 @@
-"""GitHub Actions adapter.
+"""GitHub Actions adapter over GitHub's REST API.
 
-Translates PyGithub objects into the domain model — the same one GitLab
-produces, so nothing downstream changes.
-
-Self-hosted (GHE) is supported via a configurable base_url; token from file or
-env; custom CA and env proxies honoured by requests underneath PyGithub. The one
-call PyGithub cannot finish for us is the job log: it hands back the redirect
-target for the log blob, and we fetch that ourselves.
+Calls four endpoints (the run, its jobs, a job's log, PR comments) through
+`api_client` and maps the JSON onto the domain model, the same one GitLab produces.
+GitHub Enterprise works through `github.base_url`.
 """
 
 import logging
 import os
 import re
 from collections.abc import Mapping
-from datetime import datetime
+from typing import Any
+from urllib.parse import quote
 
-import requests
-from github import Auth, Github, GithubException
-from github.Repository import Repository
-from github.WorkflowJob import WorkflowJob
-from github.WorkflowRun import WorkflowRun
+import httpx
 
 from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo
 from ci_doctor.core.ports import CIProvider, LogUnavailable, SCMProvider
+from ci_doctor.providers.api_client import ApiClient, ApiError, tls_verify
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.github.reasons import to_failure_reason
 from ci_doctor.providers.tokens import read_token
 
 log = logging.getLogger("ci_doctor.github")
 
-#: Logs expire (410), and a job that never started never wrote one (404).
+#: No log: it expired (410), or the job never started (404).
 _NO_LOG = frozenset({404, 410})
 
-
-def _status(exc: GithubException | requests.RequestException) -> int | None:
-    """The HTTP status a failed log fetch carries, when it carries one.
-
-    Args:
-        exc: What PyGithub or requests raised.
-
-    Returns:
-        The status code, or None for a failure with no response (a timeout, a refused connection).
-    """
-    if isinstance(exc, GithubException):
-        return exc.status
-    return exc.response.status_code if exc.response is not None else None
-
-
-def _why(exc: GithubException | requests.RequestException, status: int | None) -> str:
-    """One line saying why a log could not be read, for the report and the agent.
-
-    Args:
-        exc: What PyGithub or requests raised.
-        status: Its HTTP status, when it has one.
-
-    Returns:
-        The status and GitHub's own message when it gave one, else the error's type.
-        Never the URL: the log's redirect target is a short-lived signed one.
-    """
-    if isinstance(exc, GithubException) and isinstance(exc.data, dict) and exc.data.get("message"):
-        return f"HTTP {status}: {exc.data['message']}"
-    return f"HTTP {status}" if status else type(exc).__name__
-
+#: Headers GitHub asks REST clients to send.
+_HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
 
 #: Job conclusions -> the domain's normalised status, so core job-selection needs
 #: no GitHub knowledge. A timeout and a startup failure are failures; a
@@ -76,7 +42,7 @@ _CONCLUSION_STATUS = {
 
 
 class GitHubProvider(CIProvider, SCMProvider):
-    """Read-only GitHub Actions adapter over PyGithub.
+    """Read-only GitHub Actions adapter.
 
     Serves both roles: workflow runs and pull requests are the same API behind
     the same client, so one instance answers as CI system and as git host.
@@ -85,62 +51,51 @@ class GitHubProvider(CIProvider, SCMProvider):
     def __init__(
         self,
         config: Config,
-        client: Github | None = None,
         environ: Mapping[str, str] | None = None,
+        *,
+        transport: httpx.BaseTransport | None = None,
     ) -> None:
-        """Connect to GitHub, unless a client is injected.
+        """Set up the API client. Nothing is sent until the first call.
 
         Args:
-            config: The effective config; only `config.github` is used.
-            client: Pre-built `github.Github`, used by tests to stay offline.
-            environ: Environment for the token and GITHUB_* vars. Defaults to os.environ.
+            config: The effective config; only `config.github` is read.
+            environ: Where the token, CA variables and GITHUB_* vars come from. Defaults to os.environ.
+            transport: Replaces the network, for tests.
+
+        Raises:
+            ValueError: If `github.base_url` is empty or the CA bundle cannot be read.
         """
         self.cfg = config.github
         self.environ = os.environ if environ is None else environ
-        self.verify: bool | str = self.cfg.ca_bundle or self.cfg.verify_ssl
-        self._repo_obj: Repository | None = None
-        #: Raw PyGithub jobs kept from fetch_run, keyed by id: the log lives behind
-        #: a method on the job object and the API exposes no by-id job lookup.
-        self._raw_jobs: dict[str, WorkflowJob] = {}
-        self.gh = client if client is not None else self._connect()
-
-    # --- connection -------------------------------------------------------
-
-    def _connect(self) -> Github:
-        """Build the PyGithub client.
-
-        Returns:
-            A configured `github.Github`.
-
-        Raises:
-            ValueError: If `github.base_url` is empty.
-        """
         if not self.cfg.base_url:
             raise ValueError("github.base_url must not be empty")
         token = read_token(self.cfg.token_file, self.cfg.token_env, self.environ)
-        return Github(
-            auth=Auth.Token(token) if token else None,
-            base_url=self.cfg.base_url.rstrip("/"),
-            verify=self.verify,
+        self.api = ApiClient(
+            "GitHub",
+            self.cfg.base_url,
+            auth={"Authorization": f"Bearer {token}"} if token else {},
+            headers=_HEADERS,
+            verify=tls_verify(self.cfg.ca_bundle, self.cfg.verify_ssl, self.environ),
             timeout=self.cfg.timeout_seconds,
+            transport=transport,
         )
+        self._repo_path: str | None = None
 
-    def _repo(self) -> Repository:
-        """Resolve and cache the repository.
+    def _repo(self) -> str:
+        """The repository's API path, from GITHUB_REPOSITORY or the git origin.
 
         Returns:
-            The PyGithub repository object.
+            `/repos/<owner>/<name>`.
 
         Raises:
-            ValueError: If the repository is set neither in the environment nor
-                by a git origin to fall back on.
+            ValueError: If neither names a repository.
         """
-        if self._repo_obj is None:
+        if self._repo_path is None:
             name = self.environ.get("GITHUB_REPOSITORY") or origin_repo("GITHUB_REPOSITORY")
             if not name:
                 raise ValueError("GITHUB_REPOSITORY is not set and git origin gave no repository")
-            self._repo_obj = self.gh.get_repo(name)
-        return self._repo_obj
+            self._repo_path = f"/repos/{quote(name, safe='/')}"
+        return self._repo_path
 
     # --- CIProvider -------------------------------------------------------
 
@@ -154,122 +109,111 @@ class GitHubProvider(CIProvider, SCMProvider):
             The run. Job logs are not fetched here — that happens lazily, per
             selected job, so an unread job costs nothing.
         """
-        wr = self._repo().get_workflow_run(int(run_ref))
-        self._raw_jobs = {str(j.id): j for j in wr.jobs()}
-        jobs = [self._to_job(j) for j in self._raw_jobs.values()]
+        path = f"{self._repo()}/actions/runs/{int(run_ref)}"
+        run = self.api.get_json(path)
+        jobs = [self._to_job(j) for j in self.api.paginate(f"{path}/jobs", key="jobs")]
         log.debug(f"run {run_ref}: {len(jobs)} jobs")
         return Run(
-            id=str(wr.id),
-            ref=wr.head_branch or "",
-            sha=wr.head_sha or "",
-            web_url=wr.html_url or "",
-            mr=self._pr_ref(wr),
+            id=str(run["id"]),
+            ref=run.get("head_branch") or "",
+            sha=run.get("head_sha") or "",
+            web_url=run.get("html_url") or "",
+            mr=self._pr_ref(run),
             jobs=jobs,
         )
 
     def fetch_job_log(self, job: Job) -> str | None:
         """Fetch one job's log.
 
+        GitHub redirects to a short-lived blob URL, which the client follows
+        without the token. An expired blob URL returns an error, not the log.
+
         Args:
-            job: The job, carrying its GitHub id.
+            job: The job, with its GitHub id.
 
         Returns:
-            The log, or None when the job has none: empty, never written (a job
-            that never started) or expired. None is valid data — it identifies
-            the "never got a runner" case.
+            The log, or None when there is none (empty, expired, or the job never started).
 
         Raises:
-            LogUnavailable: When the log could not be read — access denied (job
-                logs need admin rights), the service down, a timeout. That says
-                nothing about the job, so it must not read as "no log".
+            LogUnavailable: If the log exists but could not be read (§7).
         """
-        raw = self._raw_jobs.get(job.id)
-        if raw is None:
-            raise LogUnavailable(f"job {job.id} is not in the run that was fetched")
         try:
-            url = raw.logs_url()
-            resp = requests.get(url, verify=self.verify, timeout=self.cfg.timeout_seconds)
-            # The redirect target is a short-lived signed URL; an expired one answers
-            # with an XML error body, which would otherwise be analyzed as the log.
-            resp.raise_for_status()
-            text = resp.text
-        except (GithubException, requests.RequestException) as exc:
-            status = _status(exc)
-            if status in _NO_LOG:
-                log.debug(f"job {job.id} has no log (HTTP {status})")
+            text = self.api.get_text(f"{self._repo()}/actions/jobs/{int(job.id)}/logs")
+        except ApiError as err:
+            if err.status in _NO_LOG:
+                log.debug(f"job {job.id} has no log (HTTP {err.status})")
                 return None
-            raise LogUnavailable(_why(exc, status)) from None
+            raise LogUnavailable(err.detail) from None
         log.debug(f"job {job.id} log: {len(text)} chars")
         return text or None
 
     # --- SCMProvider ------------------------------------------------------
 
     def post_note(self, mr: MergeRequestRef, body: str, marker: str) -> None:
-        """Post or update the report on a pull request.
+        """Post the report on a pull request, or update our earlier comment.
 
-        Idempotent: finds our previous comment by `marker` and edits it rather
-        than adding a new one on every run.
+        Our comment is found by `marker`, so a rerun edits it instead of adding
+        another. In the API, a PR's comments are its issue's comments.
 
         Args:
             mr: The pull request.
             body: The rendered Markdown report.
             marker: Hidden comment identifying our note, appended to the body.
         """
-        pr = self._repo().get_pull(int(mr.iid))
+        comments = f"{self._repo()}/issues/{int(mr.iid)}/comments"
         full = f"{body}\n\n{marker}"
-        for comment in pr.get_issue_comments():
-            if marker in (comment.body or ""):
-                comment.edit(full)
+        for comment in self.api.paginate(comments):
+            if marker in (comment.get("body") or ""):
+                self.api.send_json("PATCH", f"{self._repo()}/issues/comments/{comment['id']}", {"body": full})
                 return
-        pr.create_issue_comment(full)
+        self.api.send_json("POST", comments, {"body": full})
 
     # --- mapping ----------------------------------------------------------
 
-    def _pr_ref(self, wr: WorkflowRun) -> MergeRequestRef | None:
+    def _pr_ref(self, run: dict[str, Any]) -> MergeRequestRef | None:
         """Resolve the pull request for a run.
 
         Args:
-            wr: The PyGithub workflow run.
+            run: The workflow run, as the API returned it.
 
         Returns:
-            The PR reference, or None when the run is not for a PR. The run's own
-            `pull_requests` is authoritative; `GITHUB_REF` is the fallback for
-            fork PRs, where GitHub leaves that list empty.
+            The PR, or None. `GITHUB_REF` is the fallback for fork PRs, where the
+            run's `pull_requests` list is empty.
         """
-        for pr in wr.pull_requests or []:
-            return MergeRequestRef(iid=str(pr.number))
+        for pr in run.get("pull_requests") or []:
+            return MergeRequestRef(iid=str(pr["number"]))
         m = re.match(r"refs/pull/(\d+)/", self.environ.get("GITHUB_REF", ""))
         return MergeRequestRef(iid=m.group(1)) if m else None
 
-    def _to_job(self, j: WorkflowJob) -> Job:
-        """Map a PyGithub workflow job onto the domain model.
+    def _to_job(self, j: dict[str, Any]) -> Job:
+        """Map a workflow job onto the domain model.
 
         Args:
-            j: A PyGithub `WorkflowJob`.
+            j: A job, as the API returned it.
 
         Returns:
-            The neutral job, with its conclusion normalised to the domain's
-            "failed" status.
+            The job, its conclusion mapped to the domain's status.
         """
-        conclusion = j.conclusion
-        startup = j.status == "startup_failure" or conclusion == "startup_failure"
-        status = _CONCLUSION_STATUS.get(conclusion, j.status or "")
+        conclusion = j.get("conclusion")
+        startup = j.get("status") == "startup_failure" or conclusion == "startup_failure"
+        status = _CONCLUSION_STATUS.get(conclusion or "", j.get("status") or "")
+        runner_name = j.get("runner_name")
         runner = (
-            RunnerInfo(id=_str_or_none(j.runner_id), description=j.runner_name) if j.runner_name else None
+            RunnerInfo(id=_str_or_none(j.get("runner_id")), description=runner_name) if runner_name else None
         )
         return Job(
-            id=str(j.id),
-            name=j.name or "",
+            id=str(j["id"]),
+            name=j.get("name") or "",
             status=status,
             stage=None,
             failure_reason=to_failure_reason(conclusion, startup_failure=startup),
             raw_failure_reason=conclusion or "",
             allow_failure=False,
-            started_at=_iso(j.started_at),
-            finished_at=_iso(j.completed_at),
+            started_at=j.get("started_at"),
+            finished_at=j.get("completed_at"),
             runner=runner,
             needs=[],
-            web_url=j.html_url or "",
+            web_url=j.get("html_url") or "",
             log=None,  # fetched lazily via fetch_job_log
             sections=[],
         )
@@ -278,18 +222,3 @@ class GitHubProvider(CIProvider, SCMProvider):
 def _str_or_none(value: object) -> str | None:
     """Stringify an optional id without turning None into "None"."""
     return None if value is None else str(value)
-
-
-def _iso(value: datetime | None) -> str | None:
-    """Normalise PyGithub's `datetime` timestamps to the domain's ISO strings.
-
-    The domain model is a plain dataclass, so nothing downstream would catch a
-    `datetime` slipping through — it would surface as a JSON dump crash instead.
-
-    Args:
-        value: A timestamp from PyGithub, or None when the job never reached it.
-
-    Returns:
-        The ISO string, or None.
-    """
-    return value.isoformat() if value is not None else None
