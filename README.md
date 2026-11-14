@@ -133,7 +133,7 @@ harness, from the repository's root (see [`examples/mcp.example.json`](examples/
 
 | Tool | Does |
 |---|---|
-| `analyze_run`, `analyze_log` | Brief each failed job of a run, or a saved log, for the agent to explain |
+| `analyze_run` | Briefs each failed job of a run for the agent to explain |
 | `search_matchers`, `list_matchers` | Browse the registries; show what the config selects |
 | `add_matchers`, `remove_matchers` | Edit `matchers.include` in `./.ci-doctor.yml` (`--write-to` picks another file) |
 | `check_setup` | Validate the config and load every selected matcher |

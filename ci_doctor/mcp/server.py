@@ -3,7 +3,6 @@
 import functools
 from collections.abc import Callable
 from importlib import resources
-from pathlib import Path
 from typing import ParamSpec, TypeVar
 
 from mcp.server.mcpserver import MCPServer
@@ -17,7 +16,7 @@ from ci_doctor.config.loader import load_config
 from ci_doctor.core.redact import redact_text
 from ci_doctor.errors import SetupError
 from ci_doctor.service import matchers
-from ci_doctor.service.brief import Brief, log_briefs, run_briefs
+from ci_doctor.service.brief import Brief, run_briefs
 from ci_doctor.service.setup import validate
 
 _P = ParamSpec("_P")
@@ -97,14 +96,6 @@ def build(files: ConfigFiles) -> MCPServer:
         Pass job_id to look at a single job. Empty when the run has no failed job.
         """
         return run_briefs(run_id, load_config(files.paths()), job_id)
-
-    @server.tool(annotations=_READ)
-    @_reported
-    def analyze_log(path: str) -> list[Brief]:
-        """Brief a raw CI job log saved on disk, offline. The log format is detected from the log."""
-        if not Path(path).is_file():
-            raise SetupError(f"no such log file: {path}")
-        return log_briefs(Path(path), load_config(files.paths()))
 
     @server.tool(annotations=_READ_REMOTE)
     @_reported

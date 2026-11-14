@@ -6,8 +6,6 @@ settled verdict, the budgeted excerpt, the matchers behind it and the analyst's
 instructions — and writes the explanation itself. No model is called here.
 """
 
-from pathlib import Path
-
 from pydantic import BaseModel, Field
 
 from ci_doctor.config.schemas import Config
@@ -15,7 +13,7 @@ from ci_doctor.core.models import Confidence, FailureReason, Phase
 from ci_doctor.core.redact import redact_text
 from ci_doctor.llm.report import instructions
 from ci_doctor.matchers.registry import load as load_matchers
-from ci_doctor.service.analyze import JobResult, analyze_log, analyze_run
+from ci_doctor.service.analyze import JobResult, analyze_run
 
 
 class FiredMatcher(BaseModel):
@@ -105,20 +103,3 @@ def run_briefs(run_id: str, cfg: Config, job_id: str | None = None) -> list[Brie
     """
     _, _, results = analyze_run(run_id, _without_llm(cfg), load_matchers(cfg.matchers), job_id)
     return [brief(r, cfg) for r in results]
-
-
-def log_briefs(path: Path, cfg: Config) -> list[Brief]:
-    """Brief a captured job log, offline.
-
-    Args:
-        path: The log file.
-        cfg: The effective config.
-
-    Returns:
-        One brief per job in the log: today always exactly one.
-
-    Raises:
-        SetupError: If the selected matchers cannot be loaded.
-        OSError: If the file cannot be read.
-    """
-    return [brief(r, cfg) for r in analyze_log(path, _without_llm(cfg), load_matchers(cfg.matchers))]

@@ -224,7 +224,7 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
     <p>
         <code>ci-doctor mcp</code> serves ci-doctor to a coding agent over
         <a href="https://modelcontextprotocol.io">MCP</a>, on stdio. The agent is the
-        model: <code>analyze_run</code> and <code>analyze_log</code> return each failed
+        model: <code>analyze_run</code> returns each failed
         job's settled phase and redacted evidence, and the agent writes the explanation,
         so the <code>llm:</code> block is ignored. Start it from the repository's root.
     </p>
@@ -233,7 +233,6 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         <thead><tr><th>Tool</th><th>Does</th></tr></thead>
         <tbody>
             <tr><td><code>analyze_run</code></td><td>Briefs each failed job of a pipeline/run.</td></tr>
-            <tr><td><code>analyze_log</code></td><td>Briefs a job log saved on disk, offline.</td></tr>
             <tr><td><code>search_matchers</code></td><td>Finds matchers and bundles in the configured registries.</td></tr>
             <tr><td><code>list_matchers</code></td><td>Shows what the config selects, and via which bundle.</td></tr>
             <tr><td><code>add_matchers</code></td><td>Adds entries to <code>matchers.include</code>.</td></tr>

@@ -63,63 +63,66 @@ def _error(config, tool, **arguments):
     return result.content[0].text
 
 
-def _log(tmp_path, provider, lines):
-    path = tmp_path / f"job.{provider}.log"
-    path.write_text(support.script_log(provider, lines))
-    return path
+def _wire(monkeypatch, project, provider="github", names="ab"):
+    """Serve a run whose jobs all failed with `PYTEST_FAILURE`, framed as `provider` frames its logs."""
+    project.write_text(project.read_text() + f"ci: {provider}\n")
+
+    class Provider:
+        def fetch_run(self, run_ref):
+            jobs = [
+                Job(id=n, name=n, status="failed", started_at=f"2024-01-01T00:0{i}:00Z")
+                for i, n in enumerate(names)
+            ]
+            return Run(id=run_ref, jobs=jobs)
+
+        def fetch_job_log(self, job):
+            return support.script_log(provider, PYTEST_FAILURE)
+
+    monkeypatch.setattr("ci_doctor.service.analyze.make_ci_provider", lambda cfg: Provider())
 
 
 @pytest.mark.parametrize("provider", support.PROVIDERS)
-def test_analyze_log_briefs_the_job_for_the_agent_to_explain(project, tmp_path, provider):
+def test_analyze_run_briefs_the_job_for_the_agent_to_explain(project, monkeypatch, provider):
     """The brief carries the settled phase, the excerpt, the matcher behind it and the instructions."""
-    [brief] = _result(project, "analyze_log", path=str(_log(tmp_path, provider, PYTEST_FAILURE)))
+    _wire(monkeypatch, project, provider, names="a")
+    [brief] = _result(project, "analyze_run", run_id="42")
     assert brief["failure_phase"] == "script"
     assert "E   assert 1 == 2" in brief["excerpt"]
     assert [m["id"] for m in brief["matchers"]] == ["fx/pytest"]
     assert "Do NOT dispute" in brief["instructions"]
 
 
-def test_a_brief_never_carries_an_unredacted_secret(project, tmp_path):
+def test_a_brief_never_carries_an_unredacted_secret(project, monkeypatch):
     """Invariant #5: the excerpt leaves the process scrubbed."""
-    result = _call(project, "analyze_log", path=str(_log(tmp_path, "github", PYTEST_FAILURE)))
+    _wire(monkeypatch, project, names="a")
+    result = _call(project, "analyze_run", run_id="42")
     assert SECRET not in json.dumps(result.structured_content)
     assert "[REDACTED:" in result.structured_content["result"][0]["excerpt"]
 
 
-def test_analysis_calls_no_model_even_when_one_is_configured(project, tmp_path, monkeypatch):
+def test_analysis_calls_no_model_even_when_one_is_configured(project, monkeypatch):
     """Invariant #12: the agent is the model, whatever `llm:` says."""
+    _wire(monkeypatch, project, names="a")
     project.write_text(project.read_text() + "llm: {enabled: true, model: m, api_base: 'http://stub'}\n")
 
     def no_client(*args, **kwargs):
         raise AssertionError("the MCP server built an LLM client")
 
     monkeypatch.setattr("ci_doctor.llm.backends.make_client", no_client)
-    assert _result(project, "analyze_log", path=str(_log(tmp_path, "github", PYTEST_FAILURE)))
+    assert _result(project, "analyze_run", run_id="42")
 
 
 def test_analyze_run_briefs_each_failed_job_and_writes_nothing(project, tmp_path, monkeypatch):
     """A live run: one brief per failed job, in pipeline order, and no report files (invariant #10)."""
-
-    class Provider:
-        def fetch_run(self, run_ref):
-            jobs = [
-                Job(id=n, name=n, status="failed", started_at=f"2024-01-01T00:0{i}:00Z")
-                for i, n in enumerate("ab")
-            ]
-            return Run(id=run_ref, jobs=jobs)
-
-        def fetch_job_log(self, job):
-            return support.script_log("github", PYTEST_FAILURE)
-
-    monkeypatch.setattr("ci_doctor.service.analyze.make_ci_provider", lambda cfg: Provider())
+    _wire(monkeypatch, project)
     before = sorted(p.name for p in tmp_path.iterdir())
     assert [b["job_name"] for b in _result(project, "analyze_run", run_id="42")] == ["a", "b"]
     assert [b["job_id"] for b in _result(project, "analyze_run", run_id="42", job_id="b")] == ["b"]
     assert sorted(p.name for p in tmp_path.iterdir()) == before
 
 
-def test_a_failure_reaches_the_agent_as_a_message_and_the_server_survives(project, tmp_path, monkeypatch):
-    """A setup problem and a crash both come back readable; neither takes the server down."""
+def test_a_failure_reaches_the_agent_as_a_message_and_the_server_survives(project, monkeypatch):
+    """A crash comes back readable and redacted; it does not take the server down."""
 
     def crash(cfg):
         raise ConnectionError(f"401 from the CI system, token {SECRET}")
@@ -128,13 +131,11 @@ def test_a_failure_reaches_the_agent_as_a_message_and_the_server_survives(projec
 
     async def calls():
         async with Client(build(ConfigFiles([], project))) as client:
-            missing = await client.call_tool("analyze_log", {"path": "nope.log"})
             crashed = await client.call_tool("analyze_run", {"run_id": "42"})
             alive = await client.call_tool("check_setup", {})
-            return missing, crashed, alive
+            return crashed, alive
 
-    missing, crashed, alive = anyio.run(calls)
-    assert missing.is_error and "no such log file: nope.log" in missing.content[0].text
+    crashed, alive = anyio.run(calls)
     assert crashed.is_error and "ConnectionError: 401 from the CI system" in crashed.content[0].text
     assert SECRET not in crashed.content[0].text
     assert not alive.is_error and "config ok" in alive.content[0].text

@@ -136,7 +136,7 @@ surface like `cli/`: a tool parses, calls `service/` and returns; `tests/test_la
 pins that it imports no `cli`, typer, click or rich, and that nothing else imports
 the MCP SDK.
 
-- **The agent is the model.** `analyze_run` and `analyze_log` return a **brief**
+- **The agent is the model.** `analyze_run` returns a **brief** per failed job
   (`service/brief.py`): the settled phase, the budgeted excerpt, the matchers behind
   it and the analyst instructions from `llm/prompts/analyze.system.txt`. The agent
   writes the explanation; `llm:` is ignored on this path (invariant #12).
