@@ -14,9 +14,10 @@ import httpx
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.lib.files import atomic_write_bytes
-from ci_doctor.matchers.cache import Cache
 from ci_doctor.matchers.models import INDEX
-from ci_doctor.matchers.registry import (
+from ci_doctor.matchers.validate import contained
+from ci_doctor.registry.cache import Cache
+from ci_doctor.registry.resolve import (
     FILE_CAP,
     fetch_file,
     index_text,
@@ -25,8 +26,7 @@ from ci_doctor.matchers.registry import (
     session,
     unknown_registry,
 )
-from ci_doctor.matchers.signing import SIGNATURE
-from ci_doctor.matchers.validate import contained
+from ci_doctor.registry.signing import SIGNATURE
 
 
 def mirror(cfg: MatchersConfig, alias: str, dest: Path, client: httpx.Client | None = None) -> int:

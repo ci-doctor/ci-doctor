@@ -3,7 +3,7 @@ import { Code } from "astro:components";
 import Base from "../../layouts/Base.astro";
 import { url } from "../../lib/url";
 
-const layout = `index.yaml                                        # generated: ci-doctor matchers index
+const layout = `index.yaml                                        # generated: ci-doctor registry index
 bundles/<ecosystem>.yaml                          # generated, one per ecosystem folder
 bundles/<id>.yaml                                 # curated bundles, by hand
 matchers/<ecosystem>/<id>/matcher.yaml
@@ -15,8 +15,8 @@ matchers/<ecosystem>/<id>/fixtures/<case>[.<output>].expected`;
 const build = `ci-doctor matchers examine matchers/acme/deploy_cli/matcher.yaml ./job.log   # see what it selects
 ci-doctor matchers verify --update .     # write the .expected files, then read the diff
 ci-doctor matchers verify .              # every rule, every golden
-ci-doctor matchers index .               # write index.yaml and the ecosystem bundles
-ci-doctor matchers index . --check       # in CI: fail when either is stale`;
+ci-doctor registry index .               # write index.yaml and the ecosystem bundles
+ci-doctor registry index . --check       # in CI: fail when either is stale`;
 
 const flags = `ci-doctor matchers verify . \\
   --min-positive 3 --min-negative 2 \\
@@ -82,7 +82,7 @@ const config = `matchers:
         ran <code>verify</code> still can't hand it an invalid matcher. It also
         refuses a matcher or bundle whose bytes don't match the <code>sha256</code>
         that <code>index.yaml</code> lists for it, so a file edited, truncated or
-        swapped after indexing fails the setup. Run <code>matchers index</code> after
+        swapped after indexing fails the setup. Run <code>registry index</code> after
         every edit, and publish the index together with the files it was built from.
     </p>
 
@@ -96,11 +96,11 @@ const config = `matchers:
             <tr><td>A web server, GitHub Pages, an S3 bucket over HTTPS</td><td>copy the tree</td><td><code>acme=https://matchers.acme.dev/</code></td></tr>
         </tbody>
     </table>
-    <p>Register with <code>ci-doctor matchers registry add acme=…</code>, or in the config:</p>
+    <p>Register with <code>ci-doctor registry add acme=…</code>, or in the config:</p>
     <Code code={config} lang="yaml" theme="github-dark" />
     <ul>
         <li><strong>Plain <code>http://</code> works</strong>, but nothing protects the files in transit; every run that uses one logs a warning.</li>
         <li><strong>A presigned URL can't be a registry</strong>: it signs one file, and ci-doctor fetches many relative to the folder.</li>
-        <li><strong>Air-gapped:</strong> run <code>ci-doctor matchers mirror official DIR</code> where the official registry is reachable, copy <code>DIR</code> inside the network, and register its path (or a server serving it) as <code>official</code> to replace the built-in one. The mirror carries the official signature, so it verifies as <code>official</code>; a plain clone of <code>ci-doctor/matchers</code> has none (the deploy signs), so register a clone under another alias.</li>
+        <li><strong>Air-gapped:</strong> run <code>ci-doctor registry mirror official DIR</code> where the official registry is reachable, copy <code>DIR</code> inside the network, and register its path (or a server serving it) as <code>official</code> to replace the built-in one. The mirror carries the official signature, so it verifies as <code>official</code>; a plain clone of <code>ci-doctor/matchers</code> has none (the deploy signs), so register a clone under another alias.</li>
     </ul>
 </Base>

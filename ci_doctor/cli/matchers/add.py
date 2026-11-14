@@ -15,6 +15,10 @@ class AddCommand(Command):
     """Add matchers or bundles to `matchers.include`."""
 
     name = "add"
+    examples = (
+        "ci-doctor matchers add official/python   # a whole ecosystem bundle",
+        "ci-doctor matchers add official/pytest official/ruff",
+    )
 
     @override
     def run(

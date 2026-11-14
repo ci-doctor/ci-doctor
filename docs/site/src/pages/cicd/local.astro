@@ -28,7 +28,7 @@ const localRegistry = `# Where there IS internet:
 git clone https://github.com/ci-doctor/matchers.git
 
 # Inside, point official at the copy (the folder holding index.yaml):
-ci-doctor matchers registry add official=./matchers
+ci-doctor registry add official=./matchers
 ci-doctor matchers add official/python
 ci-doctor config --validate`;
 ---

@@ -3,8 +3,8 @@
 import pytest
 
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.registry import registry_dir
-from ci_doctor.matchers.transports import transport_for
+from ci_doctor.registry.resolve import registry_dir
+from ci_doctor.registry.transports import transport_for
 
 
 @pytest.mark.parametrize(

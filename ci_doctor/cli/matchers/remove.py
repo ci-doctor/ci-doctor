@@ -15,6 +15,7 @@ class RemoveCommand(Command):
     """Remove matchers or bundles from `matchers.include`."""
 
     name = "remove"
+    examples = ("ci-doctor matchers remove official/ruff",)
 
     @override
     def run(

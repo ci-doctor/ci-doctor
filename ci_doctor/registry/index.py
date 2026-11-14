@@ -24,6 +24,7 @@ from ci_doctor.matchers.models import (
     GENERATED,
     GENERATED_PREFIX,
     INDEX,
+    LEGACY_GENERATED_PREFIX,
     MAX_BUNDLE_DEPTH,
     Bundle,
     Index,
@@ -80,7 +81,7 @@ def _matcher_entry(root: Path, path: Path, m: Spec) -> dict:
 
 
 def _generated(ecosystems: dict[str, list[str]]) -> dict[str, str]:
-    """One bundle per ecosystem folder, as the text `matchers index` writes.
+    """One bundle per ecosystem folder, as the text `registry index` writes.
 
     Args:
         ecosystems: Each ecosystem folder's matcher names.
@@ -146,8 +147,8 @@ def _nesting_problems(bundles: dict[str, Bundle]) -> list[str]:
 
 
 def _is_generated(path: Path) -> bool:
-    """Whether `matchers index` wrote this bundle file."""
-    return path.read_text(encoding="utf-8").startswith(GENERATED_PREFIX)
+    """Whether `registry index` wrote this bundle file."""
+    return path.read_text(encoding="utf-8").startswith((GENERATED_PREFIX, LEGACY_GENERATED_PREFIX))
 
 
 def _load_matchers(root: Path, problems: list[str]) -> tuple[dict[str, dict], dict[str, list[str]]]:
@@ -208,7 +209,7 @@ def _generated_bundles(
 def _load_bundles(
     root: Path, generated: dict[str, str], matchers: dict[str, dict], problems: list[str]
 ) -> dict[str, tuple[Bundle, dict]]:
-    """The hand-written bundles: every bundle file `matchers index` did not generate.
+    """The hand-written bundles: every bundle file `registry index` did not generate.
 
     Args:
         root: The registry directory.
@@ -308,7 +309,7 @@ def write_index(root: Path, *, check: bool = False) -> int:
         ]
         if out_of_date or stale:
             names = ", ".join(str(p.relative_to(root)) for p in [*out_of_date, *stale])
-            raise SetupError(f"out of date: {names}. Run `ci-doctor matchers index {root}`")
+            raise SetupError(f"out of date: {names}. Run `ci-doctor registry index {root}`")
     else:
         (root / "bundles").mkdir(exist_ok=True)
         for path, body in files.items():

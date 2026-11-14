@@ -17,6 +17,10 @@ class SchemaCommand(Command):
     """Print the JSON Schema of a matcher file, or write one per known version for a release."""
 
     name = "schema"
+    examples = (
+        "ci-doctor matchers schema > matcher.schema.json",
+        "ci-doctor matchers schema --out schemas/",
+    )
 
     @override
     def run(

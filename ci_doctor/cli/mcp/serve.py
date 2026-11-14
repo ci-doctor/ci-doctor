@@ -24,6 +24,10 @@ class ServeCommand(Command):
     """
 
     name = "serve"
+    examples = (
+        "ci-doctor mcp   # what agents run",
+        "ci-doctor mcp --project ~/src/app",
+    )
 
     @override
     def run(self, project: Path | None = typer.Option(None, "--project", help=PROJECT_HELP)) -> None:

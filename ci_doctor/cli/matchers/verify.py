@@ -16,6 +16,11 @@ class VerifyCommand(Command):
     """Run every matcher over its fixtures and compare each output with its committed .expected file."""
 
     name = "verify"
+    examples = (
+        "ci-doctor matchers verify   # the registry in this folder",
+        "ci-doctor matchers verify --update   # rewrite the .expected files, then review them",
+        "ci-doctor matchers verify --cross-fire --json verify.json",
+    )
 
     @override
     def run(

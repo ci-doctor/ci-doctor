@@ -15,6 +15,10 @@ class UninstallCommand(Command):
     """Remove ci-doctor from coding agents: only what `mcp install` added."""
 
     name = "uninstall"
+    examples = (
+        "ci-doctor mcp uninstall",
+        "ci-doctor mcp uninstall --target cursor --location global --yes",
+    )
 
     @override
     def run(

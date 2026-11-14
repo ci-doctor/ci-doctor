@@ -74,7 +74,7 @@ def _private_cache(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest
         monkeypatch: pytest fixture to swap the default cache location.
     """
     root = tmp_path_factory.mktemp("cache")
-    monkeypatch.setattr("ci_doctor.matchers.cache.default_root", lambda: root)
+    monkeypatch.setattr("ci_doctor.registry.cache.default_root", lambda: root)
 
 
 @pytest.fixture(autouse=True)
@@ -85,5 +85,5 @@ def _test_signing_key(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch: pytest fixture to swap the trusted keys.
     """
     monkeypatch.setattr(
-        "ci_doctor.matchers.signing.OFFICIAL_KEYS", {support.TEST_KEY_ID: support.TEST_PUBLIC_KEY}
+        "ci_doctor.registry.signing.OFFICIAL_KEYS", {support.TEST_KEY_ID: support.TEST_PUBLIC_KEY}
     )

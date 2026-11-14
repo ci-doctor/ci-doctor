@@ -1,4 +1,4 @@
-"""`ci-doctor matchers pull`."""
+"""`ci-doctor cache pull`."""
 
 from typing import Annotated
 
@@ -10,14 +10,18 @@ from ci_doctor.cli._lib.context import editable
 from ci_doctor.cli._lib.outputs.message import done
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cache import root_for
-from ci_doctor.matchers.registry import load
+from ci_doctor.registry.cache import root_for
+from ci_doctor.registry.resolve import load
 
 
 class PullCommand(Command):
     """Fetch matchers into the cache without analysing: warm a Docker image or a CI cache step."""
 
     name = "pull"
+    examples = (
+        "ci-doctor cache pull   # everything in matchers.include",
+        "ci-doctor cache pull official/all   # ahead of an offline run",
+    )
 
     @override
     def run(

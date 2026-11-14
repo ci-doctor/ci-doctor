@@ -39,8 +39,10 @@ ci_doctor/
                     or matcher-supplied regex), files.py (atomic writes)
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
-  matchers/         matcher registries: file formats (models), validate, index and
-                    verify (the author's side), registry (resolve + load)
+  matchers/         matcher files: formats (models), validate, and testing a matcher
+                    (examine, verify, schema, logs)
+  registry/         where matchers come from: resolve (include → matchers), cache,
+                    index and mirror (building and copying a registry)
     transports/     local, http: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
@@ -66,15 +68,15 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | A coding agent for `mcp install` | `harness/targets/<name>.py` | One line in `harness/registry.py`'s `TARGETS`. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
-| A way to fetch a registry | `matchers/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
+| A way to fetch a registry | `registry/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
 | A tunable value | `config/schemas/<key>.py` (scalar) or `defaults.yml` (data) | Prefer a config knob over a hardcoded pattern. |
 
 `core/` imports only `core.ports` abstractions. Adapters implement them.
 
 ### 2.1 The command line
 
-`cli/` mirrors the command tree: `cli/matchers/registry/ping.py` is
-`ci-doctor matchers registry ping`.
+`cli/` mirrors the command tree: `cli/registry/ping.py` is
+`ci-doctor registry ping`.
 
 ```
 cli/
@@ -83,13 +85,17 @@ cli/
                     and written), terminal.py (--plain, --no-color), outputs/ (message,
                     table, pager)
   analyze.py …      one module per command
-  matchers/         one package per group
+  matchers/ …       one package per group: matchers/, registry/, cache/, mcp/
 ```
 
 - **A command is one `Command` subclass in its own module.** Its docstring is the
   `--help`, `run` (`@override`) the entry point; its helpers and table rows are private
   members. A group's `__init__.py` lists them in `COMMANDS` and calls `register(app,
   COMMANDS)`: explicit, so a typo is an import error, not a missing command.
+- **Examples and `--json`.** A command sets `examples`, shown at the end of its `--help`;
+  `test_every_command_has_examples_that_name_it` keeps them in step with its name. A
+  command that lists things takes `--json` (`_lib.outputs.data`): the same data as one
+  JSON document, built from the data and not from the table's text.
 - **No logic in `cli/`.** A command parses, calls `service/` (or the owning package) and
   prints. `service/` imports no typer or click; `tests/test_layout.py` pins both.
 - **Global options** (`-f`, `--write-to`, `--plain`, `--no-color`) are read through
@@ -298,7 +304,7 @@ Then **add fixtures** next to the file: `fixtures/<case>.github.log` or
 `<case>.gitlab.log` for a raw CI log, `<case>.log` for plain tool output. Run
 `ci-doctor matchers examine matcher.yaml <log>` while writing the pattern, then
 `ci-doctor matchers verify --update`, review the `.expected` files (one per output), and
-`ci-doctor matchers index` to regenerate `index.yaml` and the ecosystem bundles.
+`ci-doctor registry index` to regenerate `index.yaml` and the ecosystem bundles.
 Without fixtures a matcher proves nothing — one that never matches fails silently,
 because the tail window still returns something. `verify` asks, per output, for 3
 positive and 2 negative fixtures by default, and a positive for every variant.

@@ -15,6 +15,7 @@ class ReportCommand(Command):
     """Print versions, platform, config and environment for a bug report. No secrets."""
 
     name = "report"
+    examples = ("ci-doctor report   # paste the output into a bug report",)
 
     @dataclass(frozen=True)
     class _Field(Row):

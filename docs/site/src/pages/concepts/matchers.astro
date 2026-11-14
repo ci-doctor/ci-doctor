@@ -233,7 +233,7 @@ ci-doctor matchers examine official/ruff ./job.log --framing gitlab`;
     <p>
         Registries are the one network dependency besides your CI provider and your
         LLM. On an air-gapped network, copy the registry inside it with
-        <code>ci-doctor matchers mirror official DIR</code> on a machine that can
+        <code>ci-doctor registry mirror official DIR</code> on a machine that can
         reach both, and point the alias at that path or serve it; see <a
             href={url("/reference/registry/")}>Hosting a registry</a>. The Docker image
         ships with the official registry already in its cache, so a run starts warm.

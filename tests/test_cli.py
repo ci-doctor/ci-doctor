@@ -291,3 +291,26 @@ def test_a_setup_error_is_logged_at_error_level_without_colour_under_plain(monke
     assert err.lstrip().startswith("DEBUG")  # -v is global
     assert "ERROR    no matchers or bundles selected" in err
     assert "\x1b[" not in err
+
+
+def test_every_command_has_examples_that_name_it():
+    """Each `--help` shows examples, and each example runs the command it documents.
+
+    A rename that forgets its examples fails here instead of in a user's terminal.
+    """
+    from ci_doctor.cli import COMMANDS as ROOT
+    from ci_doctor.cli.cache import COMMANDS as CACHE
+    from ci_doctor.cli.matchers import COMMANDS as MATCHERS
+    from ci_doctor.cli.mcp import COMMANDS as MCP
+    from ci_doctor.cli.registry import COMMANDS as REGISTRY
+
+    groups = {"": ROOT, "matchers ": MATCHERS, "registry ": REGISTRY, "cache ": CACHE, "mcp ": MCP}
+    wrong = {}
+    for group, commands in groups.items():
+        for command in commands:
+            # `ci-doctor mcp` alone runs `serve`, and that is the line agents use.
+            prefix = "ci-doctor mcp" if command.name == "serve" else f"ci-doctor {group}{command.name}"
+            bad = [e for e in command.examples if not e.startswith(prefix)]
+            if not command.examples or bad:
+                wrong[f"{group}{command.name}"] = bad or "no examples"
+    assert wrong == {}

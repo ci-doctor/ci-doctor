@@ -9,10 +9,10 @@ import pytest
 from ci_doctor import cli
 from ci_doctor.engine import MatcherV1, compile_plan, run
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.index import write_index
 from ci_doctor.matchers.logs import read_fixture
 from ci_doctor.matchers.validate import load_matcher
 from ci_doctor.matchers.verify import Policy, selection, verify
+from ci_doctor.registry.index import write_index
 from tests import support
 from tests.support import gh_log, gitlab_log
 

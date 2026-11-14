@@ -14,10 +14,10 @@ from nacl.signing import VerifyKey
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.mirror import mirror
-from ci_doctor.matchers.registry import load
-from ci_doctor.matchers.signing import OFFICIAL_KEYS as SHIPPED_KEYS  # bound before conftest swaps it
-from ci_doctor.matchers.signing import SIGNATURE, sign, verify
+from ci_doctor.registry.mirror import mirror
+from ci_doctor.registry.resolve import load
+from ci_doctor.registry.signing import OFFICIAL_KEYS as SHIPPED_KEYS  # bound before conftest swaps it
+from ci_doctor.registry.signing import SIGNATURE, sign, verify
 from tests import support
 
 NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)

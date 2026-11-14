@@ -29,14 +29,14 @@ from pydantic import ValidationError
 from ci_doctor.config.schemas.matchers import MatchersConfig, unqualified
 from ci_doctor.engine import SCHEMAS, Output, Spec
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers import signing
-from ci_doctor.matchers.cache import Cache, ago
 from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
-from ci_doctor.matchers.signing import SIGNATURE, SIGNATURE_CAP
-from ci_doctor.matchers.transports import Unreachable, decode, redact, transport_for
 from ci_doctor.matchers.validate import bundle_from, matcher_from, parse_yaml
+from ci_doctor.registry import signing
+from ci_doctor.registry.cache import Cache, ago
+from ci_doctor.registry.signing import SIGNATURE, SIGNATURE_CAP
+from ci_doctor.registry.transports import Unreachable, decode, redact, transport_for
 
-log = logging.getLogger("ci_doctor.matchers")
+log = logging.getLogger("ci_doctor.registry")
 
 INDEX_CAP = 1024 * 1024
 FILE_CAP = 64 * 1024

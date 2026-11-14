@@ -6,8 +6,8 @@ from urllib.parse import unquote, urlsplit
 import httpx
 
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.transports import Fetched, Transport, Validators
 from ci_doctor.matchers.validate import contained
+from ci_doctor.registry.transports import Fetched, Transport, Validators
 
 
 class LocalTransport(Transport):

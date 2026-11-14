@@ -1,4 +1,4 @@
-"""`ci-doctor matchers index`: a deterministic index, `--check`, and the cross-file rules."""
+"""`ci-doctor registry index`: a deterministic index, `--check`, and the cross-file rules."""
 
 import shutil
 import stat
@@ -10,7 +10,7 @@ import yaml
 
 from ci_doctor import cli
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.index import build_index, write_index
+from ci_doctor.registry.index import build_index, write_index
 from tests import support
 
 PYTEST = "matchers/python/pytest/matcher.yaml"
@@ -54,9 +54,9 @@ def test_check_fails_on_a_stale_index_and_write_fixes_it(registry):
 
 def test_the_cli_exits_one_on_a_stale_index_and_zero_when_current(registry, monkeypatch):
     """The registry's CI step goes red on a stale index (invariant #3's one exception)."""
-    assert _main(monkeypatch, "matchers", "index", str(registry), "--check") == 0
+    assert _main(monkeypatch, "registry", "index", str(registry), "--check") == 0
     (registry / "index.yaml").write_text("schema: 1\n")
-    assert _main(monkeypatch, "matchers", "index", str(registry), "--check") == 1
+    assert _main(monkeypatch, "registry", "index", str(registry), "--check") == 1
 
 
 @pytest.mark.parametrize(
@@ -118,3 +118,13 @@ def test_an_ecosystem_folder_with_an_invalid_name_is_a_problem_not_a_crash(regis
     shutil.move(registry / "matchers/python", registry / "matchers/py-thon")
     with pytest.raises(SetupError, match="matchers/py-thon/: an ecosystem folder name must match"):
         build_index(registry)
+
+
+def test_a_bundle_generated_under_the_old_command_name_still_counts_as_generated(tmp_path):
+    """Registries indexed before `matchers index` became `registry index` keep their generated bundles."""
+    from ci_doctor.matchers.models import LEGACY_GENERATED_PREFIX
+    from ci_doctor.registry.index import _is_generated
+
+    bundle = tmp_path / "python.yaml"
+    bundle.write_text(f"{LEGACY_GENERATED_PREFIX} from matchers/python/. Do not edit.\nid: python\n")
+    assert _is_generated(bundle)

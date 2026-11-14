@@ -1,4 +1,4 @@
-"""`ci-doctor matchers mirror`."""
+"""`ci-doctor registry mirror`."""
 
 from pathlib import Path
 from typing import Annotated
@@ -9,13 +9,14 @@ from typing_extensions import override
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
 from ci_doctor.cli._lib.outputs.message import done
-from ci_doctor.matchers.mirror import mirror
+from ci_doctor.registry.mirror import mirror
 
 
 class MirrorCommand(Command):
     """Copy a whole registry into a folder, hash-checked, to serve or to use as a file:// registry."""
 
     name = "mirror"
+    examples = ("ci-doctor registry mirror official ./official-copy   # for an air-gapped install",)
 
     @override
     def run(

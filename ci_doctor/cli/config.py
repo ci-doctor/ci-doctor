@@ -15,6 +15,11 @@ class ConfigCommand(Command):
     """Show the effective config after every layer is merged."""
 
     name = "config"
+    examples = (
+        "ci-doctor config --diff   # only what your files and environment change",
+        "ci-doctor config --validate   # the setup check analyze runs first",
+        "ci-doctor config --schema > ci-doctor.schema.json",
+    )
 
     @override
     def run(

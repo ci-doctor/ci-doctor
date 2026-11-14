@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from ci_doctor.config.files import ConfigFiles
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cache import Cache
 from ci_doctor.matchers.models import Ref
-from ci_doctor.matchers.registry import Resolved, check_ref, index_for, resolve, session, via
+from ci_doctor.registry.cache import Cache
+from ci_doctor.registry.resolve import Resolved, check_ref, index_for, resolve, session, via
 
 
 @dataclass(frozen=True)

@@ -140,6 +140,11 @@ def test_outside_code_imports_the_engine_only_through_its_surface():
     assert bad == {}
 
 
+def test_registry_imports_matchers_and_never_the_other_way():
+    """`registry` → `matchers` → `engine`: what a matcher is never depends on where it is fetched from."""
+    assert _offenders((PACKAGE / "matchers").rglob("*.py"), ("ci_doctor.registry",)) == {}
+
+
 def test_config_imports_nothing_from_core():
     """`core` reads the config; the config reaching back into `core` was an import cycle."""
     assert _offenders((PACKAGE / "config").rglob("*.py"), ("ci_doctor.core",)) == {}

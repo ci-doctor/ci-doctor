@@ -14,8 +14,8 @@ import yaml
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers import registry
-from ci_doctor.matchers.registry import FILE_CAP, INDEX_CAP, load, resolve
+from ci_doctor.registry import resolve as registry
+from ci_doctor.registry.resolve import FILE_CAP, INDEX_CAP, load, resolve
 
 _MATCHER = {
     "schema": 1,
@@ -38,7 +38,7 @@ def _cfg(include, **registries):
 
 
 def _registry(root, matchers=(), bundles=None, index=None):
-    """Write a registry by hand, so it can break rules `matchers index` would refuse.
+    """Write a registry by hand, so it can break rules `registry index` would refuse.
 
     Args:
         root: The registry directory.
@@ -125,7 +125,7 @@ def test_the_same_bare_id_from_two_registries_is_two_matchers(tmp_path):
 
 
 def test_a_bundle_cycle_is_a_setup_error(tmp_path):
-    """Hand-written index: `matchers index` would refuse to build it."""
+    """Hand-written index: `registry index` would refuse to build it."""
     reg = _registry(tmp_path, ["x"], bundles={"p": ["q"], "q": ["p"]})
     with pytest.raises(SetupError, match="bundle cycle: r/p -> r/q -> r/p"):
         load(_cfg(["r/p"], r=reg))

@@ -10,17 +10,21 @@ from ci_doctor.cli._lib.context import editable
 from ci_doctor.cli._lib.outputs.message import say
 from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cache import Cache
 from ci_doctor.matchers.examine import examine
 from ci_doctor.matchers.logs import Framing, framing_of
-from ci_doctor.matchers.registry import Resolved, check_ref, fetch_matcher, session
 from ci_doctor.matchers.validate import load_matcher
+from ci_doctor.registry.cache import Cache
+from ci_doctor.registry.resolve import Resolved, check_ref, fetch_matcher, session
 
 
 class ExamineCommand(Command):
     """Run one matcher over one log and show what each output selects, exactly as verify would."""
 
     name = "examine"
+    examples = (
+        "ci-doctor matchers examine matchers/python/pytest/matcher.yaml failing.github.log",
+        "ci-doctor matchers examine official/pytest job.log --framing gitlab",
+    )
 
     @override
     def run(

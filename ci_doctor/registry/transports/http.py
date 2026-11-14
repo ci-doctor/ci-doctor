@@ -7,9 +7,9 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.transports import Fetched, Transport, Unreachable, Validators, redact
+from ci_doctor.registry.transports import Fetched, Transport, Unreachable, Validators, redact
 
-log = logging.getLogger("ci_doctor.matchers")
+log = logging.getLogger("ci_doctor.registry")
 
 MAX_REDIRECTS = 3
 _MAX_AGE = re.compile(r"(?:^|,)\s*max-age\s*=\s*(\d+)")

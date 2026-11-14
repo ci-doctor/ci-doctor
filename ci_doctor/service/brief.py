@@ -12,7 +12,7 @@ from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import Confidence, FailureReason, Phase
 from ci_doctor.core.redact import redact_text
 from ci_doctor.llm.report import instructions
-from ci_doctor.matchers.registry import load as load_matchers
+from ci_doctor.registry.resolve import load as load_matchers
 from ci_doctor.service.analyze import JobResult, analyze_run
 
 

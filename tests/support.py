@@ -33,10 +33,10 @@ from nacl.signing import SigningKey
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.core.models import Section
 from ci_doctor.engine import MatcherV1, Spec
-from ci_doctor.matchers.index import write_index
-from ci_doctor.matchers.registry import load
-from ci_doctor.matchers.signing import SIGNATURE, sign
 from ci_doctor.providers.registry import SEGMENTERS, segmenter_for
+from ci_doctor.registry.index import write_index
+from ci_doctor.registry.resolve import load
+from ci_doctor.registry.signing import SIGNATURE, sign
 
 #: A step or section: its name, then the lines it printed.
 Block = tuple[str, list[str]]

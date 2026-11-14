@@ -15,7 +15,7 @@ from ci_doctor.cli._lib.terminal import no_color
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Run
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.registry import load as load_matchers
+from ci_doctor.registry.resolve import load as load_matchers
 from ci_doctor.service.analyze import JobResult, analyze_log, analyze_run
 from ci_doctor.service.deliver import payload, post_note, write_artifacts
 
@@ -33,6 +33,11 @@ class AnalyzeCommand(Command):
     """Explain why a CI run failed: a live run by id, or a log file replayed offline."""
 
     name = "analyze"
+    examples = (
+        'ci-doctor analyze "$CI_PIPELINE_ID"   # a live run, inside CI',
+        "ci-doctor analyze failing-job.log   # replay a saved log, offline",
+        "ci-doctor analyze 18234567890 --format json | jq '.[0].summary'",
+    )
 
     @override
     def run(

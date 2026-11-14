@@ -1,4 +1,4 @@
-"""`ci-doctor matchers index`."""
+"""`ci-doctor registry index`."""
 
 from pathlib import Path
 
@@ -7,14 +7,18 @@ from typing_extensions import override
 
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.outputs.message import done
-from ci_doctor.matchers.index import write_index
 from ci_doctor.matchers.models import INDEX
+from ci_doctor.registry.index import write_index
 
 
 class IndexCommand(Command):
     """Validate every matcher and bundle, then write index.yaml."""
 
     name = "index"
+    examples = (
+        "ci-doctor registry index   # rebuild index.yaml and the bundles here",
+        "ci-doctor registry index --check   # fail if they are out of date, for CI",
+    )
 
     @override
     def run(

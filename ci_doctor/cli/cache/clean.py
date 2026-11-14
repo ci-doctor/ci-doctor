@@ -1,17 +1,18 @@
-"""`ci-doctor matchers cache clean`."""
+"""`ci-doctor cache clean`."""
 
 from typing_extensions import override
 
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
 from ci_doctor.cli._lib.outputs.message import done
-from ci_doctor.matchers.cache import Cache, root_for
+from ci_doctor.registry.cache import Cache, root_for
 
 
 class CleanCommand(Command):
     """Delete everything in the cache; the next run fetches every registry file again."""
 
     name = "clean"
+    examples = ("ci-doctor cache clean",)
 
     @override
     def run(self) -> None:

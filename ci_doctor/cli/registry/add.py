@@ -1,4 +1,4 @@
-"""`ci-doctor matchers registry add`."""
+"""`ci-doctor registry add`."""
 
 from pathlib import Path
 from typing import Annotated
@@ -11,7 +11,7 @@ from ci_doctor.cli._lib.context import edit, editable
 from ci_doctor.cli._lib.outputs.message import done
 from ci_doctor.config.loader import anchor_registry
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.registry import fetch_index, redact, registry_dir, session
+from ci_doctor.registry.resolve import fetch_index, redact, registry_dir, session
 
 
 class AddCommand(Command):
@@ -21,6 +21,10 @@ class AddCommand(Command):
     """
 
     name = "add"
+    examples = (
+        "ci-doctor registry add acme=https://matchers.acme.internal/",
+        "ci-doctor registry add mine=./my-matchers   # a folder, relative to the config file",
+    )
 
     @override
     def run(

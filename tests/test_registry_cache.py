@@ -14,10 +14,10 @@ import pytest
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cache import Cache, default_root  # bound before the autouse fixture swaps it
-from ci_doctor.matchers.index import write_index
-from ci_doctor.matchers.mirror import mirror
-from ci_doctor.matchers.registry import load
+from ci_doctor.registry.cache import Cache, default_root  # bound before the autouse fixture swaps it
+from ci_doctor.registry.index import write_index
+from ci_doctor.registry.mirror import mirror
+from ci_doctor.registry.resolve import load
 from tests import support
 
 BASE = "https://reg.test/m/"

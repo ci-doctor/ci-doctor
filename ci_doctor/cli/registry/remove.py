@@ -1,4 +1,4 @@
-"""`ci-doctor matchers registry remove`."""
+"""`ci-doctor registry remove`."""
 
 from typing import Annotated
 
@@ -16,6 +16,7 @@ class RemoveCommand(Command):
     """Remove registries from the config, unless `include` still uses them."""
 
     name = "remove"
+    examples = ("ci-doctor registry remove acme",)
 
     @override
     def run(

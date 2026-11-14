@@ -21,6 +21,11 @@ class InstallCommand(Command):
     """
 
     name = "install"
+    examples = (
+        "ci-doctor mcp install   # the agents found here, in this project",
+        "ci-doctor mcp install --target claude,cursor --location global --yes",
+        "ci-doctor mcp install --print-config codex --location global",
+    )
 
     @override
     def run(
