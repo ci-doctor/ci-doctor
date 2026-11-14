@@ -14,11 +14,12 @@ from ci_doctor.cli._lib.command import Command, register
 from ci_doctor.cli.analyze import AnalyzeCommand
 from ci_doctor.cli.config import ConfigCommand
 from ci_doctor.cli.matchers import app as matchers_app
+from ci_doctor.cli.mcp import McpCommand
 from ci_doctor.cli.report import ReportCommand
 from ci_doctor.errors import SetupError
 
 log = logging.getLogger("ci_doctor.cli")
-COMMANDS: Sequence[Command] = [AnalyzeCommand(), ConfigCommand(), ReportCommand()]
+COMMANDS: Sequence[Command] = [AnalyzeCommand(), ConfigCommand(), ReportCommand(), McpCommand()]
 
 app = typer.Typer(add_completion=False, help="Explain why a CI pipeline failed (read-only postmortem).")
 register(app, COMMANDS)

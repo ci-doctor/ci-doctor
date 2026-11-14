@@ -17,6 +17,16 @@ if TYPE_CHECKING:
 _T = TypeVar("_T", bound="BaseModel")
 
 
+class LogUnavailable(Exception):
+    """A job's log exists, or may exist, but could not be read: a refusal, an outage, a timeout.
+
+    Not the same as a job that has no log. A job that never got a runner wrote
+    none, and a provider answers that with `None`; attribution reads it as "never
+    ran". A log that could not be *read* says nothing about the job, so it is an
+    error the analysis carries on past (invariant #3), recorded on the job.
+    """
+
+
 class CIProvider(ABC):
     """Read-only access to one CI system — who ran the pipeline.
 
@@ -47,8 +57,13 @@ class CIProvider(ABC):
             job: The job to fetch, already carrying its CI-side id.
 
         Returns:
-            The raw log, or None when the job genuinely produced none. None is
-            valid data, not an error — it identifies the "never got a runner" case.
+            The raw log, or None when the job genuinely produced none (or it has
+            expired). None is valid data, not an error — it identifies the "never
+            got a runner" case.
+
+        Raises:
+            LogUnavailable: When the log could not be read (access denied, the
+                service down, a timeout): not the same as there being none.
         """
 
 

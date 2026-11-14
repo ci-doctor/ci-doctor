@@ -25,9 +25,11 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 ```
 ci_doctor/
   cli/              the command line, laid out like the command tree (§2.1)
-  service/          what each command does, with no terminal in it: analyze, deliver,
-                    setup, report
-  config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit
+  mcp/              the MCP server: the same services as tools, for a coding agent (§2.4)
+  service/          what each command or tool does, with no terminal in it: analyze,
+                    brief, deliver, matchers, setup, report
+  config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit,
+                    files (which files are read, which one is edited)
   core/             provider-neutral: models, ports, attribution (pure), denoise,
                     redact, analyze
   engine/           the matching engine, pure (§2.3): spec/ (matcher files), compile/
@@ -58,6 +60,7 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | Evidence selection | `core/denoise.py`, `engine/` | Config-driven where possible; `engine/` stays pure (§2.3). |
 | An LLM backend | `llm/backends.py` + a pip extra | Only a provider Pydantic AI ships; lazy-import the SDK inside the client. |
 | A command or subcommand | `cli/<group…>/<command>.py` (surface) + `service/` or the owning package (work) | See §2.1. |
+| An MCP tool | `mcp/server.py` (surface) + `service/` (work) | See §2.4. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
 | A way to fetch a registry | `matchers/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
@@ -126,6 +129,25 @@ same path through it, so a test and production can't drift.
 3. Code outside `engine/` imports `ci_doctor.engine`, never a submodule.
 4. `config/` imports nothing from `core/`.
 
+### 2.4 The MCP server
+
+`ci-doctor mcp` serves the same services to a coding agent over stdio. `mcp/` is a
+surface like `cli/`: a tool parses, calls `service/` and returns; `tests/test_layout.py`
+pins that it imports no `cli`, typer, click or rich, and that nothing else imports
+the MCP SDK.
+
+- **The agent is the model.** `analyze_run` returns a **brief** per failed job
+  (`service/brief.py`): the settled phase, the budgeted excerpt, the matchers behind
+  it and the analyst instructions from `llm/prompts/analyze.system.txt`. The agent
+  writes the explanation; `llm:` is ignored on this path (invariant #12).
+- **A tool is a nested function in `build`**, its docstring the description the agent
+  reads, its return annotation the output schema. Wrap it in `_reported` so a failure
+  comes back as a message, and give it the annotation that says whether it writes.
+- **Matcher selection is shared with the CLI.** `search_matchers`, `list_matchers`,
+  `add_matchers` and `remove_matchers` call `service/matchers.py`, as the commands do.
+  Edits go to `./.ci-doctor.yml` unless `--write-to` names another file.
+- **Text the agent is told** lives in `llm/prompts/`, like every prompt (invariant #8).
+
 ## 3. Invariants — do not break these
 
 This list is the single source of truth for them, and code comments cite it **by
@@ -160,6 +182,11 @@ invariants go on the end. The first three, and #10, are load-bearing:
     version. Pinned by the frozen Plan snapshots in `tests/engine/v1/cases/`, and by the
     `contract` CI job, which verifies the official registry at HEAD. A snapshot diff
     means a new schema version, not a new snapshot.
+12. **The MCP server calls no model, and writes one thing.** The agent on the other
+    end is the model, so `llm:` is ignored there. Stdout carries only the protocol.
+    The server writes no report file and posts no note; its single write is the
+    `matchers:` block of the target config, through the same validated edit as
+    `matchers add`. Pinned by `tests/test_mcp.py`.
 
 ## 4. Writing tests
 
@@ -220,6 +247,7 @@ parametrized over `support.PROVIDERS` then covers the format.
 | Report shape, category, LLM fallback | `test_report.py` |
 | Terminal/markdown output | `test_render.py` |
 | End-to-end offline run | `test_offline_pipeline.py` |
+| An MCP tool | `test_mcp.py`, through the SDK's in-memory client |
 
 ## 5. Cookbook
 
@@ -459,6 +487,14 @@ Real bugs, kept here so they don't recur:
   the engine runs, so test matchers against segmented lines (`read_fixture` in
   `matchers/verify.py` does it, by the fixture's `.github.log` / `.gitlab.log` name),
   never `raw_log.splitlines()`.
+- **A log that could not be read is not a job that never ran.** A provider answered every
+  failed log fetch with `None`, and attribution rule 1 reads `None` as "the job never got a
+  runner", so a 403 (GitHub job logs need admin rights) became phase `provision`, reason
+  `no_runner`, confidence high, with an empty excerpt — a confident wrong diagnosis. A
+  provider now returns `None` only for a log that is absent (404, 410, empty) and raises
+  `LogUnavailable` for the rest; `analyze_run` records it as `Job.log_error`, attribution
+  skips rule 1 and caps the verdict at low confidence, and the report, the prompt and the
+  MCP brief all say the log was unavailable. A new provider must draw the same line.
 - **The domain models are plain dataclasses, not pydantic** — nothing validates what an
   adapter puts in them. A `datetime` where the model says `str | None` sails through and
   crashes much later, in the JSON dump. Normalise at the adapter boundary.

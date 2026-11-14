@@ -17,7 +17,7 @@ from gitlab.v4.objects import Project, ProjectPipelineJob
 
 from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import FailureReason, Job, MergeRequestRef, Run, RunnerInfo
-from ci_doctor.core.ports import CIProvider, SCMProvider
+from ci_doctor.core.ports import CIProvider, LogUnavailable, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.gitlab.reasons import to_failure_reason
 from ci_doctor.providers.tokens import read_token
@@ -147,15 +147,22 @@ class GitLabProvider(CIProvider, SCMProvider):
 
         Returns:
             The decoded trace, or None when it is missing or empty. None is valid
-            data — it identifies the "never got a runner" case — so a fetch
-            failure is logged and swallowed rather than raised.
+            data — it identifies the "never got a runner" case.
+
+        Raises:
+            LogUnavailable: When the trace could not be read — access denied, the
+                instance down, a timeout. That says nothing about the job, so it
+                must not read as "no trace".
         """
         # A missing/empty trace is valid data (the "never got a runner" case), not an error.
         try:
             raw = self._project().jobs.get(int(job.id)).trace()
-        except Exception as exc:  # noqa: BLE001
-            log.warning(f"could not fetch trace for job {job.id}: {exc}")
-            return None
+        except Exception as exc:  # noqa: BLE001 - python-gitlab raises a family of errors; all mean "unread"
+            status = getattr(exc, "response_code", None)
+            if status == 404:
+                log.debug(f"job {job.id} has no trace (HTTP 404)")
+                return None
+            raise LogUnavailable(f"HTTP {status}" if status else type(exc).__name__) from None
         if not raw:
             return None
         text = raw.decode("utf-8", "replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
