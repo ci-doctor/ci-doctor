@@ -45,7 +45,9 @@ def test_the_mcp_surface_has_no_terminal_in_it_and_owns_the_sdk():
 def test_only_the_mcp_command_imports_the_mcp_surface():
     """A tool calls `service/`; a service reaching back into `mcp/` would turn that around."""
     others = [
-        p for p in PACKAGE.rglob("*.py") if PACKAGE / "mcp" not in p.parents and p != PACKAGE / "cli/mcp.py"
+        p
+        for p in PACKAGE.rglob("*.py")
+        if PACKAGE / "mcp" not in p.parents and p != PACKAGE / "cli/mcp/serve.py"
     ]
     assert _offenders(others, ("ci_doctor.mcp",)) == {}
 

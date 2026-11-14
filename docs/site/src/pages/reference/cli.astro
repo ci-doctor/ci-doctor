@@ -73,11 +73,10 @@ ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
 # It prints the verdict, writes report.md + report.json, and (if configured
 # and confidence >= medium) posts/updates one idempotent MR/PR note.`;
 
-const mcpConfig = `{
-  "mcpServers": {
-    "ci-doctor": { "command": "ci-doctor", "args": ["mcp"] }
-  }
-}`;
+const mcpInstall = `ci-doctor mcp install [--target auto|all|claude,cursor,...] [--location local|global]
+                      [--yes] [--no-permissions] [--print-config ID]
+ci-doctor mcp uninstall [--target ...] [--location ...] [--yes]
+ci-doctor mcp [--project DIR]   # the server itself, which agents start`;
 
 const verbose = `ci-doctor -v analyze failing-job.log
 
@@ -226,9 +225,18 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         <a href="https://modelcontextprotocol.io">MCP</a>, on stdio. The agent is the
         model: <code>analyze_run</code> returns each failed
         job's settled phase and redacted evidence, and the agent writes the explanation,
-        so the <code>llm:</code> block is ignored. Start it from the repository's root.
+        so the <code>llm:</code> block is ignored.
     </p>
-    <Code code={mcpConfig} lang="json" theme="github-dark" />
+    <p>
+        <code>ci-doctor mcp install</code> connects it to Claude Code, Cursor, Codex CLI,
+        opencode, Hermes Agent, Gemini CLI, Antigravity and Kiro. For each it writes the MCP
+        server entry and a short instructions block, and for Claude Code it auto-allows the
+        read-only tools. <code>local</code> (the default) writes this project's files;
+        <code>global</code> writes yours. Running it again changes nothing, and
+        <code>uninstall</code> removes only what it added. A file it cannot edit safely is
+        left alone, and the config is printed to add by hand.
+    </p>
+    <Code code={mcpInstall} lang="text" theme="github-dark" />
     <table>
         <thead><tr><th>Tool</th><th>Does</th></tr></thead>
         <tbody>

@@ -124,12 +124,23 @@ they ran.
 
 `ci-doctor mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio, in the base
 install. Your agent is the model: ci-doctor hands it each failed job's phase and evidence
-and the agent explains the failure, so no `llm:` block is needed. Register it in your
-harness, from the repository's root (see [`examples/mcp.example.json`](examples/mcp.example.json)):
+and the agent explains the failure, so no `llm:` block is needed. Connect your agents
+from the repository's root:
 
-```json
-{ "mcpServers": { "ci-doctor": { "command": "ci-doctor", "args": ["mcp"] } } }
+```sh
+ci-doctor mcp install                    # the agents found on this machine, in this project
+ci-doctor mcp install --location global  # in your own config, for every project
+ci-doctor mcp install --print-config cursor  # print one agent's config, write nothing
+ci-doctor mcp uninstall                  # remove only what install added
 ```
+
+It supports Claude Code, Cursor, Codex CLI, opencode, Hermes Agent, Gemini CLI,
+Antigravity and Kiro (`--target claude,cursor` picks). For each it writes the MCP server
+entry and a short instructions block (`CLAUDE.md`, `AGENTS.md`, ...), and for Claude
+Code it auto-allows the read-only tools. Running it again changes nothing; a file it
+cannot edit safely is left alone and the config is printed to add by hand. To analyze
+live runs, set `CI_DOCTOR_GITHUB_TOKEN` or `CI_DOCTOR_GITLAB_TOKEN` where the agent runs.
+To set it up by hand, see [`examples/mcp.example.json`](examples/mcp.example.json).
 
 | Tool | Does |
 |---|---|

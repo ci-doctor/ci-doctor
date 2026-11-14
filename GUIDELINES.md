@@ -26,6 +26,7 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 ci_doctor/
   cli/              the command line, laid out like the command tree (§2.1)
   mcp/              the MCP server: the same services as tools, for a coding agent (§2.4)
+  harness/          `ci-doctor mcp install`: one module per coding agent in targets/ (§2.4)
   service/          what each command or tool does, with no terminal in it: analyze,
                     brief, deliver, matchers, setup, report
   config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit,
@@ -62,6 +63,7 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | An LLM backend | `llm/backends.py` + a pip extra | Only a provider Pydantic AI ships; lazy-import the SDK inside the client. |
 | A command or subcommand | `cli/<group…>/<command>.py` (surface) + `service/` or the owning package (work) | See §2.1. |
 | An MCP tool | `mcp/server.py` (surface) + `service/` (work) | See §2.4. |
+| A coding agent for `mcp install` | `harness/targets/<name>.py` | One line in `harness/registry.py`'s `TARGETS`. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
 | A way to fetch a registry | `matchers/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
@@ -148,6 +150,14 @@ the MCP SDK.
   `add_matchers` and `remove_matchers` call `service/matchers.py`, as the commands do.
   Edits go to `./.ci-doctor.yml` unless `--write-to` names another file.
 - **Text the agent is told** lives in `llm/prompts/`, like every prompt (invariant #8).
+- **`ci-doctor mcp install` connects agents to the server.** Each agent is a module in
+  `harness/targets/` that knows its config file and format; `harness/formats/` has one
+  module per format (JSON, Markdown, TOML, YAML), each changing only ci-doctor's entry and
+  keeping the rest of the file. TOML and YAML are edited as text so comments stay, and a
+  YAML edit must parse to the intended data or it is not written. A file it cannot edit
+  safely (it does not parse, or is JSON with comments) is skipped and its config printed
+  instead. A file that held only ci-doctor's part is deleted on uninstall. Tests run in a fake `HOME`
+  (`tests/test_harness.py`), and `uninstall` must restore every file byte for byte.
 
 ## 3. Invariants — do not break these
 
