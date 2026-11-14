@@ -60,7 +60,7 @@ class Skipped:
 
 
 @dataclass(frozen=True)
-class Added:
+class AddResult:
     """What one `add` did.
 
     Attributes:
@@ -122,7 +122,7 @@ def included(cfg: MatchersConfig) -> list[Included]:
     return rows
 
 
-def add(files: ConfigFiles, refs: list[str]) -> Added:
+def add(files: ConfigFiles, refs: list[str]) -> AddResult:
     """Add matchers or bundles to the target file's `matchers.include`.
 
     Args:
@@ -152,7 +152,7 @@ def add(files: ConfigFiles, refs: list[str]) -> Added:
             new.append(ref)
     if new:
         files.edit("matchers", lambda m: m.__setitem__("include", [*current, *new]))
-    return Added(new, skipped)
+    return AddResult(new, skipped)
 
 
 def remove(files: ConfigFiles, refs: list[str]) -> list[str]:

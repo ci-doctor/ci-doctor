@@ -12,7 +12,7 @@ count, and ``_last_error_section`` for where it bites.
 """
 
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 from ci_doctor.core.models import (
     SYNTHETIC_SECTIONS,
@@ -100,8 +100,8 @@ def attribute(job: Job, sections: list[Section]) -> Attribution:
         The verdict, tagged with the `rule_id` that produced it.
     """
     verdict = _ladder(job, sections)
-    if job.log_error is not None and verdict.confidence != "low":
-        return replace(verdict, confidence="low")
+    if job.log_error is not None:
+        verdict.confidence = "low"  # the ladder built this one; it is ours to cap
     return verdict
 
 
