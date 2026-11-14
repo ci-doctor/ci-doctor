@@ -36,6 +36,10 @@ class Brief(BaseModel):
     rule: str = Field(description="Which attribution rule decided the phase.")
     confidence: Confidence = Field(description="How much to trust the phase.")
     terminal_evidence: str | None = Field(description="The single most telling line, when one exists.")
+    log_error: str | None = Field(
+        description="Why the job's log could not be read, when it could not. Then the excerpt is empty and "
+        "the verdict rests on the CI system's failure reason alone: say so rather than guess a cause."
+    )
     secondary_phases: list[Phase] = Field(description="Phases that only warned: context, not the cause.")
     excerpt: str = Field(description="Log lines from the failed phase, verbatim, secrets redacted.")
     truncated: bool = Field(description="Whether the token budget dropped lines from the excerpt.")
@@ -65,6 +69,7 @@ def brief(result: JobResult, cfg: Config) -> Brief:
         rule=attr.rule_id,
         confidence=attr.confidence,
         terminal_evidence=redact_text(terminal, cfg.redaction) if terminal else None,
+        log_error=redact_text(job.log_error, cfg.redaction) if job.log_error else None,
         secondary_phases=attr.secondary_phases,
         excerpt=redact_text("\n".join(bundle.blamed_lines), cfg.redaction),
         truncated=bundle.truncated,

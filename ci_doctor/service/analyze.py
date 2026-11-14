@@ -16,7 +16,7 @@ from ci_doctor.config.schemas import Config
 from ci_doctor.core.analyze import EvidenceBundle, build_bundle
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Run
-from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
+from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter, LogUnavailable
 from ci_doctor.engine import Plan, Spec, compile_plan
 from ci_doctor.llm.schema import Report
 from ci_doctor.providers.registry import make_ci_provider, make_segmenter, segmenter_for_log
@@ -132,7 +132,12 @@ def analyze_run(
     log.info(f"analyzing {len(selected)} failed job(s) from run {run_id}")
     # Sequential on purpose: python-gitlab and PyGithub make no thread-safety promise.
     for job in selected:
-        job.log = provider.fetch_job_log(job)
+        try:
+            job.log = provider.fetch_job_log(job)
+        except LogUnavailable as exc:
+            # Say so on the job: attribution must not read an unreadable log as an empty one.
+            log.warning(f"could not read the log of job {job.id}: {exc}")
+            job.log_error = str(exc)
     return run, provider, _analyze(selected, cfg, matchers)
 
 

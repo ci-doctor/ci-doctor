@@ -1,8 +1,8 @@
 """Pipeline orchestration: chronological ordering of the analyzed jobs."""
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.core.models import Job, Run
-from ci_doctor.core.ports import LLMClient
+from ci_doctor.core.models import FailureReason, Job, Run
+from ci_doctor.core.ports import LLMClient, LogUnavailable
 from ci_doctor.service.analyze import _ordered, analyze_run, run_from_file
 from tests import support
 
@@ -126,3 +126,23 @@ def test_a_log_with_a_non_utf8_byte_still_loads(tmp_path):
     path.write_bytes(b"$ make\ncaf\xe9 au lait\nERROR: Job failed: exit code 1\n")
     log = run_from_file(path).jobs[0].log
     assert "caf� au lait" in log
+
+
+def test_a_log_that_could_not_be_read_is_reported_as_such_not_as_a_missing_runner(monkeypatch):
+    """A refused log fetch used to read as "never got a runner", with high confidence and no excerpt."""
+
+    class Refused:
+        def fetch_run(self, run_ref):
+            job = Job(id="1", name="build", status="failed", failure_reason=FailureReason.SCRIPT_FAILURE)
+            return Run(id=run_ref, jobs=[job])
+
+        def fetch_job_log(self, job):
+            raise LogUnavailable("HTTP 403: Must have admin rights to Repository.")
+
+    monkeypatch.setattr("ci_doctor.service.analyze.make_ci_provider", lambda cfg: Refused())
+    _run, _provider, [result] = analyze_run("42", load_config(environ={}), [])
+
+    assert result.job.log_error == "HTTP 403: Must have admin rights to Repository."
+    assert (result.attribution.phase, result.attribution.confidence) == ("script", "low")
+    assert result.attribution.rule_id != "empty_log_no_runner"
+    assert any("could not be read (HTTP 403" in f for f in result.report.contributing_factors)

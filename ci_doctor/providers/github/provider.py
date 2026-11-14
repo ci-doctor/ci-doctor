@@ -23,12 +23,46 @@ from github.WorkflowRun import WorkflowRun
 
 from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo
-from ci_doctor.core.ports import CIProvider, SCMProvider
+from ci_doctor.core.ports import CIProvider, LogUnavailable, SCMProvider
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.github.reasons import to_failure_reason
 from ci_doctor.providers.tokens import read_token
 
 log = logging.getLogger("ci_doctor.github")
+
+#: Logs expire (410), and a job that never started never wrote one (404).
+_NO_LOG = frozenset({404, 410})
+
+
+def _status(exc: GithubException | requests.RequestException) -> int | None:
+    """The HTTP status a failed log fetch carries, when it carries one.
+
+    Args:
+        exc: What PyGithub or requests raised.
+
+    Returns:
+        The status code, or None for a failure with no response (a timeout, a refused connection).
+    """
+    if isinstance(exc, GithubException):
+        return exc.status
+    return exc.response.status_code if exc.response is not None else None
+
+
+def _why(exc: GithubException | requests.RequestException, status: int | None) -> str:
+    """One line saying why a log could not be read, for the report and the agent.
+
+    Args:
+        exc: What PyGithub or requests raised.
+        status: Its HTTP status, when it has one.
+
+    Returns:
+        The status and GitHub's own message when it gave one, else the error's type.
+        Never the URL: the log's redirect target is a short-lived signed one.
+    """
+    if isinstance(exc, GithubException) and isinstance(exc.data, dict) and exc.data.get("message"):
+        return f"HTTP {status}: {exc.data['message']}"
+    return f"HTTP {status}" if status else type(exc).__name__
+
 
 #: Job conclusions -> the domain's normalised status, so core job-selection needs
 #: no GitHub knowledge. A timeout and a startup failure are failures; a
@@ -140,16 +174,19 @@ class GitHubProvider(CIProvider, SCMProvider):
             job: The job, carrying its GitHub id.
 
         Returns:
-            The log, or None when empty or missing. None is valid data — it
-            identifies the "never got a runner" case — so a fetch failure is
-            logged and swallowed rather than raised.
+            The log, or None when the job has none: empty, never written (a job
+            that never started) or expired. None is valid data — it identifies
+            the "never got a runner" case.
+
+        Raises:
+            LogUnavailable: When the log could not be read — access denied (job
+                logs need admin rights), the service down, a timeout. That says
+                nothing about the job, so it must not read as "no log".
         """
         raw = self._raw_jobs.get(job.id)
         if raw is None:
-            log.warning(f"no raw job cached for {job.id}; cannot fetch its log")
-            return None
+            raise LogUnavailable(f"job {job.id} is not in the run that was fetched")
         try:
-            # Logs expire, and a job that never started never wrote any: 404 here.
             url = raw.logs_url()
             resp = requests.get(url, verify=self.verify, timeout=self.cfg.timeout_seconds)
             # The redirect target is a short-lived signed URL; an expired one answers
@@ -157,8 +194,11 @@ class GitHubProvider(CIProvider, SCMProvider):
             resp.raise_for_status()
             text = resp.text
         except (GithubException, requests.RequestException) as exc:
-            log.warning(f"could not fetch log for job {job.id}: {exc}")
-            return None
+            status = _status(exc)
+            if status in _NO_LOG:
+                log.debug(f"job {job.id} has no log (HTTP {status})")
+                return None
+            raise LogUnavailable(_why(exc, status)) from None
         log.debug(f"job {job.id} log: {len(text)} chars")
         return text or None
 

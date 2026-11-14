@@ -487,6 +487,14 @@ Real bugs, kept here so they don't recur:
   the engine runs, so test matchers against segmented lines (`read_fixture` in
   `matchers/verify.py` does it, by the fixture's `.github.log` / `.gitlab.log` name),
   never `raw_log.splitlines()`.
+- **A log that could not be read is not a job that never ran.** A provider answered every
+  failed log fetch with `None`, and attribution rule 1 reads `None` as "the job never got a
+  runner", so a 403 (GitHub job logs need admin rights) became phase `provision`, reason
+  `no_runner`, confidence high, with an empty excerpt — a confident wrong diagnosis. A
+  provider now returns `None` only for a log that is absent (404, 410, empty) and raises
+  `LogUnavailable` for the rest; `analyze_run` records it as `Job.log_error`, attribution
+  skips rule 1 and caps the verdict at low confidence, and the report, the prompt and the
+  MCP brief all say the log was unavailable. A new provider must draw the same line.
 - **The domain models are plain dataclasses, not pydantic** — nothing validates what an
   adapter puts in them. A `datetime` where the model says `str | None` sails through and
   crashes much later, in the JSON dump. Normalise at the adapter boundary.

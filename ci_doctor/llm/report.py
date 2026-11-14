@@ -232,6 +232,11 @@ def deterministic_report(
         remediation = "Reduce memory use or raise the runner memory limit (exit 137 = OOM/SIGKILL)."
 
     factors = [f"warnings in the {p} phase (non-causal)" for p in attr.secondary_phases]
+    if job.log_error:
+        factors.append(
+            f"the job's log could not be read ({job.log_error}), so there is no log excerpt and the "
+            "phase rests on the CI system's own failure reason alone."
+        )
     if degraded:
         factors.append("ci-doctor could not reach the LLM; this is the deterministic fallback report.")
 
@@ -328,6 +333,7 @@ def _render_prompt(job: Job, attr: Attribution, bundle: EvidenceBundle) -> str:
         duration=job.duration,
         needs=", ".join(job.needs) or "none",
         terminal=attr.terminal_evidence or "n/a",
+        log_error=job.log_error or "none",
         phase=attr.phase,
         secondary=", ".join(str(p) for p in attr.secondary_phases) or "none",
         excerpt="\n".join(bundle.blamed_lines),

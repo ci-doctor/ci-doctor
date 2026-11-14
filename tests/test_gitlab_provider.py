@@ -2,8 +2,12 @@
 
 from types import SimpleNamespace
 
+import pytest
+from gitlab.exceptions import GitlabGetError
+
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import FailureReason
+from ci_doctor.core.ports import LogUnavailable
 from ci_doctor.core.select import select_failed_jobs
 from ci_doctor.providers.gitlab.provider import GitLabProvider
 
@@ -28,6 +32,14 @@ def _pipeline_job(**kw):
     return SimpleNamespace(**base)
 
 
+def _trace(traces, jid):
+    """A job's canned trace; an exception in `traces` is raised, as python-gitlab would."""
+    value = traces.get(jid, b"")
+    if isinstance(value, Exception):
+        raise value
+    return value
+
+
 def _fake_gl(pipeline_jobs, traces):
     """Build an in-memory stand-in for the python-gitlab client."""
     project = SimpleNamespace(
@@ -40,7 +52,7 @@ def _fake_gl(pipeline_jobs, traces):
                 jobs=SimpleNamespace(list=lambda all=True: pipeline_jobs),
             )
         ),
-        jobs=SimpleNamespace(get=lambda jid: SimpleNamespace(trace=lambda: traces.get(jid, b""))),
+        jobs=SimpleNamespace(get=lambda jid: SimpleNamespace(trace=lambda: _trace(traces, jid))),
     )
     return SimpleNamespace(projects=SimpleNamespace(get=lambda pid: project))
 
@@ -99,6 +111,28 @@ def test_fetch_job_log_and_empty_is_none():
     run = prov.fetch_run("1")
     assert prov.fetch_job_log(run.jobs[0]).startswith("boom")
     assert prov.fetch_job_log(run.jobs[1]) is None  # never-got-a-runner case
+
+
+def test_a_trace_gitlab_does_not_have_is_none():
+    """A 404 is a job that wrote no trace (or whose trace expired): valid data, like an empty one."""
+    prov = _provider([_pipeline_job(id=1, name="x")], {1: GitlabGetError("404 Not Found", 404)})
+    assert prov.fetch_job_log(prov.fetch_run("1").jobs[0]) is None
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    [
+        (GitlabGetError("403 Forbidden", 403), "HTTP 403"),
+        (GitlabGetError("500", 500), "HTTP 500"),
+        (ConnectionError("refused: http://gl/secret-path"), "ConnectionError"),
+    ],
+)
+def test_a_trace_that_could_not_be_read_is_unavailable_not_missing(error, message):
+    """Access denied or an outage says nothing about the job; it must not read as "never got a runner"."""
+    prov = _provider([_pipeline_job(id=1, name="x")], {1: error})
+    with pytest.raises(LogUnavailable) as err:
+        prov.fetch_job_log(prov.fetch_run("1").jobs[0])
+    assert str(err.value) == message
 
 
 def test_default_base_url_is_public_host():

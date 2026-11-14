@@ -6,10 +6,15 @@ The full run through the GitHub path proves core needed no changes for it.
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
+import requests
+from github import GithubException
+
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.attribution import attribute
 from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.phases import assign_phases
+from ci_doctor.core.ports import LogUnavailable
 from ci_doctor.core.select import select_failed_jobs
 from ci_doctor.providers.github.provider import GitHubProvider
 from ci_doctor.providers.github.reasons import to_failure_reason
@@ -177,3 +182,81 @@ def test_origin_keeps_nested_gitlab_groups(monkeypatch):
     )
     assert git_origin.origin_repo("CI_PROJECT_ID") == "group/sub/project"
     git_origin.origin_repo.cache_clear()
+
+
+def _refused(status, message=None):
+    """What PyGithub raises when GitHub answers the log request with `status`."""
+
+    def logs_url():
+        raise GithubException(status, {"message": message} if message else None, {})
+
+    return logs_url
+
+
+def _log_of(monkeypatch, logs_url, response=None):
+    """Fetch the log of one failed job whose `logs_url` is given; `response` answers the blob request."""
+    job = _job(id=11, name="build", status="completed", conclusion="failure", logs_url=logs_url)
+    provider = GitHubProvider(
+        load_config(environ={}), client=_fake_client([job]), environ={"GITHUB_REPOSITORY": "acme/app"}
+    )
+    monkeypatch.setattr("ci_doctor.providers.github.provider.requests.get", lambda *a, **kw: response)
+    return provider.fetch_job_log(provider.fetch_run("999").jobs[0])
+
+
+def _blob(status, text=""):
+    """A response from the log's short-lived signed URL."""
+    resp = requests.Response()
+    resp.status_code, resp._content = status, text.encode()
+    resp.url = "https://blob.example/log?sig=secret"
+    return resp
+
+
+def test_a_log_is_returned_as_text(monkeypatch):
+    """The happy path: the redirect target's body is the log."""
+    assert _log_of(monkeypatch, lambda: "https://blob.example/log", _blob(200, "boom\n")) == "boom\n"
+
+
+@pytest.mark.parametrize("status", [404, 410])
+def test_a_missing_or_expired_log_is_none(monkeypatch, status):
+    """A job that never started wrote no log, and an old one expired: both are valid data, not errors."""
+    assert _log_of(monkeypatch, _refused(status)) is None
+    assert _log_of(monkeypatch, lambda: "https://blob.example/log", _blob(status)) is None
+    assert _log_of(monkeypatch, lambda: "https://blob.example/log", _blob(200, "")) is None
+
+
+def test_a_refused_log_is_unavailable_not_missing(monkeypatch):
+    """A 403 says nothing about the job: reading it as "no log" made attribution blame a missing runner."""
+    with pytest.raises(LogUnavailable, match="HTTP 403: Must have admin rights"):
+        _log_of(monkeypatch, _refused(403, "Must have admin rights to Repository."))
+
+
+def test_a_failed_blob_download_is_unavailable_and_never_names_the_signed_url(monkeypatch):
+    """The blob URL is short-lived and signed; it must not reach a report or an agent."""
+    with pytest.raises(LogUnavailable) as err:
+        _log_of(monkeypatch, lambda: "https://blob.example/log", _blob(500))
+    assert str(err.value) == "HTTP 500" and "secret" not in str(err.value)
+
+
+def test_a_timeout_is_unavailable(monkeypatch):
+    """No response at all: the message is the error's type, since there is no status to give."""
+
+    def slow(*args, **kwargs):
+        raise requests.Timeout("read timed out: https://blob.example/log?sig=secret")
+
+    job = _job(id=11, name="build", status="completed", conclusion="failure", logs_url=lambda: "u")
+    provider = GitHubProvider(
+        load_config(environ={}), client=_fake_client([job]), environ={"GITHUB_REPOSITORY": "acme/app"}
+    )
+    monkeypatch.setattr("ci_doctor.providers.github.provider.requests.get", slow)
+    with pytest.raises(LogUnavailable) as err:
+        provider.fetch_job_log(provider.fetch_run("999").jobs[0])
+    assert str(err.value) == "Timeout"
+
+
+def test_a_job_outside_the_fetched_run_is_unavailable():
+    """Asking for a log the run never listed is a caller's mistake, not a job with no log."""
+    provider = GitHubProvider(
+        load_config(environ={}), client=_fake_client([]), environ={"GITHUB_REPOSITORY": "acme/app"}
+    )
+    with pytest.raises(LogUnavailable, match="not in the run"):
+        provider.fetch_job_log(Job(id="99", name="x", status="failed"))

@@ -12,7 +12,7 @@ count, and ``_last_error_section`` for where it bites.
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from ci_doctor.core.models import (
     SYNTHETIC_SECTIONS,
@@ -86,7 +86,27 @@ class Attribution:
 
 
 def attribute(job: Job, sections: list[Section]) -> Attribution:
-    """Decide which phase a job failed in.
+    """Decide which phase a job failed in, and how far to trust it.
+
+    A job whose log could not be read has no evidence to check the verdict against,
+    so it is never better than low confidence: the provider's own reason may still
+    name the phase, but nothing here confirms it.
+
+    Args:
+        job: The failed job, with its raw log attached.
+        sections: The job's segmented sections, phases already assigned.
+
+    Returns:
+        The verdict, tagged with the `rule_id` that produced it.
+    """
+    verdict = _ladder(job, sections)
+    if job.log_error is not None and verdict.confidence != "low":
+        return replace(verdict, confidence="low")
+    return verdict
+
+
+def _ladder(job: Job, sections: list[Section]) -> Attribution:
+    """Walk the rules, first match wins.
 
     A pure function — no I/O, no network, no clock (invariant #7) — so the same
     log always yields the same verdict. The rules are a first-match-wins ladder:
@@ -102,8 +122,9 @@ def attribute(job: Job, sections: list[Section]) -> Attribution:
     """
     trailer = _find(sections, TRAILER)
 
-    # Rule 1 — no / empty log => the job never really ran.
-    if not job.log or not job.log.strip():
+    # Rule 1 — no / empty log => the job never really ran. A log that could not be
+    # *read* is not an empty one: it says nothing, so the ladder carries on without it.
+    if job.log_error is None and (not job.log or not job.log.strip()):
         return Attribution(Phase.PROVISION, FailureReason.NO_RUNNER, "high", None, "empty_log_no_runner")
 
     reason = job.failure_reason

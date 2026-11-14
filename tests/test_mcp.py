@@ -14,7 +14,8 @@ import yaml
 from mcp import Client
 
 from ci_doctor.config.files import ConfigFiles
-from ci_doctor.core.models import Job, Run
+from ci_doctor.core.models import FailureReason, Job, Run
+from ci_doctor.core.ports import LogUnavailable
 from ci_doctor.mcp.server import build
 from tests import support
 
@@ -63,19 +64,30 @@ def _error(config, tool, **arguments):
     return result.content[0].text
 
 
-def _wire(monkeypatch, project, provider="github", names="ab"):
-    """Serve a run whose jobs all failed with `PYTEST_FAILURE`, framed as `provider` frames its logs."""
+def _wire(monkeypatch, project, provider="github", names="ab", unreadable=None):
+    """Serve a run whose jobs all failed with `PYTEST_FAILURE`, framed as `provider` frames its logs.
+
+    With `unreadable`, fetching a job's log fails with that message instead.
+    """
     project.write_text(project.read_text() + f"ci: {provider}\n")
 
     class Provider:
         def fetch_run(self, run_ref):
             jobs = [
-                Job(id=n, name=n, status="failed", started_at=f"2024-01-01T00:0{i}:00Z")
+                Job(
+                    id=n,
+                    name=n,
+                    status="failed",
+                    failure_reason=FailureReason.SCRIPT_FAILURE,
+                    started_at=f"2024-01-01T00:0{i}:00Z",
+                )
                 for i, n in enumerate(names)
             ]
             return Run(id=run_ref, jobs=jobs)
 
         def fetch_job_log(self, job):
+            if unreadable:
+                raise LogUnavailable(unreadable)
             return support.script_log(provider, PYTEST_FAILURE)
 
     monkeypatch.setattr("ci_doctor.service.analyze.make_ci_provider", lambda cfg: Provider())
@@ -90,6 +102,15 @@ def test_analyze_run_briefs_the_job_for_the_agent_to_explain(project, monkeypatc
     assert "E   assert 1 == 2" in brief["excerpt"]
     assert [m["id"] for m in brief["matchers"]] == ["fx/pytest"]
     assert "Do NOT dispute" in brief["instructions"]
+
+
+def test_a_brief_says_when_the_log_could_not_be_read(project, monkeypatch):
+    """The agent must not be handed an empty excerpt and a confident phase as if the job had printed nothing."""
+    _wire(monkeypatch, project, names="a", unreadable=f"HTTP 403: Must have admin rights, {SECRET}")
+    [brief] = _result(project, "analyze_run", run_id="42")
+    assert brief["log_error"].startswith("HTTP 403: Must have admin rights")
+    assert SECRET not in brief["log_error"]
+    assert (brief["excerpt"], brief["confidence"], brief["failure_phase"]) == ("", "low", "script")
 
 
 def test_a_brief_never_carries_an_unredacted_secret(project, monkeypatch):
