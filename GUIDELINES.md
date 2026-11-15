@@ -28,7 +28,7 @@ ci_doctor/
   mcp/              the MCP server: the same services as tools, for a coding agent (§2.4)
   harness/          `ci-doctor mcp install`: one module per coding agent in targets/ (§2.4)
   service/          what each command or tool does, with no terminal in it: analyze,
-                    brief, deliver, matchers, setup, report
+                    deliver, matchers, setup, report
   config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit,
                     files (which files are read, which one is edited)
   core/             provider-neutral: models, ports, attribution (pure), denoise,
@@ -37,7 +37,8 @@ ci_doctor/
                     (spec → Plan), run/ (Plan × lines → windows), select/ (evidence)
   lib/              shared low-level helpers, a leaf: regex.py (RE2 for every user-
                     or matcher-supplied regex), files.py (atomic writes)
-  llm/              Report schema, prompt templates, backends
+  llm/              the brief (what a model is shown), Report schema, prompt templates,
+                    backends
   render/           terminal (rich), markdown
   matchers/         matcher files: formats (models), validate, and testing a matcher
                     (examine, verify, schema, logs)
@@ -145,10 +146,17 @@ surface like `cli/`: a tool parses, calls `service/` and returns; `tests/test_la
 pins that it imports no `cli`, typer, click or rich, and that nothing else imports
 the MCP SDK.
 
-- **The agent is the model.** `analyze_run` returns a **brief** per failed job
-  (`service/brief.py`): the settled phase, the budgeted excerpt, the matchers behind
-  it and the analyst instructions from `llm/prompts/analyze.system.txt`. The agent
-  writes the explanation; `llm:` is ignored on this path (invariant #12).
+- **The agent is the model.** `service/analyze.py` has two stages. *Diagnose*
+  (`diagnose_run`) is deterministic and ends in a **brief** per failed job
+  (`llm/brief.py`): the settled phase, the budgeted excerpt, the matchers behind it and
+  the analyst instructions, redacted. *Explain* turns a brief into a `Report`.
+  `ci-doctor analyze` runs both and renders its prompt from the brief; the `analyze_run`
+  tool runs only the first and returns the brief, so the agent and the configured LLM
+  are shown the same data. No client is built on this path (invariant #12).
+- **A new model step follows the same shape:** an input model built and redacted in one
+  place, a prompt template rendered from that model alone, and an output schema. The
+  CLI runs the step with the configured LLM; an MCP tool returns the input model.
+  Neither `service/` nor `llm/` asks which surface called it.
 - **A tool is a nested function in `build`**, its docstring the description the agent
   reads, its return annotation the output schema. Wrap it in `_reported` so a failure
   comes back as a message, and give it the annotation that says whether it writes.

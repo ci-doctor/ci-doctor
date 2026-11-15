@@ -15,7 +15,9 @@ from ci_doctor.core.attribution import attribute
 from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.engine import MatcherV1, Output, Role, compile_plan
-from ci_doctor.llm.report import _packs, _render_prompt, produce_report
+from ci_doctor.llm import brief as brief_module
+from ci_doctor.llm.brief import FiredMatcher, build_brief, render_prompt
+from ci_doctor.llm.report import produce_report
 from tests import support
 
 _GOOD = {
@@ -70,6 +72,17 @@ def _pipeline(log, reason=FailureReason.SCRIPT_FAILURE, overrides=None, provider
     attr = attribute(job, job.sections)
     bundle = build_bundle(job, attr, job.sections, cfg, compile_plan(matchers or [], cfg.matchers.exclude))
     return job, attr, bundle, cfg
+
+
+def _render_prompt(job, attr, bundle):
+    """The prompt `produce_report` sends: the job's brief, rendered."""
+    return render_prompt(build_brief(job, attr, bundle, load_config(environ={}), environ={}))
+
+
+def _packs(bundle):
+    """The prompt's matcher section for a bundle."""
+    fired = [FiredMatcher(id=m.id, role=m.role, description=m.description or "") for m in bundle.matchers]
+    return brief_module._packs(fired)
 
 
 _LLM_ON = {"llm": {"model": "test-model", "api_base": "http://fake"}}
@@ -305,9 +318,6 @@ def test_the_system_prompt_explains_every_role(role):
 
 def test_the_prompt_names_the_output_that_fired_not_the_matcher():
     """A schema 1 matcher with two outputs: only the one in the evidence reaches the prompt, by its dotted id."""
-    from ci_doctor.engine import MatcherV1
-    from ci_doctor.llm.report import _packs
-
     desc = "An output description long enough for the rules."
     ruff = MatcherV1.model_validate(
         {
@@ -325,3 +335,35 @@ def test_the_prompt_names_the_output_that_fired_not_the_matcher():
     _, _, bundle, _ = _pipeline(log, matchers=[ruff])
     assert [m.id for m in bundle.matchers] == ["fx/ruff.check"]
     assert '"id": "fx/ruff.check", "role": "tool"' in _packs(bundle)
+
+
+def test_the_prompt_is_filled_from_the_brief_alone():
+    """Every placeholder in the templates has a value, so no `$name` reaches a model unfilled."""
+    job, attr, bundle, _cfg = _pipeline(_SIMPLE_LOG)
+    assert "$" not in _render_prompt(job, attr, bundle).replace("$ pytest", "")
+
+
+def test_the_brief_carries_everything_the_prompt_says():
+    """An agent reading the brief and the configured model reading the prompt get the same facts."""
+    job, attr, bundle, cfg = _pipeline(_INHOUSE_LOG, matchers=[MatcherV1.model_validate(_INHOUSE_PACK)])
+    job.stage, job.duration, job.needs, job.raw_failure_reason = "deploy", 12.5, ["build"], "script_failure"
+    brief = build_brief(job, attr, bundle, cfg, environ={})
+    prompt = render_prompt(brief)
+    for said in ("build", "deploy", "12.5", "script_failure", brief.excerpt, brief.instructions):
+        assert said in prompt
+    assert (brief.stage, brief.duration, brief.needs, brief.raw_reason) == (
+        "deploy",
+        12.5,
+        ["build"],
+        "script_failure",
+    )
+
+
+def test_every_text_field_of_a_brief_is_redacted():
+    """Invariant #5: the brief is the one thing handed to a model, so a secret in any field is scrubbed."""
+    secret = "glpat-" + "a" * 20
+    job, attr, bundle, cfg = _pipeline(_INHOUSE_LOG.replace("E-LOCK prod", f"E-LOCK {secret} prod"))
+    job.name, job.stage, job.needs, job.raw_failure_reason = (f"n {secret}", f"s {secret}", [secret], secret)
+    brief = build_brief(job, attr, bundle, cfg, environ={})
+    assert secret not in brief.model_dump_json()
+    assert secret not in render_prompt(brief)

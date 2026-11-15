@@ -15,8 +15,10 @@ from ci_doctor.config.files import ConfigFiles
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.redact import redact_text
 from ci_doctor.errors import SetupError
+from ci_doctor.llm.brief import Brief
+from ci_doctor.registry.resolve import load as load_matchers
 from ci_doctor.service import matchers
-from ci_doctor.service.brief import Brief, run_briefs
+from ci_doctor.service.analyze import diagnose_run
 from ci_doctor.service.setup import validate
 
 _P = ParamSpec("_P")
@@ -95,7 +97,8 @@ def build(files: ConfigFiles) -> MCPServer:
 
         Pass job_id to look at a single job. Empty when the run has no failed job.
         """
-        return run_briefs(run_id, load_config(files.paths()), job_id)
+        cfg = load_config(files.paths())
+        return [d.brief for d in diagnose_run(run_id, cfg, load_matchers(cfg.matchers), job_id)]
 
     @server.tool(annotations=_READ_REMOTE)
     @_reported

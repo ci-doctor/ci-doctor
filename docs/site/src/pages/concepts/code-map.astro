@@ -17,7 +17,7 @@ const packages = [
             {
                 path: "service/",
                 entry: "analyze_run()",
-                role: "What each command does, with no terminal in it: `analyze` (segment → assign phases → attribute → build bundle → report, over a live run or a log file), `deliver` (artifacts, MR note), `setup` (the dry run).",
+                role: "What each command does, with no terminal in it: `analyze` (over a live run or a log file, in two stages: diagnose is segment → assign phases → attribute → build bundle → brief and calls no model, explain is brief → report; the MCP server runs only the first), `deliver` (artifacts, MR note), `setup` (the dry run).",
             },
             {
                 path: "lib/",

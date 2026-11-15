@@ -12,8 +12,6 @@ never change the pipeline outcome.
 import json
 import logging
 from collections.abc import Mapping
-from importlib import resources
-from string import Template
 
 from pydantic import ValidationError
 
@@ -22,7 +20,8 @@ from ci_doctor.core.analyze import EvidenceBundle
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.ports import LLMClient
-from ci_doctor.core.redact import redact_report, redact_text
+from ci_doctor.core.redact import redact_report
+from ci_doctor.llm.brief import Brief, build_brief, render_prompt
 from ci_doctor.llm.schema import Category, Evidence, RemediationStep, Report
 
 log = logging.getLogger("ci_doctor.llm")
@@ -94,6 +93,7 @@ def produce_report(
     bundle: EvidenceBundle,
     cfg: Config,
     *,
+    brief: Brief | None = None,
     client: LLMClient | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> Report:
@@ -108,6 +108,7 @@ def produce_report(
         attr: The classifier's verdict. The LLM may not overturn its phase.
         bundle: The budgeted evidence.
         cfg: Config supplying the LLM and redaction settings.
+        brief: The job's brief, which the prompt is rendered from. Built here when None.
         client: Pre-built LLM client, used by tests to avoid a real backend.
         environ: Environment for redaction and API keys. Defaults to os.environ.
 
@@ -133,7 +134,8 @@ def produce_report(
             log.info(f"LLM backend {cfg.llm.backend} unavailable ({exc}); deterministic report")
             return redact_report(deterministic_report(job, attr, bundle), cfg.redaction, environ)
 
-    prompt = redact_text(_render_prompt(job, attr, bundle), cfg.redaction, environ)
+    # The brief is redacted where it is built, so the prompt is too (invariant #5).
+    prompt = render_prompt(brief or build_brief(job, attr, bundle, cfg, environ))
     log.info(
         f"job {job.name}: calling LLM backend={cfg.llm.backend} model={cfg.llm.model} (may take a while)"
     )
@@ -287,88 +289,3 @@ def _handoff(job: Job, attr: Attribution, excerpt: str) -> str:
         f"Relevant log excerpt:\n{excerpt}\n\n"
         "Diagnose the root cause and implement a fix. Do not change unrelated code."
     )
-
-
-def instructions(attr: Attribution) -> str:
-    """The analyst's standing orders for one job: the phase is settled, explain within it.
-
-    The system half of the prompt, and what an agent reading a brief is handed in
-    its place (`service/brief.py`), so both are told the same thing.
-
-    Args:
-        attr: The classifier's verdict, stated as *settled*.
-
-    Returns:
-        The filled system template.
-    """
-    return Template(_load("analyze.system.txt")).safe_substitute(
-        phase=attr.phase,
-        rule_id=attr.rule_id,
-        confidence=attr.confidence,
-    )
-
-
-def _render_prompt(job: Job, attr: Attribution, bundle: EvidenceBundle) -> str:
-    """Fill the system and user prompt templates.
-
-    Invariant #8: prompt text lives in `llm/prompts/*.txt`, never inline here.
-    The reply schema is no longer rendered into this text — `PromptedOutput`
-    renders its own schema instructions when it builds the model request.
-
-    Args:
-        job: The failed job.
-        attr: The classifier's verdict, handed to the model as *settled*.
-        bundle: The budgeted evidence.
-
-    Returns:
-        The combined prompt. Still unredacted — the caller scrubs it before it
-        leaves the process.
-    """
-    system = instructions(attr)
-    user = Template(_load("analyze.user.txt")).safe_substitute(
-        job=job.name,
-        stage=job.stage or "?",
-        failure_reason=str(job.failure_reason),
-        raw_failure_reason=job.raw_failure_reason or "",
-        duration=job.duration,
-        needs=", ".join(job.needs) or "none",
-        terminal=attr.terminal_evidence or "n/a",
-        log_error=job.log_error or "none",
-        phase=attr.phase,
-        secondary=", ".join(str(p) for p in attr.secondary_phases) or "none",
-        excerpt="\n".join(bundle.blamed_lines),
-        packs=_packs(bundle),
-    )
-    return system + "\n\n---\n\n" + user
-
-
-def _packs(bundle: EvidenceBundle) -> str:
-    """One JSON object per matcher behind the excerpt: its id, role and author's description.
-
-    A description comes from a registry, i.e. from someone else. JSON-quoting it
-    keeps it inside its own string, so it can't close the prompt's matcher section
-    or open a new one, whatever quotes, dashes or markers it carries.
-
-    Args:
-        bundle: The budgeted evidence.
-
-    Returns:
-        The lines for the prompt's matcher section, or a note that no matcher fired.
-    """
-    lines = [
-        json.dumps({"id": m.id, "role": m.role, "description": m.description or ""}, ensure_ascii=False)
-        for m in bundle.matchers
-    ]
-    return "\n".join(lines) or "none — no pack matched; the excerpt is the log's tail, or all of it"
-
-
-def _load(name: str) -> str:
-    """Read a packaged prompt template.
-
-    Args:
-        name: File name under `llm/prompts/`, e.g. "analyze.system.txt".
-
-    Returns:
-        The template text.
-    """
-    return resources.files("ci_doctor.llm.prompts").joinpath(name).read_text()

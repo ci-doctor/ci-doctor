@@ -104,6 +104,21 @@ def test_analyze_run_briefs_the_job_for_the_agent_to_explain(project, monkeypatc
     assert "Do NOT dispute" in brief["instructions"]
 
 
+def test_analyze_run_builds_no_llm_client_whatever_the_config_says(project, monkeypatch):
+    """Invariant #12: the agent is the model, so an enabled, configured `llm:` is never used."""
+
+    def no_client(*args, **kwargs):
+        raise AssertionError("the MCP server built an LLM client")
+
+    monkeypatch.setattr("ci_doctor.llm.backends.make_client", no_client)
+    monkeypatch.setattr("ci_doctor.llm.report.client_for_run", no_client)
+    monkeypatch.setattr("ci_doctor.llm.report.produce_report", no_client)
+    project.write_text(project.read_text() + "llm: {enabled: true, model: m, api_base: http://stub}\n")
+    _wire(monkeypatch, project, names="a")
+    [brief] = _result(project, "analyze_run", run_id="42")
+    assert brief["failure_phase"] == "script"
+
+
 def test_a_brief_says_when_the_log_could_not_be_read(project, monkeypatch):
     """The agent must not be handed an empty excerpt and a confident phase as if the job had printed nothing."""
     _wire(monkeypatch, project, names="a", unreadable=f"HTTP 403: Must have admin rights, {SECRET}")
