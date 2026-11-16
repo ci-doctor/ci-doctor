@@ -1,11 +1,10 @@
-"""The brief: everything a model is shown about one failed job, built and redacted once.
+"""The brief: everything known about one failed job, built and redacted once.
 
-`analyze` renders it into the prompt for the configured LLM; the MCP server hands
-it to the agent as it is. Both read the same data because there is no other path
-to a model (GUIDELINES §2.4).
+Plain data, for whoever explains the failure. The MCP server hands it to the agent
+as it is; `analyze` turns it into a prompt for the configured LLM (`llm/report.py`).
+The brief does not know which one reads it (GUIDELINES §2.4).
 """
 
-import json
 from collections.abc import Mapping
 from importlib import resources
 from string import Template
@@ -116,52 +115,6 @@ def instructions(attr: Attribution) -> str:
         rule_id=attr.rule_id,
         confidence=attr.confidence,
     )
-
-
-def render_prompt(brief: Brief) -> str:
-    """The brief as the prompt for an LLM of our own: its instructions, then its data.
-
-    Reads nothing but the brief, so the configured model sees what an agent holding
-    the brief sees. Templates live in `llm/prompts/` (invariant #8).
-
-    Args:
-        brief: The job's brief, already redacted.
-
-    Returns:
-        The combined prompt.
-    """
-    user = Template(_load("analyze.user.txt")).safe_substitute(
-        job=brief.job_name,
-        stage=brief.stage or "?",
-        failure_reason=str(brief.reason),
-        raw_failure_reason=brief.raw_reason,
-        duration=brief.duration,
-        needs=", ".join(brief.needs) or "none",
-        terminal=brief.terminal_evidence or "n/a",
-        log_error=brief.log_error or "none",
-        phase=brief.failure_phase,
-        secondary=", ".join(str(p) for p in brief.secondary_phases) or "none",
-        excerpt=brief.excerpt,
-        packs=_packs(brief.matchers),
-    )
-    return brief.instructions + "\n\n---\n\n" + user
-
-
-def _packs(matchers: list[FiredMatcher]) -> str:
-    """One JSON object per matcher behind the excerpt: its id, role and author's description.
-
-    A description comes from a registry, i.e. from someone else. JSON-quoting it
-    keeps it inside its own string, so it can't close the prompt's matcher section
-    or open a new one, whatever quotes, dashes or markers it carries.
-
-    Args:
-        matchers: The brief's matchers.
-
-    Returns:
-        The lines for the prompt's matcher section, or a note that no matcher fired.
-    """
-    lines = [json.dumps(m.model_dump(), ensure_ascii=False) for m in matchers]
-    return "\n".join(lines) or "none — no pack matched; the excerpt is the log's tail, or all of it"
 
 
 def _load(name: str) -> str:

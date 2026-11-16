@@ -22,9 +22,9 @@ from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter, LogUnavailable
 from ci_doctor.engine import Plan, Spec, compile_plan
-from ci_doctor.llm.brief import Brief, build_brief
 from ci_doctor.llm.schema import Report
 from ci_doctor.providers.registry import make_ci_provider, make_segmenter, segmenter_for_log
+from ci_doctor.service.brief import Brief, build_brief
 
 log = logging.getLogger("ci_doctor.service.analyze")
 
@@ -112,7 +112,7 @@ def explain(diagnosis: Diagnosis, cfg: Config, client: LLMClient | None = None) 
     from ci_doctor.llm.report import produce_report
 
     job, attr, bundle, brief = diagnosis
-    report = produce_report(job, attr, bundle, cfg, brief=brief, client=client)
+    report = produce_report(job, attr, bundle, cfg, brief, client=client)
     log.debug(
         f"job {job.name}: report category={report.category} confidence={report.confidence} infra={report.is_infra_not_code}",
     )

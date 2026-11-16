@@ -15,9 +15,9 @@ from ci_doctor.core.attribution import attribute
 from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.engine import MatcherV1, Output, Role, compile_plan
-from ci_doctor.llm import brief as brief_module
-from ci_doctor.llm.brief import FiredMatcher, build_brief, render_prompt
+from ci_doctor.llm import report as report_module
 from ci_doctor.llm.report import produce_report
+from ci_doctor.service.brief import FiredMatcher, build_brief
 from tests import support
 
 _GOOD = {
@@ -74,6 +74,11 @@ def _pipeline(log, reason=FailureReason.SCRIPT_FAILURE, overrides=None, provider
     return job, attr, bundle, cfg
 
 
+def render_prompt(brief):
+    """The prompt `produce_report` sends for a brief."""
+    return report_module._prompt(brief)
+
+
 def _render_prompt(job, attr, bundle):
     """The prompt `produce_report` sends: the job's brief, rendered."""
     return render_prompt(build_brief(job, attr, bundle, load_config(environ={}), environ={}))
@@ -82,7 +87,13 @@ def _render_prompt(job, attr, bundle):
 def _packs(bundle):
     """The prompt's matcher section for a bundle."""
     fired = [FiredMatcher(id=m.id, role=m.role, description=m.description or "") for m in bundle.matchers]
-    return brief_module._packs(fired)
+    return report_module._packs(fired)
+
+
+def _report(job, attr, bundle, cfg, **kwargs):
+    """`produce_report` with the job's brief built as `explain` builds it."""
+    brief = build_brief(job, attr, bundle, cfg, kwargs.get("environ"))
+    return produce_report(job, attr, bundle, cfg, brief, **kwargs)
 
 
 _LLM_ON = {"llm": {"model": "test-model", "api_base": "http://fake"}}
@@ -92,7 +103,7 @@ _SIMPLE_LOG = "section_start:1:step_script\n$ pytest\nE assert 1 == 2\nsection_e
 def test_deterministic_when_llm_disabled():
     """With the LLM off, the report is still complete and correctly phased."""
     job, attr, bundle, cfg = _pipeline(_SIMPLE_LOG, overrides={"llm": {"enabled": False}})
-    report = produce_report(job, attr, bundle, cfg)
+    report = _report(job, attr, bundle, cfg)
     assert report.failure_phase == "script"
     assert report.remediation  # templated remediation present
 
@@ -101,7 +112,7 @@ def test_llm_path_returns_validated_report():
     """A valid LLM reply is used directly, in a single call."""
     job, attr, bundle, cfg = _pipeline(_SIMPLE_LOG, overrides=_LLM_ON)
     client = FakeClient([_GOOD])
-    report = produce_report(job, attr, bundle, cfg, client=client)
+    report = _report(job, attr, bundle, cfg, client=client)
     assert report.summary == "unit tests failed on assert"
     assert client.calls == 1
 
@@ -115,7 +126,7 @@ def test_skip_llm_for_short_circuits_before_the_client():
     log = "section_start:1:prepare_executor\nnothing here\n"
     job, attr, bundle, cfg = _pipeline(log, reason=FailureReason.NO_RUNNER, overrides=_LLM_ON)
     client = FakeClient([_GOOD])
-    report = produce_report(job, attr, bundle, cfg, client=client)
+    report = _report(job, attr, bundle, cfg, client=client)
     assert client.calls == 0
     assert report.failure_phase == "provision"
     assert report.remediation  # templated remediation, not an empty shell
@@ -128,7 +139,7 @@ def test_skip_llm_for_can_be_emptied():
         log, reason=FailureReason.NO_RUNNER, overrides={**_LLM_ON, "analysis": {"skip_llm_for": []}}
     )
     client = FakeClient([_GOOD])
-    produce_report(job, attr, bundle, cfg, client=client)
+    _report(job, attr, bundle, cfg, client=client)
     assert client.calls == 1
 
 
@@ -144,7 +155,7 @@ def test_the_llm_cannot_overrule_the_attributed_phase():
         log, reason=FailureReason.NO_RUNNER, overrides={**_LLM_ON, "analysis": {"skip_llm_for": []}}
     )
     assert _GOOD["failure_phase"] == "script"  # the reply disagrees on purpose
-    report = produce_report(job, attr, bundle, cfg, client=FakeClient([_GOOD]))
+    report = _report(job, attr, bundle, cfg, client=FakeClient([_GOOD]))
     assert attr.phase == "provision"
     assert report.failure_phase == "provision"
     assert report.summary == _GOOD["summary"]  # only the phase is overruled
@@ -154,7 +165,7 @@ def test_invalid_reply_degrades_without_a_second_call_here():
     """An invalid reply degrades directly — the retry lives in the backend, not here."""
     job, attr, bundle, cfg = _pipeline(_SIMPLE_LOG, overrides=_LLM_ON)
     client = FakeClient([{"not": "a valid report"}, _GOOD])
-    report = produce_report(job, attr, bundle, cfg, client=client)
+    report = _report(job, attr, bundle, cfg, client=client)
     assert client.calls == 1  # no retry issued from report.py itself
     assert any("deterministic fallback" in f for f in report.contributing_factors)
 
@@ -180,7 +191,7 @@ def test_deterministic_report_leaves_script_category_to_the_model(provider, outp
     """With no LLM, a script failure's category is 'unknown' — never guessed from the log."""
     log = support.script_log(provider, output)
     job, attr, bundle, cfg = _pipeline(log, reason=FailureReason.UNKNOWN, provider=provider)
-    report = produce_report(job, attr, bundle, cfg)  # deterministic
+    report = _report(job, attr, bundle, cfg)  # deterministic
     assert report.category == "unknown"
 
 
@@ -188,7 +199,7 @@ def test_degraded_fallback_on_llm_error():
     """A failed LLM call still yields a correct report, and says it degraded."""
     job, attr, bundle, cfg = _pipeline(_SIMPLE_LOG, overrides=_LLM_ON)
     client = FakeClient([RuntimeError("endpoint down")])
-    report = produce_report(job, attr, bundle, cfg, client=client)
+    report = _report(job, attr, bundle, cfg, client=client)
     assert report.failure_phase == "script"  # deterministic fallback still correct
     assert any("deterministic fallback" in f for f in report.contributing_factors)
 
@@ -206,7 +217,7 @@ def test_secrets_roundtrip_no_leak():
     )
     env = {"CI_DEPLOY_SECRET": "s3cr3t-value-xyz"}
     job, attr, bundle, cfg = _pipeline(log, reason=FailureReason.SCRIPT_FAILURE)
-    report = produce_report(job, attr, bundle, cfg, environ=env)  # llm unconfigured -> deterministic
+    report = _report(job, attr, bundle, cfg, environ=env)  # llm unconfigured -> deterministic
 
     blob = report.model_dump_json() + report.handoff_prompt
     for secret in ("glpat-ABCDEFGHIJKLMNOPQRSTUVWX", "hunter2", "s3cr3t-value-xyz"):
@@ -304,7 +315,7 @@ def test_a_secret_in_a_description_is_redacted_in_the_prompt():
         _INHOUSE_LOG, overrides=_LLM_ON, matchers=[MatcherV1.model_validate(pack)]
     )
     client = FakeClient([_GOOD])
-    produce_report(job, attr, bundle, cfg, client=client)
+    _report(job, attr, bundle, cfg, client=client)
     assert "glpat-abcdefghij0123456789" not in client.prompts[0]
     assert "[REDACTED:" in client.prompts[0]
 

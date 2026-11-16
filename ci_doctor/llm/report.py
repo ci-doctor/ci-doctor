@@ -12,6 +12,9 @@ never change the pipeline outcome.
 import json
 import logging
 from collections.abc import Mapping
+from importlib import resources
+from string import Template
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -21,8 +24,10 @@ from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.ports import LLMClient
 from ci_doctor.core.redact import redact_report
-from ci_doctor.llm.brief import Brief, build_brief, render_prompt
 from ci_doctor.llm.schema import Category, Evidence, RemediationStep, Report
+
+if TYPE_CHECKING:
+    from ci_doctor.service.brief import Brief, FiredMatcher
 
 log = logging.getLogger("ci_doctor.llm")
 
@@ -92,8 +97,8 @@ def produce_report(
     attr: Attribution,
     bundle: EvidenceBundle,
     cfg: Config,
+    brief: "Brief",
     *,
-    brief: Brief | None = None,
     client: LLMClient | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> Report:
@@ -108,7 +113,7 @@ def produce_report(
         attr: The classifier's verdict. The LLM may not overturn its phase.
         bundle: The budgeted evidence.
         cfg: Config supplying the LLM and redaction settings.
-        brief: The job's brief, which the prompt is rendered from. Built here when None.
+        brief: The job's brief, already redacted; the prompt is built from it alone.
         client: Pre-built LLM client, used by tests to avoid a real backend.
         environ: Environment for redaction and API keys. Defaults to os.environ.
 
@@ -135,7 +140,7 @@ def produce_report(
             return redact_report(deterministic_report(job, attr, bundle), cfg.redaction, environ)
 
     # The brief is redacted where it is built, so the prompt is too (invariant #5).
-    prompt = render_prompt(brief or build_brief(job, attr, bundle, cfg, environ))
+    prompt = _prompt(brief)
     log.info(
         f"job {job.name}: calling LLM backend={cfg.llm.backend} model={cfg.llm.model} (may take a while)"
     )
@@ -289,3 +294,61 @@ def _handoff(job: Job, attr: Attribution, excerpt: str) -> str:
         f"Relevant log excerpt:\n{excerpt}\n\n"
         "Diagnose the root cause and implement a fix. Do not change unrelated code."
     )
+
+
+def _prompt(brief: "Brief") -> str:
+    """Build the prompt for the configured LLM from a brief: its instructions, then its data.
+
+    Reads nothing but the brief, so the model sees what an agent holding the brief
+    sees. Templates live in `llm/prompts/` (invariant #8).
+
+    Args:
+        brief: The job's brief, already redacted.
+
+    Returns:
+        The combined prompt.
+    """
+    user = Template(_load("analyze.user.txt")).safe_substitute(
+        job=brief.job_name,
+        stage=brief.stage or "?",
+        failure_reason=str(brief.reason),
+        raw_failure_reason=brief.raw_reason,
+        duration=brief.duration,
+        needs=", ".join(brief.needs) or "none",
+        terminal=brief.terminal_evidence or "n/a",
+        log_error=brief.log_error or "none",
+        phase=brief.failure_phase,
+        secondary=", ".join(str(p) for p in brief.secondary_phases) or "none",
+        excerpt=brief.excerpt,
+        packs=_packs(brief.matchers),
+    )
+    return brief.instructions + "\n\n---\n\n" + user
+
+
+def _packs(matchers: "list[FiredMatcher]") -> str:
+    """One JSON object per matcher behind the excerpt: its id, role and author's description.
+
+    A description comes from a registry, i.e. from someone else. JSON-quoting it
+    keeps it inside its own string, so it can't close the prompt's matcher section
+    or open a new one, whatever quotes, dashes or markers it carries.
+
+    Args:
+        matchers: The brief's matchers.
+
+    Returns:
+        The lines for the prompt's matcher section, or a note that no matcher fired.
+    """
+    lines = [json.dumps(m.model_dump(), ensure_ascii=False) for m in matchers]
+    return "\n".join(lines) or "none — no pack matched; the excerpt is the log's tail, or all of it"
+
+
+def _load(name: str) -> str:
+    """Read a packaged prompt template.
+
+    Args:
+        name: File name under `llm/prompts/`, e.g. "analyze.user.txt".
+
+    Returns:
+        The template text.
+    """
+    return resources.files("ci_doctor.llm.prompts").joinpath(name).read_text()
