@@ -75,7 +75,7 @@ ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
 const mcpInstall = `ci-doctor mcp [--project DIR]   # the server itself, which agents start
 ci-doctor agent install [--target auto|all|claude,cursor,...] [--location local|global]
                         [--no-permissions] [--dry-run]
-ci-doctor agent uninstall [--target ...] [--location ...] [--yes]`;
+ci-doctor agent uninstall [--target ...] [--location ...]`;
 
 const verbose = `ci-doctor -v analyze failing-job.log
 
@@ -260,7 +260,9 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         flags, or from a script, it writes without asking; <code>--dry-run</code> shows
         what it would write first.
         <code>agent uninstall</code> removes ci-doctor's entries and any container they
-        leave empty; an agent's JSON config file is never deleted. A file it cannot edit
+        leave empty; an agent's JSON config file is never deleted. Run with no flags in a
+        terminal, it lists the files and asks first; with flags, or from a script, it
+        removes without asking. A file it cannot edit
         safely is left alone, and the config is printed to add by hand.
     </p>
     <Code code={mcpInstall} lang="text" theme="github-dark" />

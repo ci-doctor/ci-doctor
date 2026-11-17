@@ -293,6 +293,8 @@ parametrized over `support.PROVIDERS` then covers the format.
 | Terminal/markdown output | `test_render.py` |
 | End-to-end offline run | `test_offline_pipeline.py` |
 | An MCP tool | `test_mcp.py`, through the SDK's in-memory client |
+| `agent install` / `uninstall` | `test_harness.py`, in a fake `HOME` |
+| A question the CLI asks | `test_tui.py`, typed through the `keys` fixture |
 
 ## 5. Cookbook
 
