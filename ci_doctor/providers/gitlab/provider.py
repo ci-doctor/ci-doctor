@@ -1,6 +1,6 @@
 """GitLab CI adapter over GitLab's REST API.
 
-Calls four endpoints (the pipeline, its jobs, a job's trace, MR notes) through
+Calls five endpoints (the pipeline list, a pipeline, its jobs, a job's trace, MR notes) through
 `api_client` and maps the JSON onto the domain model. Works with any instance
 through `gitlab.base_url`. Fields are read with defaults, because older instances
 omit some.
@@ -9,13 +9,24 @@ omit some.
 import logging
 import os
 from collections.abc import Mapping
+from itertools import islice
 from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 from ci_doctor.config.schemas import Config
-from ci_doctor.core.models import FailureReason, Job, MergeRequestRef, Run, RunnerInfo
+from ci_doctor.core.models import (
+    FailureReason,
+    Job,
+    MergeRequestRef,
+    Run,
+    RunEvent,
+    RunFilter,
+    RunnerInfo,
+    RunStatus,
+    RunSummary,
+)
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.errors import LogUnavailable
 from ci_doctor.providers.api_client import ApiClient, ApiError, tls_verify
@@ -24,6 +35,47 @@ from ci_doctor.providers.gitlab.reasons import to_failure_reason
 from ci_doctor.providers.tokens import read_token
 
 log = logging.getLogger("ci_doctor.gitlab")
+
+
+#: A filter's status -> GitLab's `status` query value. `pending` asks for `pending`
+#: only; GitLab's other waiting states (`created`, `manual`, ...) still list as pending.
+_STATUS_QUERY = {
+    RunStatus.FAILED: "failed",
+    RunStatus.SUCCESS: "success",
+    RunStatus.RUNNING: "running",
+    RunStatus.PENDING: "pending",
+    RunStatus.CANCELLED: "canceled",
+    RunStatus.SKIPPED: "skipped",
+}
+#: A pipeline's status -> the neutral status.
+_PIPELINE_STATUS = {
+    "failed": RunStatus.FAILED,
+    "success": RunStatus.SUCCESS,
+    "running": RunStatus.RUNNING,
+    "canceled": RunStatus.CANCELLED,
+    "canceling": RunStatus.CANCELLED,
+    "skipped": RunStatus.SKIPPED,
+    **dict.fromkeys(
+        (
+            "created",
+            "waiting_for_resource",
+            "preparing",
+            "waiting_for_callback",
+            "pending",
+            "manual",
+            "scheduled",
+        ),
+        RunStatus.PENDING,
+    ),
+}
+#: The neutral event -> GitLab's `source` value, and back.
+_SOURCE_QUERY = {
+    RunEvent.PUSH: "push",
+    RunEvent.PULL_REQUEST: "merge_request_event",
+    RunEvent.SCHEDULE: "schedule",
+    RunEvent.MANUAL: "web",
+}
+_EVENT = {**{v: k for k, v in _SOURCE_QUERY.items()}, "api": RunEvent.MANUAL}
 
 
 class GitLabProvider(CIProvider, SCMProvider):
@@ -153,6 +205,50 @@ class GitLabProvider(CIProvider, SCMProvider):
             raise LogUnavailable(err.detail) from None
         log.debug(f"job {job.id} trace: {len(text)} chars")
         return text or None
+
+    def list_runs(self, run_filter: RunFilter) -> list[RunSummary]:
+        """List the project's pipelines, newest first.
+
+        Args:
+            run_filter: What to keep.
+
+        Returns:
+            At most `run_filter.limit` pipelines. Pages stop once there are enough.
+        """
+        query: dict[str, str | int] = {"per_page": min(run_filter.limit, 100)}
+        if run_filter.status is not None:
+            query["status"] = _STATUS_QUERY[run_filter.status]
+        if run_filter.event is not None:
+            query["source"] = _SOURCE_QUERY[run_filter.event]
+        for key, value in (
+            ("ref", run_filter.branch),
+            ("sha", run_filter.sha),
+            ("username", run_filter.actor),
+            ("created_after", run_filter.since),
+            ("created_before", run_filter.until),
+        ):
+            if value:
+                query[key] = value
+        pipelines = self.api.paginate(f"{self._project()}/pipelines", key=None, **query)
+        return [self._to_summary(p) for p in islice(pipelines, run_filter.limit)]
+
+    @staticmethod
+    def _to_summary(pipeline: dict[str, Any]) -> RunSummary:
+        """Map one pipeline onto a summary. The list carries no user or commit title."""
+        status = pipeline.get("status") or ""
+        user = pipeline.get("user") or {}
+        return RunSummary(
+            id=str(pipeline["id"]),
+            status=_PIPELINE_STATUS.get(status, RunStatus.UNKNOWN),
+            branch=pipeline.get("ref") or "",
+            sha=pipeline.get("sha") or "",
+            event=str(_EVENT.get(pipeline.get("source") or "", RunEvent.OTHER)),
+            created_at=pipeline.get("created_at") or "",
+            web_url=pipeline.get("web_url") or "",
+            title=pipeline.get("name") or None,
+            actor=user.get("username"),
+            raw_status=status,
+        )
 
     # --- SCMProvider ------------------------------------------------------
 

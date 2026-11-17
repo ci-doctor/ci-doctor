@@ -266,3 +266,79 @@ class Run:
     web_url: str = ""
     mr: MergeRequestRef | None = None
     jobs: list[Job] = field(default_factory=list)
+
+
+class RunStatus(StrEnum):
+    """Where a run is, in words every CI system maps onto; filters and summaries use only these."""
+
+    FAILED = "failed"
+    SUCCESS = "success"
+    RUNNING = "running"
+    PENDING = "pending"  # queued, waiting for a runner, an approval or a schedule
+    CANCELLED = "cancelled"
+    SKIPPED = "skipped"
+    UNKNOWN = "unknown"  # a status the adapter does not know; never a filter
+
+
+class RunEvent(StrEnum):
+    """What started a run, in words every CI system maps onto."""
+
+    PUSH = "push"
+    PULL_REQUEST = "pull_request"  # a merge request, on CI systems that call it that
+    SCHEDULE = "schedule"
+    MANUAL = "manual"  # started by hand, from the UI or the API
+    OTHER = "other"  # anything else; never a filter
+
+
+@dataclass(frozen=True)
+class RunFilter:
+    """Which runs to list. Every field is optional; set ones must all match.
+
+    Attributes:
+        status: Only runs in this state.
+        branch: Only runs on this branch or tag.
+        sha: Only runs of this commit.
+        actor: Only runs this user started.
+        event: Only runs started this way.
+        since: Only runs created at or after this ISO 8601 date or time.
+        until: Only runs created at or before this ISO 8601 date or time.
+        limit: The most runs to return, newest first.
+    """
+
+    status: RunStatus | None = None
+    branch: str | None = None
+    sha: str | None = None
+    actor: str | None = None
+    event: RunEvent | None = None
+    since: str | None = None
+    until: str | None = None
+    limit: int = 10
+
+
+@dataclass(frozen=True)
+class RunSummary:
+    """One run in a listing: enough to pick it, not its jobs (that is :class:`Run`).
+
+    Attributes:
+        id: The run id `analyze_run` takes.
+        status: Its normalised state.
+        branch: Branch or tag.
+        sha: The commit.
+        event: What started it.
+        created_at: ISO timestamp.
+        web_url: Browser URL for the run.
+        title: The commit message's first line or the run's name, when the CI system gives one.
+        actor: Who started it, when the CI system says.
+        raw_status: The CI system's own word for the state, kept so an unmapped one stays visible.
+    """
+
+    id: str
+    status: RunStatus
+    branch: str
+    sha: str
+    event: str
+    created_at: str
+    web_url: str
+    title: str | None = None
+    actor: str | None = None
+    raw_status: str = ""

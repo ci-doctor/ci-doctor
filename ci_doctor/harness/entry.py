@@ -9,7 +9,7 @@ SERVER = "ci-doctor"
 #: The command an agent runs to start the server.
 COMMAND = "ci-doctor"
 #: Tools that change nothing. Pinned to the server's own annotations by `test_harness.py`.
-READ_ONLY_TOOLS = ("analyze_run", "search_matchers", "list_matchers", "check_setup")
+READ_ONLY_TOOLS = ("analyze_run", "list_runs", "search_matchers", "list_matchers", "check_setup")
 
 
 def on_path() -> bool:

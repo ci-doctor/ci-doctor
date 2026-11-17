@@ -160,6 +160,10 @@ the MCP SDK.
 - **A tool is a nested function in `build`**, its docstring the description the agent
   reads, its return annotation the output schema. Wrap it in `_reported` so a failure
   comes back as a message, and give it the annotation that says whether it writes.
+- **Finding a run is MCP only.** `list_runs` calls `service/runs.py`, which checks
+  the filter and redacts the titles; there is no CLI command for it. The filter is in
+  neutral words (`RunStatus`, `RunEvent` in `core/models.py`); each adapter turns it into
+  its own query.
 - **Matcher selection is shared with the CLI.** `search_matchers`, `list_matchers`,
   `add_matchers` and `remove_matchers` call `service/matchers.py`, as the commands do.
   Edits go to `./.ci-doctor.yml` unless `--write-to` names another file.
@@ -411,7 +415,9 @@ pipelines and merge requests are the same API, and connecting twice would mean a
 token read and a second version probe for nothing.
 
 1. `providers/<name>/{provider,segmenter,reasons}.py` implementing `CIProvider`,
-   `SCMProvider`, or both, plus `LogSegmenter` for a CI.
+   `SCMProvider`, or both, plus `LogSegmenter` for a CI. A `CIProvider` lists runs too
+   (`list_runs`): map each neutral filter onto the vendor's query, and the vendor's
+   states back onto `RunStatus`, keeping the raw word in `raw_status`.
 2. Canonicalise section names to the tokens the `phases:` map already uses
    (`checkout`, `run`, `post`, …) so phase assignment needs no core change.
 3. One line in `providers/registry.py`'s `ADAPTERS`, and one in `SEGMENTERS` if it

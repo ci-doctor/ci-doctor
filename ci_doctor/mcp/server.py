@@ -3,7 +3,7 @@
 import functools
 from collections.abc import Callable
 from importlib import resources
-from typing import ParamSpec, TypeVar
+from typing import Annotated, ParamSpec, TypeVar
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -13,12 +13,14 @@ from pydantic import BaseModel, Field
 from ci_doctor import __version__
 from ci_doctor.config.files import ConfigFiles
 from ci_doctor.config.loader import load_config
+from ci_doctor.core.models import RunEvent, RunFilter, RunStatus, RunSummary
 from ci_doctor.core.redact import redact_text
 from ci_doctor.errors import SetupError
 from ci_doctor.registry.resolve import load as load_matchers
 from ci_doctor.service import matchers
 from ci_doctor.service.analyze import diagnose_run
 from ci_doctor.service.brief import Brief
+from ci_doctor.service.runs import MAX_LIMIT, list_runs
 from ci_doctor.service.setup import validate
 
 _P = ParamSpec("_P")
@@ -99,6 +101,30 @@ def build(files: ConfigFiles) -> MCPServer:
         """
         cfg = load_config(files.paths())
         return [d.brief for d in diagnose_run(run_id, cfg, load_matchers(cfg.matchers), job_id)]
+
+    @server.tool(name="list_runs", annotations=_READ_REMOTE)
+    @_reported
+    def list_runs_tool(
+        status: Annotated[RunStatus | None, Field(description="Only runs in this state.")] = None,
+        branch: Annotated[str | None, Field(description="Only runs on this branch or tag.")] = None,
+        sha: Annotated[str | None, Field(description="Only runs of this commit.")] = None,
+        actor: Annotated[str | None, Field(description="Only runs this user started.")] = None,
+        event: Annotated[RunEvent | None, Field(description="Only runs started this way.")] = None,
+        since: Annotated[
+            str | None, Field(description="Only runs created at or after this ISO 8601 date or time.")
+        ] = None,
+        until: Annotated[
+            str | None, Field(description="Only runs created at or before this ISO 8601 date or time.")
+        ] = None,
+        limit: Annotated[int, Field(ge=1, le=MAX_LIMIT, description="The most runs to return.")] = 10,
+    ) -> list[RunSummary]:
+        """List the project's CI pipelines/runs, newest first, to find the id analyze_run takes.
+
+        Every filter is optional. For "why did my last push fail", pass status="failed" and the
+        current branch.
+        """
+        run_filter = RunFilter(status, branch, sha, actor, event, since, until, limit)
+        return list_runs(load_config(files.paths()), run_filter)
 
     @server.tool(annotations=_READ_REMOTE)
     @_reported

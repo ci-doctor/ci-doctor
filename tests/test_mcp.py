@@ -255,3 +255,53 @@ def test_check_setup_says_when_the_api_token_is_missing(project, monkeypatch):
     monkeypatch.setenv("CI_DOCTOR_GITHUB_TOKEN", SECRET)
     summary = _result(project, "check_setup")
     assert summary.endswith("API token: set.") and SECRET not in summary
+
+
+def test_list_runs_hands_the_filter_to_the_provider_and_returns_summaries(project, monkeypatch):
+    """The agent's filter reaches the provider in neutral words, and each run comes back with its id."""
+    from ci_doctor.core.models import RunEvent, RunFilter, RunStatus, RunSummary
+
+    seen = []
+
+    class Provider:
+        def list_runs(self, run_filter):
+            seen.append(run_filter)
+            return [
+                RunSummary(
+                    id="42",
+                    status=RunStatus.FAILED,
+                    branch="main",
+                    sha="deadbeef",
+                    event="push",
+                    created_at="2026-11-10T09:00:00Z",
+                    web_url="https://ci/run/42",
+                    title=f"rotate {SECRET}",
+                )
+            ]
+
+    monkeypatch.setattr("ci_doctor.service.runs.make_ci_provider", lambda cfg: Provider())
+    [run] = _result(project, "list_runs", status="failed", branch="main", event="push", limit=3)
+    assert seen == [RunFilter(RunStatus.FAILED, "main", None, None, RunEvent.PUSH, None, None, 3)]
+    assert (run["id"], run["status"], run["web_url"]) == ("42", "failed", "https://ci/run/42")
+    assert SECRET not in run["title"]
+
+
+def test_list_runs_refuses_a_bad_filter_with_a_message(project):
+    """An unknown status is rejected by the schema, a bad date by the service; both say why."""
+    assert "failed" in _error(project, "list_runs", status="broken")
+    assert "since must be an ISO 8601 date" in _error(project, "list_runs", since="last week")
+
+
+def test_list_runs_tells_the_agent_its_filters():
+    """Each parameter carries a description and the statuses are an enum, so the agent need not guess."""
+
+    async def tools():
+        async with Client(build(ConfigFiles([], None))) as client:
+            return await client.list_tools()
+
+    [tool] = [t for t in anyio.run(tools).tools if t.name == "list_runs"]
+    props = tool.input_schema["properties"]
+    assert set(props) == {"status", "branch", "sha", "actor", "event", "since", "until", "limit"}
+    assert all("description" in p for p in props.values())
+    assert "failed" in tool.input_schema["$defs"]["RunStatus"]["enum"]
+    assert tool.annotations.read_only_hint

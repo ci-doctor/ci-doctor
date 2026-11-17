@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, TypeVar
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
-    from ci_doctor.core.models import Job, MergeRequestRef, Run, Section
+    from ci_doctor.core.models import Job, MergeRequestRef, Run, RunFilter, RunSummary, Section
     from ci_doctor.llm.schema import Report
 
 _T = TypeVar("_T", bound="BaseModel")
@@ -54,6 +54,18 @@ class CIProvider(ABC):
         Raises:
             LogUnavailable: When the log could not be read (access denied, the
                 service down, a timeout): not the same as there being none.
+        """
+
+    @abstractmethod
+    def list_runs(self, run_filter: "RunFilter") -> list["RunSummary"]:
+        """List this project's runs, newest first.
+
+        Args:
+            run_filter: What to keep. The adapter turns it into its own query, so
+                its vendor words never reach the caller.
+
+        Returns:
+            At most `run_filter.limit` summaries; empty when none match.
         """
 
 

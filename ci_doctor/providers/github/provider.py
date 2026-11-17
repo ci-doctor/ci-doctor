@@ -1,6 +1,6 @@
 """GitHub Actions adapter over GitHub's REST API.
 
-Calls four endpoints (the run, its jobs, a job's log, PR comments) through
+Calls five endpoints (the run list, a run, its jobs, a job's log, PR comments) through
 `api_client` and maps the JSON onto the domain model, the same one GitLab produces.
 GitHub Enterprise works through `github.base_url`.
 """
@@ -9,13 +9,23 @@ import logging
 import os
 import re
 from collections.abc import Mapping
+from itertools import islice
 from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 from ci_doctor.config.schemas import Config
-from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo
+from ci_doctor.core.models import (
+    Job,
+    MergeRequestRef,
+    Run,
+    RunEvent,
+    RunFilter,
+    RunnerInfo,
+    RunStatus,
+    RunSummary,
+)
 from ci_doctor.core.ports import CIProvider, SCMProvider
 from ci_doctor.errors import LogUnavailable
 from ci_doctor.providers.api_client import ApiClient, ApiError, tls_verify
@@ -40,6 +50,40 @@ _CONCLUSION_STATUS = {
     "startup_failure": "failed",
     "cancelled": "cancelled",
 }
+
+
+#: A filter's status -> GitHub's `status` query value. GitHub takes one value, so
+#: `failed` asks for `failure`, which is how almost every failed run concludes; a run
+#: whose own conclusion is `timed_out` is listed under no status filter.
+_STATUS_QUERY = {
+    RunStatus.FAILED: "failure",
+    RunStatus.SUCCESS: "success",
+    RunStatus.RUNNING: "in_progress",
+    RunStatus.PENDING: "queued",
+    RunStatus.CANCELLED: "cancelled",
+    RunStatus.SKIPPED: "skipped",
+}
+#: A finished run's conclusion -> the neutral status.
+_RUN_CONCLUSION = {
+    "failure": RunStatus.FAILED,
+    "timed_out": RunStatus.FAILED,
+    "startup_failure": RunStatus.FAILED,
+    "success": RunStatus.SUCCESS,
+    "cancelled": RunStatus.CANCELLED,
+    "skipped": RunStatus.SKIPPED,
+    "neutral": RunStatus.SKIPPED,
+    "action_required": RunStatus.PENDING,
+}
+#: An unfinished run's status -> the neutral status.
+_RUN_STATE = {"in_progress": RunStatus.RUNNING}
+#: The neutral event -> GitHub's `event` value, and back.
+_EVENT_QUERY = {
+    RunEvent.PUSH: "push",
+    RunEvent.PULL_REQUEST: "pull_request",
+    RunEvent.SCHEDULE: "schedule",
+    RunEvent.MANUAL: "workflow_dispatch",
+}
+_EVENT = {**{v: k for k, v in _EVENT_QUERY.items()}, "pull_request_target": RunEvent.PULL_REQUEST}
 
 
 class GitHubProvider(CIProvider, SCMProvider):
@@ -149,6 +193,55 @@ class GitHubProvider(CIProvider, SCMProvider):
         log.debug(f"job {job.id} log: {len(text)} chars")
         return text or None
 
+    def list_runs(self, run_filter: RunFilter) -> list[RunSummary]:
+        """List the repository's workflow runs, newest first.
+
+        Args:
+            run_filter: What to keep.
+
+        Returns:
+            At most `run_filter.limit` runs. Pages stop once there are enough.
+        """
+        query: dict[str, str | int] = {"per_page": min(run_filter.limit, 100)}
+        if run_filter.status is not None:
+            query["status"] = _STATUS_QUERY[run_filter.status]
+        if run_filter.event is not None:
+            query["event"] = _EVENT_QUERY[run_filter.event]
+        for key, value in (
+            ("branch", run_filter.branch),
+            ("head_sha", run_filter.sha),
+            ("actor", run_filter.actor),
+        ):
+            if value:
+                query[key] = value
+        if created := _created(run_filter.since, run_filter.until):
+            query["created"] = created
+        runs = self.api.paginate(f"{self._repo()}/actions/runs", key="workflow_runs", **query)
+        return [self._to_summary(r) for r in islice(runs, run_filter.limit)]
+
+    @staticmethod
+    def _to_summary(run: dict[str, Any]) -> RunSummary:
+        """Map one workflow run onto a summary."""
+        state, conclusion = run.get("status") or "", run.get("conclusion") or ""
+        if state == "completed":
+            status = _RUN_CONCLUSION.get(conclusion, RunStatus.UNKNOWN)
+        else:
+            status = _RUN_STATE.get(state, RunStatus.PENDING)
+        event = run.get("event") or ""
+        title = run.get("display_title") or run.get("name")
+        return RunSummary(
+            id=str(run["id"]),
+            status=status,
+            branch=run.get("head_branch") or "",
+            sha=run.get("head_sha") or "",
+            event=str(_EVENT.get(event, RunEvent.OTHER)),
+            created_at=run.get("created_at") or "",
+            web_url=run.get("html_url") or "",
+            title=title.splitlines()[0] if title else None,
+            actor=(run.get("actor") or {}).get("login"),
+            raw_status=conclusion or state,
+        )
+
     # --- SCMProvider ------------------------------------------------------
 
     def post_note(self, mr: MergeRequestRef, body: str, marker: str) -> None:
@@ -224,3 +317,12 @@ class GitHubProvider(CIProvider, SCMProvider):
 def _str_or_none(value: object) -> str | None:
     """Stringify an optional id without turning None into "None"."""
     return None if value is None else str(value)
+
+
+def _created(since: str | None, until: str | None) -> str | None:
+    """GitHub's `created` range: `a..b`, `>=a` or `<=b`; None when neither end is set."""
+    if since and until:
+        return f"{since}..{until}"
+    if since:
+        return f">={since}"
+    return f"<={until}" if until else None

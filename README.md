@@ -145,6 +145,7 @@ To set it up by hand, see [`examples/mcp.example.json`](examples/mcp.example.jso
 
 | Tool | Does |
 |---|---|
+| `list_runs` | Lists the project's runs, newest first, filtered by status, branch, commit, actor, event or date |
 | `analyze_run` | Briefs each failed job of a run for the agent to explain |
 | `search_matchers`, `list_matchers` | Browse the registries; show what the config selects |
 | `add_matchers`, `remove_matchers` | Edit `matchers.include` in `./.ci-doctor.yml` (`--write-to` picks another file) |
