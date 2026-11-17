@@ -95,7 +95,9 @@ def _http(files, base="https://reg.test/m/", **headers_by_path):
 
 def _files(root):
     """A registry directory as `{relative path: text}`, for an HTTP mock."""
-    return {p.relative_to(root).as_posix(): p.read_text() for p in root.rglob("*.yaml")}
+    return {
+        p.relative_to(root).as_posix(): p.read_bytes().decode() for p in root.rglob("*.yaml")
+    }  # as hashed
 
 
 # --- resolution ------------------------------------------------------------------
@@ -160,10 +162,10 @@ def test_an_unknown_name_suggests_the_closest(tmp_path, fx_registry):
 # --- locations and transports ----------------------------------------------------
 
 
-@pytest.mark.parametrize("form", ["{p}", "{p}/", "file://{p}", "file://{p}/"])
+@pytest.mark.parametrize("form", ["{p}", "{p}/", "{uri}", "{uri}/"])
 def test_a_local_registry_by_path_or_file_url(form, fx_registry):
     """Bare paths and `file://`, with or without the trailing slash, need no network."""
-    location = form.format(p=fx_registry)
+    location = form.format(p=fx_registry, uri=fx_registry.as_uri())
     assert len(load(_cfg(["fx/all"], fx=location))) == 2
 
 
@@ -423,6 +425,7 @@ def test_the_fetch_settings_come_from_the_config(monkeypatch):
     assert seen["limits"].max_connections == 16
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no FIFOs")
 def test_a_local_registry_file_that_is_not_regular_is_refused(tmp_path):
     """A FIFO at a matcher path would block the read forever; the cap check alone can't see it."""
     import os
