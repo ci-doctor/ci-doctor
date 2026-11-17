@@ -21,17 +21,13 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 
 from ci_doctor import __version__
+from ci_doctor.config.schemas._api import ApiLimits
 
 log = logging.getLogger("ci_doctor.providers")
 
-#: GitHub's log download needs one redirect.
+#: GitHub's log download needs one redirect. Fixed, not a setting: each hop is a chance
+#: to send a request somewhere unexpected.
 MAX_REDIRECTS = 5
-#: Stops a `Link` chain that never ends.
-MAX_PAGES = 100
-#: One try plus up to three rate-limit waits.
-MAX_ATTEMPTS = 4
-#: A longer rate-limit wait fails instead.
-MAX_WAIT_SECONDS = 60.0
 #: GitHub's advice when a secondary rate limit has no `Retry-After`.
 _SECONDARY_WAIT_SECONDS = 60.0
 _ERROR_MESSAGE_CHARS = 200
@@ -110,6 +106,7 @@ class ApiClient:
         headers: Mapping[str, str] | None = None,
         verify: ssl.SSLContext | bool = True,
         timeout: float = 30,
+        limits: ApiLimits | None = None,
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.time,
@@ -123,6 +120,7 @@ class ApiClient:
             headers: Other headers for the API's host, such as `Accept`.
             verify: TLS verification, from :func:`tls_verify`.
             timeout: Seconds per request.
+            limits: Pagination and rate-limit caps, from `<vendor>.limits`. Defaults to the defaults.
             transport: Replaces the network, for tests.
             sleep: Waits out a rate limit; tests pass one that records instead.
             clock: Current epoch seconds, to turn a reset time into a wait.
@@ -132,6 +130,7 @@ class ApiClient:
         self._origin = _origin(self._base)
         self._auth = dict(auth)
         self._headers = {"User-Agent": f"ci-doctor/{__version__}", **(headers or {})}
+        self._limits = limits or ApiLimits()
         self._sleep = sleep
         self._clock = clock
         self._http = httpx.Client(verify=verify, timeout=timeout, transport=transport)
@@ -196,11 +195,11 @@ class ApiClient:
             The items, in API order.
 
         Raises:
-            ApiError: As for :meth:`get_json`, or past `MAX_PAGES`. A cut list would hide jobs.
+            ApiError: As for :meth:`get_json`, or past `limits.max_pages`. A cut list would hide jobs.
         """
         first: dict[str, str | int] = {"per_page": 100, **params}
         url, query = path, first
-        for _ in range(MAX_PAGES):
+        for _ in range(self._limits.max_pages):
             resp = self.request("GET", url, params=query)
             body = self._json(resp)
             yield from body[key] if key else body
@@ -210,7 +209,7 @@ class ApiClient:
                 url, query = path, {**first, "page": next_page}
             else:
                 return
-        raise ApiError(self.vendor, None, f"more than {MAX_PAGES} pages")
+        raise ApiError(self.vendor, None, f"more than {self._limits.max_pages} pages")
 
     def request(
         self,
@@ -232,19 +231,21 @@ class ApiClient:
             The successful response.
 
         Raises:
-            ApiError: On an error status, or a rate limit past `MAX_WAIT_SECONDS` or `MAX_ATTEMPTS`.
+            ApiError: On an error status, or a rate limit past `limits.rate_limit_max_wait_seconds`
+                or `limits.rate_limit_retries`.
         """
         url = path if path.startswith(("http://", "https://")) else self._base + path
-        for attempt in range(1, MAX_ATTEMPTS + 1):
+        attempts = self._limits.rate_limit_retries + 1
+        for attempt in range(1, attempts + 1):
             resp = self._send(method, url, params, json)
             if resp.is_success:
                 return resp
             wait = self._rate_limit_wait(resp, attempt)
             if wait is None:
                 raise ApiError(self.vendor, resp.status_code, _message(resp))
-            if wait > MAX_WAIT_SECONDS or attempt == MAX_ATTEMPTS:
+            if wait > self._limits.rate_limit_max_wait_seconds or attempt == attempts:
                 raise ApiError(self.vendor, resp.status_code, f"rate limited; retry in {wait:.0f}s")
-            log.warning(f"{self.vendor} rate limit: waiting {wait:.0f}s (attempt {attempt}/{MAX_ATTEMPTS})")
+            log.warning(f"{self.vendor} rate limit: waiting {wait:.0f}s (attempt {attempt}/{attempts})")
             self._sleep(wait)
         raise AssertionError("unreachable: the last attempt returns or raises")  # pragma: no cover
 

@@ -13,8 +13,8 @@ from ci_doctor.config.loader import load_config
 from ci_doctor.core.attribution import attribute
 from ci_doctor.core.models import FailureReason, Job, MergeRequestRef, Phase
 from ci_doctor.core.phases import assign_phases
-from ci_doctor.core.ports import LogUnavailable
 from ci_doctor.core.select import select_failed_jobs
+from ci_doctor.errors import LogUnavailable
 from ci_doctor.providers.api_client import ApiError
 from ci_doctor.providers.github.provider import GitHubProvider
 from ci_doctor.providers.github.reasons import to_failure_reason

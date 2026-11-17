@@ -2,7 +2,8 @@
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import FailureReason, Job, Run
-from ci_doctor.core.ports import LLMClient, LogUnavailable
+from ci_doctor.core.ports import LLMClient
+from ci_doctor.errors import LogUnavailable
 from ci_doctor.service.analyze import _ordered, analyze_run, run_from_file
 from tests import support
 

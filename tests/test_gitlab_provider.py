@@ -8,8 +8,8 @@ import pytest
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import FailureReason, Job
-from ci_doctor.core.ports import LogUnavailable
 from ci_doctor.core.select import select_failed_jobs
+from ci_doctor.errors import LogUnavailable
 from ci_doctor.providers.gitlab.provider import GitLabProvider
 from tests.support import FakeApi, json_reply
 

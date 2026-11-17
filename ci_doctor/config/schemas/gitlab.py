@@ -2,6 +2,7 @@
 
 from pydantic import Field
 
+from ci_doctor.config.schemas._api import ApiLimits
 from ci_doctor.config.schemas._base import Strict
 
 
@@ -26,3 +27,7 @@ class GitLabConfig(Strict):
     )
     verify_ssl: bool = Field(default=True, description="Verify the GitLab endpoint's TLS certificate.")
     timeout_seconds: int = Field(default=30, description="Per-request timeout for GitLab API calls.")
+    limits: ApiLimits = Field(
+        default_factory=ApiLimits,
+        description="Pagination and rate-limit caps for GitLab API calls.",
+    )

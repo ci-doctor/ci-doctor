@@ -20,8 +20,9 @@ from ci_doctor.config.schemas import Config
 from ci_doctor.core.analyze import EvidenceBundle, build_bundle
 from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.models import FailureReason, Job, Run
-from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter, LogUnavailable
+from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
 from ci_doctor.engine import Plan, Spec, compile_plan
+from ci_doctor.errors import LogUnavailable
 from ci_doctor.llm.schema import Report
 from ci_doctor.providers.registry import make_ci_provider, make_segmenter, segmenter_for_log
 from ci_doctor.service.brief import Brief, build_brief

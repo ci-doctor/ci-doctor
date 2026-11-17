@@ -16,7 +16,8 @@ import httpx
 
 from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import Job, MergeRequestRef, Run, RunnerInfo
-from ci_doctor.core.ports import CIProvider, LogUnavailable, SCMProvider
+from ci_doctor.core.ports import CIProvider, SCMProvider
+from ci_doctor.errors import LogUnavailable
 from ci_doctor.providers.api_client import ApiClient, ApiError, tls_verify
 from ci_doctor.providers.git_origin import origin_repo
 from ci_doctor.providers.github.reasons import to_failure_reason
@@ -77,6 +78,7 @@ class GitHubProvider(CIProvider, SCMProvider):
             headers=_HEADERS,
             verify=tls_verify(self.cfg.ca_bundle, self.cfg.verify_ssl, self.environ),
             timeout=self.cfg.timeout_seconds,
+            limits=self.cfg.limits,
             transport=transport,
         )
         self._repo_path: str | None = None

@@ -9,15 +9,15 @@ import certifi
 import httpx
 import pytest
 
-from ci_doctor.providers import api_client
-from ci_doctor.providers.api_client import MAX_ATTEMPTS, ApiClient, ApiError, tls_verify
+from ci_doctor.config.schemas._api import ApiLimits
+from ci_doctor.providers.api_client import ApiClient, ApiError, tls_verify
 from tests.support import FakeApi, json_reply
 
 BASE = "https://git.example.com/api/v4"
 NOW = 1_700_000_000.0
 
 
-def _client(routes, *, auth=None):
+def _client(routes, *, auth=None, limits=None):
     """An ApiClient on a FakeApi. Returns the client, the API and the recorded waits."""
     api = FakeApi(routes)
     waits: list[float] = []
@@ -26,6 +26,7 @@ def _client(routes, *, auth=None):
         BASE,
         auth={"PRIVATE-TOKEN": "tok"} if auth is None else auth,
         headers={"Accept": "application/json"},
+        limits=limits,
         transport=api.transport,
         sleep=waits.append,
         clock=lambda: NOW,
@@ -129,10 +130,11 @@ def test_pages_are_followed_by_x_next_page():
     assert all(r.url.params["scope"] == "failed" for r in api.requests)
 
 
-def test_a_listing_that_never_ends_is_an_error_not_a_quiet_cut(monkeypatch):
-    """A list longer than the page cap raises an error instead of being cut."""
-    monkeypatch.setattr(api_client, "MAX_PAGES", 3)
-    client, api, _ = _client({("GET", "/api/v4/jobs"): json_reply([{"id": 1}], x_next_page="2")})
+def test_a_listing_that_never_ends_is_an_error_not_a_quiet_cut():
+    """A list longer than `limits.max_pages` raises an error instead of being cut."""
+    client, api, _ = _client(
+        {("GET", "/api/v4/jobs"): json_reply([{"id": 1}], x_next_page="2")}, limits=ApiLimits(max_pages=3)
+    )
     with pytest.raises(ApiError, match="more than 3 pages"):
         list(client.paginate("/jobs"))
     assert len(api.requests) == 3
@@ -197,7 +199,32 @@ def test_a_limit_that_keeps_coming_gives_up_after_the_last_attempt():
     client, api, waits = _client({("GET", "/api/v4/x"): httpx.Response(429, headers={"retry-after": "1"})})
     with pytest.raises(ApiError, match="rate limited"):
         client.get_json("/x")
-    assert len(api.requests) == MAX_ATTEMPTS and len(waits) == MAX_ATTEMPTS - 1
+    retries = ApiLimits().rate_limit_retries
+    assert len(api.requests) == retries + 1 and len(waits) == retries
+
+
+def test_the_rate_limit_caps_come_from_the_config():
+    """`limits` sets how often and how long to wait: no retries fails at once, a short cap fails sooner."""
+    limited = {("GET", "/api/v4/x"): httpx.Response(429, headers={"retry-after": "30"})}
+    client, api, waits = _client(limited, limits=ApiLimits(rate_limit_retries=0))
+    with pytest.raises(ApiError, match="rate limited; retry in 30s"):
+        client.get_json("/x")
+    assert (len(api.requests), waits) == (1, [])
+
+    client, api, waits = _client(limited, limits=ApiLimits(rate_limit_max_wait_seconds=10))
+    with pytest.raises(ApiError, match="rate limited; retry in 30s"):
+        client.get_json("/x")
+    assert (len(api.requests), waits) == (1, [])
+
+
+def test_a_provider_passes_its_limits_to_the_client():
+    """`github.limits` in the config reaches the client the provider builds."""
+    from ci_doctor.config.loader import load_config
+    from ci_doctor.providers.github.provider import GitHubProvider
+
+    cfg = load_config(environ={}, overrides={"github": {"limits": {"max_pages": 7}}})
+    provider = GitHubProvider(cfg, environ={"GITHUB_REPOSITORY": "o/r"}, transport=FakeApi({}).transport)
+    assert provider.api._limits.max_pages == 7
 
 
 def test_a_plain_403_is_not_a_rate_limit():
