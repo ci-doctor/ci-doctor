@@ -10,7 +10,7 @@ from ci_doctor.cli._console.output.message import say
 from ci_doctor.cli._console.output.table import Row, table
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
-from ci_doctor.registry.cache import Cache, ago, root_for
+from ci_doctor.matchers.registry.cache import Cache, ago, root_for
 
 
 class InfoCommand(Command):

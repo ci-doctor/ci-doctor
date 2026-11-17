@@ -13,10 +13,10 @@ import pytest
 import yaml
 from mcp import Client
 
+from ci_doctor.agent.server import build
 from ci_doctor.config.files import ConfigFiles
 from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.errors import LogUnavailable
-from ci_doctor.mcp.server import build
 from tests import support
 
 SECRET = "glpat-" + "a" * 20

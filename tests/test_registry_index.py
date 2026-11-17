@@ -10,7 +10,7 @@ import yaml
 
 from ci_doctor import cli
 from ci_doctor.errors import SetupError
-from ci_doctor.registry.index import build_index, write_index
+from ci_doctor.matchers.registry.index import build_index, write_index
 from tests import support
 
 PYTEST = "matchers/python/pytest/matcher.yaml"

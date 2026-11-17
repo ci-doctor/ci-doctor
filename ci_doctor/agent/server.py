@@ -16,7 +16,7 @@ from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import RunEvent, RunFilter, RunStatus, RunSummary
 from ci_doctor.core.redact import redact_text
 from ci_doctor.errors import SetupError
-from ci_doctor.registry.resolve import load as load_matchers
+from ci_doctor.matchers.registry.resolve import load as load_matchers
 from ci_doctor.service import matchers
 from ci_doctor.service.analyze import diagnose_run
 from ci_doctor.service.brief import Brief

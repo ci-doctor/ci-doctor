@@ -9,7 +9,7 @@ import yaml
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.engine import compile_plan
 from ci_doctor.errors import SetupError
-from ci_doctor.registry.resolve import load, resolve
+from ci_doctor.matchers.registry.resolve import load, resolve
 from tests.support import write_registry
 
 DESC = "An output description long enough for the rules."

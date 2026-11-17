@@ -6,8 +6,8 @@ from pathlib import Path
 from ci_doctor.config.loader import load_config
 from ci_doctor.config.schemas import Config
 from ci_doctor.matchers.models import Ref
+from ci_doctor.matchers.registry.resolve import load as load_matchers
 from ci_doctor.providers.tokens import read_token
-from ci_doctor.registry.resolve import load as load_matchers
 
 
 def validate(paths: list[Path]) -> str:

@@ -8,7 +8,7 @@ from ci_doctor.cli._console.output.json_output import JSON_OPTION, emit
 from ci_doctor.cli._console.output.table import Row, table
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
-from ci_doctor.registry.resolve import redact
+from ci_doctor.matchers.registry.resolve import redact
 
 
 class ListCommand(Command):

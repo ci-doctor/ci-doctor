@@ -11,7 +11,7 @@ from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import edit, editable
 from ci_doctor.config.loader import anchor_registry
 from ci_doctor.errors import SetupError
-from ci_doctor.registry.resolve import fetch_index, redact, registry_dir, session
+from ci_doctor.matchers.registry.resolve import fetch_index, redact, registry_dir, session
 
 
 class AddCommand(Command):

@@ -17,7 +17,7 @@ import yaml
 from ci_doctor import cli
 from ci_doctor.cli.registry import index
 from ci_doctor.config.schemas.matchers import MatchersConfig
-from ci_doctor.registry.resolve import load
+from ci_doctor.matchers.registry.resolve import load
 from tests import support
 
 

@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import ClassVar
 
-from ci_doctor.harness.targets.base import Location, McpJsonTarget
+from ci_doctor.agent.harness.targets.base import Location, McpJsonTarget
 
 
 class GeminiCli(McpJsonTarget):

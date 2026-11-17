@@ -32,7 +32,7 @@ class McpCommand(Command):
 
     @override
     def run(self, project: Path | None = typer.Option(None, "--project", help=PROJECT_HELP)) -> None:
-        from ci_doctor.mcp.server import build  # the SDK is only worth importing for this command
+        from ci_doctor.agent.server import build  # the SDK is only worth importing for this command
 
         given = files()
         # `-f` and `--write-to` are relative to where the agent started us, so fix them first.

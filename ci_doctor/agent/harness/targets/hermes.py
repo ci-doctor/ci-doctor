@@ -7,8 +7,8 @@ from typing import Any, ClassVar
 
 import yaml
 
-from ci_doctor.harness.entry import COMMAND, SERVER
-from ci_doctor.harness.targets.base import GLOBAL_ONLY, Location, Target
+from ci_doctor.agent.harness.entry import COMMAND, SERVER
+from ci_doctor.agent.harness.targets.base import GLOBAL_ONLY, Location, Target
 from ci_doctor.lib.edit import Change, Unsafe, safely
 from ci_doctor.lib.edit.yaml import (
     Lines,

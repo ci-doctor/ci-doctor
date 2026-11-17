@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
+from ci_doctor.agent.harness.install import Outcome
+from ci_doctor.agent.harness.targets.base import Location, Target
 from ci_doctor.cli._console.output.message import done, say, skipped
 from ci_doctor.errors import SetupError
-from ci_doctor.harness.install import Outcome
-from ci_doctor.harness.targets.base import Location, Target
 
 
 def plan(agents: list[Target], location: Location, verb: str) -> None:

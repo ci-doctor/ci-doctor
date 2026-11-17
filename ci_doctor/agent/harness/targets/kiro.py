@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import ClassVar
 
-from ci_doctor.harness.entry import instructions
-from ci_doctor.harness.targets.base import Location, McpJsonTarget
+from ci_doctor.agent.harness.entry import instructions
+from ci_doctor.agent.harness.targets.base import Location, McpJsonTarget
 from ci_doctor.lib.edit import Change
 from ci_doctor.lib.edit.markdown import set_file, unset_block
 

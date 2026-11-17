@@ -6,8 +6,8 @@ import tomllib
 from pathlib import Path
 from typing import ClassVar
 
-from ci_doctor.harness.entry import COMMAND, SERVER, instructions
-from ci_doctor.harness.targets.base import GLOBAL_ONLY, Location, Target
+from ci_doctor.agent.harness.entry import COMMAND, SERVER, instructions
+from ci_doctor.agent.harness.targets.base import GLOBAL_ONLY, Location, Target
 from ci_doctor.lib.edit import Change, safely
 from ci_doctor.lib.edit.markdown import set_block, unset_block
 from ci_doctor.lib.edit.toml import set_toml_table, unset_toml_table

@@ -8,7 +8,7 @@ from typing_extensions import override
 from ci_doctor.cli._console.output.message import done
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.matchers.models import INDEX
-from ci_doctor.registry.index import write_index
+from ci_doctor.matchers.registry.index import write_index
 
 
 class IndexCommand(Command):

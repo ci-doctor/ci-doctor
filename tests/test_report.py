@@ -10,8 +10,8 @@ from typing import get_args
 import pytest
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.core.analyze import EvidenceBundle, build_bundle
 from ci_doctor.core.attribution import attribute
+from ci_doctor.core.evidence import EvidenceBundle, build_bundle
 from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.engine import MatcherV1, Output, Role, compile_plan

@@ -12,9 +12,9 @@ from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.examine import examine
 from ci_doctor.matchers.logs import Framing, framing_of
+from ci_doctor.matchers.registry.cache import Cache
+from ci_doctor.matchers.registry.resolve import Resolved, check_ref, fetch_matcher, session
 from ci_doctor.matchers.validate import load_matcher
-from ci_doctor.registry.cache import Cache
-from ci_doctor.registry.resolve import Resolved, check_ref, fetch_matcher, session
 
 
 class ExamineCommand(Command):

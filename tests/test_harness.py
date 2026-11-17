@@ -14,12 +14,12 @@ import yaml
 from mcp import Client
 
 from ci_doctor import cli
+from ci_doctor.agent.harness.entry import READ_ONLY_TOOLS, SERVER
+from ci_doctor.agent.harness.install import install, uninstall
+from ci_doctor.agent.harness.registry import TARGETS, found, select
+from ci_doctor.agent.server import build
 from ci_doctor.config.files import ConfigFiles
 from ci_doctor.errors import SetupError
-from ci_doctor.harness.entry import READ_ONLY_TOOLS, SERVER
-from ci_doctor.harness.install import install, uninstall
-from ci_doctor.harness.registry import TARGETS, found, select
-from ci_doctor.mcp.server import build
 
 CASES = [(t.id, loc) for t in TARGETS.values() for loc in sorted(t.locations)]
 

@@ -14,8 +14,8 @@ from ci_doctor.cli._console.output.table import Cell, Row, table
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
 from ci_doctor.matchers.models import Ref
-from ci_doctor.registry.cache import Cache
-from ci_doctor.registry.resolve import Resolved, check_ref, fetch_outputs, redact, session, via
+from ci_doctor.matchers.registry.cache import Cache
+from ci_doctor.matchers.registry.resolve import Resolved, check_ref, fetch_outputs, redact, session, via
 
 
 class InfoCommand(Command):

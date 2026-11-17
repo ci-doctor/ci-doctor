@@ -25,14 +25,15 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 ```
 ci_doctor/
   cli/              the command line, laid out like the command tree (§2.1)
-  mcp/              the MCP server: the same services as tools, for a coding agent (§2.4)
-  harness/          `ci-doctor agent install`: one module per coding agent in targets/ (§2.4)
+  agent/            a coding agent calling ci-doctor (§2.4); `llm/` is the other direction
+    server.py       the MCP server: the same services as tools
+    harness/        `ci-doctor agent install`: one module per coding agent in targets/
   service/          what each command or tool does, with no terminal in it: analyze,
                     brief, deliver, matchers, setup, report
   config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit,
                     files (which files are read, which one is edited)
   core/             provider-neutral: models, ports, attribution (pure), denoise,
-                    redact, analyze
+                    redact, evidence
   engine/           the matching engine, pure (§2.3): spec/ (matcher files), compile/
                     (spec → Plan), run/ (Plan × lines → windows), select/ (evidence)
   lib/              shared low-level helpers, a leaf: regex.py (RE2 for every user-
@@ -42,9 +43,9 @@ ci_doctor/
   render/           terminal (rich), markdown
   matchers/         matcher files: formats (models), validate, and testing a matcher
                     (examine, verify, schema, logs)
-  registry/         where matchers come from: resolve (include → matchers), cache,
+    registry/       where matchers come from: resolve (include → matchers), cache,
                     index and mirror (building and copying a registry)
-    transports/     local, http: how a registry's files are read
+      transports/   local, http: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
     api_client.py   the HTTP client every provider calls its API through
@@ -65,11 +66,11 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | Evidence selection | `core/denoise.py`, `engine/` | Config-driven where possible; `engine/` stays pure (§2.3). |
 | An LLM backend | `llm/backends.py` + a pip extra | Only a provider Pydantic AI ships; lazy-import the SDK inside the client. |
 | A command or subcommand | `cli/<group…>/<command>.py` (surface) + `service/` or the owning package (work) | See §2.1. |
-| An MCP tool | `mcp/server.py` (surface) + `service/` (work) | See §2.4. |
-| A coding agent for `agent install` | `harness/targets/<name>.py` | One line in `harness/registry.py`'s `TARGETS`. |
+| An MCP tool | `agent/server.py` (surface) + `service/` (work) | See §2.4. |
+| A coding agent for `agent install` | `agent/harness/targets/<name>.py` | One line in `agent/harness/registry.py`'s `TARGETS`. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
-| A way to fetch a registry | `registry/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
+| A way to fetch a registry | `matchers/registry/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
 | A tunable value | `config/schemas/<key>.py` (scalar) or `defaults.yml` (data) | Prefer a config knob over a hardcoded pattern. |
 
 `core/` imports only `core.ports` abstractions. Adapters implement them.
@@ -140,7 +141,7 @@ new front end, never a change to how matching runs. Its layers, bottom first:
 | `select/` | Windows → evidence: `merge`, `shed`, `render`, `fired`, and the token `budget` |
 
 The public surface is `load`, `compile_plan`, `run`, `select`, `fired` and `fit`, plus
-the types. `core/analyze.py`, `matchers/verify.py` and `matchers/examine.py` all take the
+the types. `core/evidence.py`, `matchers/verify.py` and `matchers/examine.py` all take the
 same path through it, so a test and production can't drift.
 
 `tests/test_layout.py` pins four rules:
@@ -153,10 +154,10 @@ same path through it, so a test and production can't drift.
 
 ### 2.4 The MCP server
 
-`ci-doctor mcp` serves the same services to a coding agent over stdio. `mcp/` is a
+`ci-doctor mcp` serves the same services to a coding agent over stdio. `agent/` is a
 surface like `cli/`: a tool parses, calls `service/` and returns; `tests/test_layout.py`
-pins that it imports no `cli`, typer, click or rich, and that nothing else imports
-the MCP SDK.
+pins that it imports no `cli`, typer, click or rich, and that nothing but `server.py`
+imports the MCP SDK.
 
 - **The agent is the model.** `service/analyze.py` has two stages. *Diagnose*
   (`diagnose_run`) is deterministic and ends in a **brief** per failed job
@@ -182,7 +183,7 @@ the MCP SDK.
   Edits go to `./.ci-doctor.yml` unless `--write-to` names another file.
 - **Text the agent is told** lives in `llm/prompts/`, like every prompt (invariant #8).
 - **`ci-doctor agent install` connects agents to the server.** Each agent is a module in
-  `harness/targets/` that knows its config file and format; `lib/edit/` has one
+  `agent/harness/targets/` that knows its config file and format; `lib/edit/` has one
   module per format (JSON, Markdown, TOML, YAML), each changing only ci-doctor's entry and
   keeping the rest of the file. TOML and YAML are edited as text so comments stay, and a
   YAML edit must parse to the intended data or it is not written. A file it cannot edit

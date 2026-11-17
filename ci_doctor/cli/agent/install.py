@@ -4,14 +4,14 @@ import typer
 from typing_extensions import override
 
 from ci_doctor import __version__
+from ci_doctor.agent.harness.entry import on_path
+from ci_doctor.agent.harness.install import install
+from ci_doctor.agent.harness.registry import TARGETS, found, select
+from ci_doctor.agent.harness.targets.base import Location, Target
 from ci_doctor.cli._console.output.changes import plan, preview, show
 from ci_doctor.cli._console.output.message import say
 from ci_doctor.cli._console.tui import Cancelled, Option, interactive, pick_many, pick_one, yes_no
 from ci_doctor.cli._lib.command import Command
-from ci_doctor.harness.entry import on_path
-from ci_doctor.harness.install import install
-from ci_doctor.harness.registry import TARGETS, found, select
-from ci_doctor.harness.targets.base import Location, Target
 
 
 class InstallCommand(Command):

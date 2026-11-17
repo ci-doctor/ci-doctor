@@ -7,7 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ci_doctor.harness.entry import SERVER, instructions, server_entry
+from ci_doctor.agent.harness.entry import SERVER, instructions, server_entry
 from ci_doctor.lib.edit import Change, safely
 from ci_doctor.lib.edit.json import set_json, unset_json
 from ci_doctor.lib.edit.markdown import START, set_block, unset_block

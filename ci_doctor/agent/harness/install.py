@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from ci_doctor.harness.targets.base import Location, Target
+from ci_doctor.agent.harness.targets.base import Location, Target
 from ci_doctor.lib.edit import Change
 
 

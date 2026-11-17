@@ -15,7 +15,7 @@ from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.registry.resolve import Resolved, index_for, session, unknown_registry
+from ci_doctor.matchers.registry.resolve import Resolved, index_for, session, unknown_registry
 
 
 class PingCommand(Command):

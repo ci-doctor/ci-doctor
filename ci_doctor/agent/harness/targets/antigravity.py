@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ci_doctor.harness.entry import SERVER, server_entry
-from ci_doctor.harness.targets.base import GLOBAL_ONLY, Location, McpJsonTarget
+from ci_doctor.agent.harness.entry import SERVER, server_entry
+from ci_doctor.agent.harness.targets.base import GLOBAL_ONLY, Location, McpJsonTarget
 from ci_doctor.lib.edit import Change, safely
 from ci_doctor.lib.edit.json import unset_json
 

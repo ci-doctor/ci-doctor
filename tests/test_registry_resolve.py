@@ -14,8 +14,8 @@ import yaml
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.registry import resolve as registry
-from ci_doctor.registry.resolve import FILE_CAP, INDEX_CAP, load, resolve
+from ci_doctor.matchers.registry import resolve as registry
+from ci_doctor.matchers.registry.resolve import FILE_CAP, INDEX_CAP, load, resolve
 
 _MATCHER = {
     "schema": 1,

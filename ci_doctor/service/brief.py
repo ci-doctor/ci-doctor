@@ -12,8 +12,8 @@ from string import Template
 from pydantic import BaseModel, Field
 
 from ci_doctor.config.schemas import Config
-from ci_doctor.core.analyze import EvidenceBundle
 from ci_doctor.core.attribution import Attribution
+from ci_doctor.core.evidence import EvidenceBundle
 from ci_doctor.core.models import Confidence, FailureReason, Job, Phase
 from ci_doctor.core.redact import redact_text
 

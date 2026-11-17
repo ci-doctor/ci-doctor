@@ -26,10 +26,10 @@ from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
 from ci_doctor.lib.files import atomic_write_bytes
 from ci_doctor.matchers.models import INDEX
+from ci_doctor.matchers.registry.transports import Validators, redact
 from ci_doctor.matchers.validate import parse_yaml
-from ci_doctor.registry.transports import Validators, redact
 
-log = logging.getLogger("ci_doctor.registry")
+log = logging.getLogger("ci_doctor.matchers.registry")
 
 #: The Cache Directory Tagging Specification's first line (https://bford.info/cachedir/).
 CACHEDIR_TAG = (

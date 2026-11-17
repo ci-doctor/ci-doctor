@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ci_doctor.harness.entry import COMMAND
-from ci_doctor.harness.targets.base import Location, McpJsonTarget
+from ci_doctor.agent.harness.entry import COMMAND
+from ci_doctor.agent.harness.targets.base import Location, McpJsonTarget
 
 
 class Opencode(McpJsonTarget):

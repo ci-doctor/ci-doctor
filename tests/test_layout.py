@@ -35,19 +35,19 @@ def test_service_has_no_terminal_in_it():
     assert _offenders((PACKAGE / "service").rglob("*.py"), ("typer", "click")) == {}
 
 
-def test_the_mcp_surface_has_no_terminal_in_it_and_owns_the_sdk():
-    """`mcp/` is a surface like `cli/`, without its terminal; nothing else imports the MCP SDK."""
-    assert _offenders((PACKAGE / "mcp").rglob("*.py"), ("typer", "click", "rich", "ci_doctor.cli")) == {}
-    outside = [p for p in PACKAGE.rglob("*.py") if PACKAGE / "mcp" not in p.parents]
-    assert _offenders(outside, ("mcp",)) == {}
+SERVER = PACKAGE / "agent" / "server.py"
 
 
-def test_only_the_mcp_command_imports_the_mcp_surface():
-    """A tool calls `service/`; a service reaching back into `mcp/` would turn that around."""
-    others = [
-        p for p in PACKAGE.rglob("*.py") if PACKAGE / "mcp" not in p.parents and p != PACKAGE / "cli/mcp.py"
-    ]
-    assert _offenders(others, ("ci_doctor.mcp",)) == {}
+def test_the_agent_package_has_no_terminal_in_it_and_the_server_owns_the_sdk():
+    """`agent/` is a surface like `cli/`, without its terminal; only `agent/server.py` imports the MCP SDK."""
+    assert _offenders((PACKAGE / "agent").rglob("*.py"), ("typer", "click", "rich", "ci_doctor.cli")) == {}
+    assert _offenders([p for p in PACKAGE.rglob("*.py") if p != SERVER], ("mcp",)) == {}
+
+
+def test_only_the_mcp_command_imports_the_server():
+    """A tool calls `service/`; a service reaching back into the server would turn that around."""
+    others = [p for p in PACKAGE.rglob("*.py") if p not in (SERVER, PACKAGE / "cli/mcp.py")]
+    assert _offenders(others, ("ci_doctor.agent.server",)) == {}
 
 
 def test_each_config_key_has_its_own_schema_module():
@@ -139,8 +139,10 @@ def test_outside_code_imports_the_engine_only_through_its_surface():
 
 
 def test_registry_imports_matchers_and_never_the_other_way():
-    """`registry` → `matchers` → `engine`: what a matcher is never depends on where it is fetched from."""
-    assert _offenders((PACKAGE / "matchers").rglob("*.py"), ("ci_doctor.registry",)) == {}
+    """`matchers/registry` → `matchers` → `engine`: what a matcher is never depends on where it is fetched from."""
+    registry = PACKAGE / "matchers" / "registry"
+    files = [p for p in (PACKAGE / "matchers").rglob("*.py") if registry not in p.parents]
+    assert _offenders(files, ("ci_doctor.matchers.registry",)) == {}
 
 
 def test_config_imports_nothing_from_core():

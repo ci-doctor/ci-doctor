@@ -1,16 +1,16 @@
 """Every agent `ci-doctor agent install` knows, and how a `--target` value picks among them."""
 
+from ci_doctor.agent.harness.targets.antigravity import Antigravity
+from ci_doctor.agent.harness.targets.base import Target
+from ci_doctor.agent.harness.targets.claude import ClaudeCode
+from ci_doctor.agent.harness.targets.codex import Codex
+from ci_doctor.agent.harness.targets.cursor import Cursor
+from ci_doctor.agent.harness.targets.gemini import GeminiCli
+from ci_doctor.agent.harness.targets.hermes import Hermes
+from ci_doctor.agent.harness.targets.kiro import Kiro
+from ci_doctor.agent.harness.targets.opencode import Opencode
+from ci_doctor.agent.harness.targets.pi import Pi
 from ci_doctor.errors import SetupError
-from ci_doctor.harness.targets.antigravity import Antigravity
-from ci_doctor.harness.targets.base import Target
-from ci_doctor.harness.targets.claude import ClaudeCode
-from ci_doctor.harness.targets.codex import Codex
-from ci_doctor.harness.targets.cursor import Cursor
-from ci_doctor.harness.targets.gemini import GeminiCli
-from ci_doctor.harness.targets.hermes import Hermes
-from ci_doctor.harness.targets.kiro import Kiro
-from ci_doctor.harness.targets.opencode import Opencode
-from ci_doctor.harness.targets.pi import Pi
 
 #: Adding an agent: one module in `targets/` and one line here.
 TARGETS: dict[str, Target] = {

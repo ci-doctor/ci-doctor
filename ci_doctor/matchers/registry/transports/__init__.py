@@ -22,8 +22,8 @@ from ci_doctor.errors import SetupError
 
 #: Transport name -> its class.
 TRANSPORTS: dict[str, str] = {
-    "local": "ci_doctor.registry.transports.local:LocalTransport",
-    "http": "ci_doctor.registry.transports.http:HttpTransport",
+    "local": "ci_doctor.matchers.registry.transports.local:LocalTransport",
+    "http": "ci_doctor.matchers.registry.transports.http:HttpTransport",
 }
 
 #: Possessive, so a long run with no `@` after it fails once instead of backtracking.
