@@ -36,7 +36,8 @@ ci_doctor/
   engine/           the matching engine, pure (§2.3): spec/ (matcher files), compile/
                     (spec → Plan), run/ (Plan × lines → windows), select/ (evidence)
   lib/              shared low-level helpers, a leaf: regex.py (RE2 for every user-
-                    or matcher-supplied regex), files.py (atomic writes)
+                    or matcher-supplied regex), files.py (atomic writes), edit/ (change
+                    one entry of a JSON, Markdown, TOML or YAML file, keep the rest)
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
   matchers/         matcher files: formats (models), validate, and testing a matcher
@@ -143,7 +144,7 @@ same path through it, so a test and production can't drift.
 `tests/test_layout.py` pins four rules:
 
 1. `engine/` imports nothing from `ci_doctor` but `ci_doctor.lib`; third-party, only
-   pydantic. `lib/` itself imports nothing from `ci_doctor` but `ci_doctor.errors`.
+   pydantic. `lib/` itself imports nothing from `ci_doctor` but `ci_doctor.errors` and its own modules.
 2. A layer imports only the layers below it.
 3. Code outside `engine/` imports `ci_doctor.engine`, never a submodule.
 4. `config/` imports nothing from `core/`.
@@ -179,7 +180,7 @@ the MCP SDK.
   Edits go to `./.ci-doctor.yml` unless `--write-to` names another file.
 - **Text the agent is told** lives in `llm/prompts/`, like every prompt (invariant #8).
 - **`ci-doctor agent install` connects agents to the server.** Each agent is a module in
-  `harness/targets/` that knows its config file and format; `harness/formats/` has one
+  `harness/targets/` that knows its config file and format; `lib/edit/` has one
   module per format (JSON, Markdown, TOML, YAML), each changing only ci-doctor's entry and
   keeping the rest of the file. TOML and YAML are edited as text so comments stay, and a
   YAML edit must parse to the intended data or it is not written. A file it cannot edit

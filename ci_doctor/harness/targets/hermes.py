@@ -8,8 +8,9 @@ from typing import Any, ClassVar
 import yaml
 
 from ci_doctor.harness.entry import COMMAND, SERVER
-from ci_doctor.harness.formats import Change, Unsafe, safely
-from ci_doctor.harness.formats.yaml import (
+from ci_doctor.harness.targets.base import GLOBAL_ONLY, Location, Target
+from ci_doctor.lib.edit import Change, Unsafe, safely
+from ci_doctor.lib.edit.yaml import (
     Lines,
     add_item,
     edit_yaml,
@@ -17,7 +18,6 @@ from ci_doctor.harness.formats.yaml import (
     remove_item,
     set_child,
 )
-from ci_doctor.harness.targets.base import GLOBAL_ONLY, Location, Target
 
 #: Hermes names a server's tools `mcp-<server>`; a CLI profile may list the ones it allows.
 _TOOLSET = f"mcp-{SERVER}"

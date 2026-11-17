@@ -7,10 +7,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ci_doctor.harness.entry import SERVER, server_entry
-from ci_doctor.harness.formats import Change, safely
-from ci_doctor.harness.formats.json import set_json, unset_json
-from ci_doctor.harness.formats.markdown import START, set_block, unset_block
+from ci_doctor.harness.entry import SERVER, instructions, server_entry
+from ci_doctor.lib.edit import Change, safely
+from ci_doctor.lib.edit.json import set_json, unset_json
+from ci_doctor.lib.edit.markdown import START, set_block, unset_block
 
 
 class Location(StrEnum):
@@ -135,7 +135,7 @@ class McpJsonTarget(Target):
         config, entry = self.config(location), self.entry(location)
         changes = [safely(config, lambda: set_json(config, (self.key, SERVER), entry, new=self.new_file))]
         if (notes := self.instructions(location)) is not None:
-            changes.append(set_block(notes))
+            changes.append(set_block(notes, instructions()))
         return changes
 
     def uninstall(self, location: Location) -> list[Change]:  # noqa: D102 - documented on Target

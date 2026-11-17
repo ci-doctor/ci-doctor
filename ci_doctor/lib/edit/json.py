@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ci_doctor.harness.formats import Change, Unsafe, read, write
+from ci_doctor.lib.edit import Change, Unsafe, read, write
 
 Keys = tuple[str, ...]
 
@@ -108,7 +108,7 @@ def drop_json_items(path: Path, keys: Keys, prefix: str) -> Change:
 
 
 def _dump(data: dict) -> str:
-    """JSON as agents write it: 2-space indent and a final newline."""
+    """JSON as most tools write it: 2-space indent and a final newline."""
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 

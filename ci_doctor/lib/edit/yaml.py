@@ -1,4 +1,4 @@
-"""YAML config files (Hermes): one entry in a block mapping, edited as text so comments stay.
+"""YAML config files: one entry in a block mapping, edited as text so comments stay.
 
 The text edits understand plain block style: `key:` on its own line, children indented
 under it. Every edit is then checked: the new text must parse to exactly the old data
@@ -14,7 +14,7 @@ from typing import Any
 
 import yaml
 
-from ci_doctor.harness.formats import Change, Unsafe, read, write
+from ci_doctor.lib.edit import Change, Unsafe, read, write
 
 Lines = list[str]
 
@@ -57,6 +57,24 @@ def edit_yaml(
     if expected == original:
         return Change(path, "absent" if removing else "unchanged")
     return write(path, before, new, removing=removing)
+
+
+def set_key(lines: Lines, key: str, value: object) -> Lines:
+    """Set top-level `key` to `value`, replacing its whole block (flow style too) or appending it.
+
+    Args:
+        lines: The file's lines.
+        key: A top-level key.
+        value: Its new value.
+
+    Returns:
+        The new lines.
+    """
+    rendered = yaml.safe_dump({key: value}, sort_keys=False, default_flow_style=False).splitlines()
+    found = _block(lines, key, "", inline_ok=True)
+    if found is None:
+        return [*lines, *rendered]
+    return [*lines[: found[0]], *rendered, *lines[found[1] :]]
 
 
 def set_child(lines: Lines, parent: str, child: str, body: dict[str, Any]) -> Lines:
@@ -156,18 +174,19 @@ def _items(lines: Lines, parent: str, child: str) -> list[int]:
 
 
 def _block(
-    lines: Lines, key: str, indent: str, start: int = 0, stop: int | None = None
+    lines: Lines, key: str, indent: str, start: int = 0, stop: int | None = None, *, inline_ok: bool = False
 ) -> tuple[int, int] | None:
     """The lines `[first, end)` of `key:` written at exactly `indent`, with its children.
 
     Raises:
-        Unsafe: If the key is written inline (`key: {...}`), which the text edits cannot extend.
+        Unsafe: If the key is written inline (`key: {...}`), which the text edits cannot
+            extend; `inline_ok` allows it for a caller that replaces the whole block.
     """
     stop = len(lines) if stop is None else stop
     head = re.compile(rf"^{re.escape(indent)}{re.escape(key)}:")
     for first in range(start, stop):
         if head.match(lines[first]):
-            if lines[first][len(indent) + len(key) + 1 :].split("#")[0].strip():
+            if not inline_ok and lines[first][len(indent) + len(key) + 1 :].split("#")[0].strip():
                 raise Unsafe(f"`{key}` is written inline")
             end = first + 1
             while end < stop and _inside(lines[end], len(indent)):

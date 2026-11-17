@@ -65,7 +65,7 @@ def test_a_mis_splice_is_caught_and_the_file_left_alone(tmp_path, monkeypatch):
     path = tmp_path / "c.yml"
     original = "ci: github\nmatchers:\n  include: [a/b]\nllm:\n  model: x\n"
     path.write_text(original)
-    monkeypatch.setattr(edit, "_splice", lambda text, key, dumped: dumped)  # drops everything else
+    monkeypatch.setattr(edit, "set_key", lambda lines, key, value: [f"{key}: {{}}"])  # drops everything else
     with pytest.raises(SetupError, match="more than `matchers`"):
         edit.edit_block(path, "matchers", _add("a/c"))
     assert path.read_text() == original

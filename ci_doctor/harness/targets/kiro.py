@@ -3,9 +3,10 @@
 from pathlib import Path
 from typing import ClassVar
 
-from ci_doctor.harness.formats import Change
-from ci_doctor.harness.formats.markdown import set_file, unset_block
+from ci_doctor.harness.entry import instructions
 from ci_doctor.harness.targets.base import Location, McpJsonTarget
+from ci_doctor.lib.edit import Change
+from ci_doctor.lib.edit.markdown import set_file, unset_block
 
 
 class Kiro(McpJsonTarget):
@@ -24,7 +25,7 @@ class Kiro(McpJsonTarget):
     def install(self, location: Location, *, permissions: bool) -> list[Change]:  # noqa: D102 - documented on Target
         return [
             *super().install(location, permissions=permissions),
-            set_file(self._steering(location)),
+            set_file(self._steering(location), instructions()),
         ]
 
     def uninstall(self, location: Location) -> list[Change]:  # noqa: D102 - documented on Target

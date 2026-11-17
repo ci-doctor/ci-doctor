@@ -1,13 +1,13 @@
-"""Edits to another program's config files that change only ci-doctor's part.
+"""Edits to a config file that change one entry and keep the rest of the file.
 
-One module per format. Each edit changes one entry and keeps the rest of the file. A
+One module per format. A
 file that cannot be edited safely (it does not parse, or a rewrite would lose its
 comments) raises `Unsafe`; `safely` turns that into a skipped change, and the file is
 left alone.
 
-Removal takes out ci-doctor's entry and any container it leaves empty. A JSON config
-is never deleted, since the agent manages it; a Markdown, TOML or YAML file left with
-nothing in it is.
+Removal takes out the entry and any container it leaves empty. A JSON config is never
+deleted, since the program that owns it manages it; a Markdown, TOML or YAML file left
+with nothing in it is.
 """
 
 from collections.abc import Callable

@@ -4,9 +4,9 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from ci_doctor.harness.entry import SERVER, server_entry
-from ci_doctor.harness.formats import Change, safely
-from ci_doctor.harness.formats.json import unset_json
 from ci_doctor.harness.targets.base import GLOBAL_ONLY, Location, McpJsonTarget
+from ci_doctor.lib.edit import Change, safely
+from ci_doctor.lib.edit.json import unset_json
 
 #: Antigravity keeps its files under Gemini CLI's folder, `~/.gemini`.
 _GEMINI = ".gemini"

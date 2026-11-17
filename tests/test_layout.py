@@ -153,6 +153,14 @@ def test_lib_is_a_leaf():
     bad = {
         str(p.relative_to(PACKAGE)): out
         for p in (PACKAGE / "lib").rglob("*.py")
-        if (out := sorted(m for m in _imports(p) if m.startswith("ci_doctor.") and m != "ci_doctor.errors"))
+        if (
+            out := sorted(
+                m
+                for m in _imports(p)
+                if m.startswith("ci_doctor.")
+                and m != "ci_doctor.errors"
+                and not m.startswith("ci_doctor.lib.")
+            )
+        )
     }
     assert bad == {}

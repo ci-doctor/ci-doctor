@@ -3,7 +3,7 @@
 import tomllib
 from pathlib import Path
 
-from ci_doctor.harness.formats import Change, Unsafe, read, write
+from ci_doctor.lib.edit import Change, Unsafe, read, write
 
 
 def set_toml_table(path: Path, header: str, body: list[str]) -> Change:

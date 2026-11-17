@@ -6,11 +6,11 @@ import tomllib
 from pathlib import Path
 from typing import ClassVar
 
-from ci_doctor.harness.entry import COMMAND, SERVER
-from ci_doctor.harness.formats import Change, safely
-from ci_doctor.harness.formats.markdown import set_block, unset_block
-from ci_doctor.harness.formats.toml import set_toml_table, unset_toml_table
+from ci_doctor.harness.entry import COMMAND, SERVER, instructions
 from ci_doctor.harness.targets.base import GLOBAL_ONLY, Location, Target
+from ci_doctor.lib.edit import Change, safely
+from ci_doctor.lib.edit.markdown import set_block, unset_block
+from ci_doctor.lib.edit.toml import set_toml_table, unset_toml_table
 
 _TABLE = f"mcp_servers.{SERVER}"
 _BODY = [f'command = "{COMMAND}"', 'args = ["mcp"]']
@@ -37,12 +37,15 @@ class Codex(Target):
         config = self._config()
         return [
             safely(config, lambda: set_toml_table(config, _TABLE, _BODY)),
-            set_block(self._instructions()),
+            set_block(self._instructions(), instructions()),
         ]
 
     def uninstall(self, location: Location) -> list[Change]:  # noqa: D102 - documented on Target
         config = self._config()
-        return [safely(config, lambda: unset_toml_table(config, _TABLE)), unset_block(self._instructions())]
+        return [
+            safely(config, lambda: unset_toml_table(config, _TABLE)),
+            unset_block(self._instructions()),
+        ]
 
     def snippet(self, location: Location) -> str:  # noqa: D102 - documented on Target
         return f"# Add to {self._config()}\n\n[{_TABLE}]\n" + "\n".join(_BODY) + "\n"
