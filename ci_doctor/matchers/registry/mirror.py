@@ -1,8 +1,7 @@
 """Copy a whole registry into a folder: the one-command air-gapped setup.
 
 Every matcher and bundle is fetched through the cache and checked against its
-index hash (and the official index against its signature, which is copied too),
-then written byte for byte, so the copy hashes exactly like the
+index hash, then written byte for byte, so the copy hashes exactly like the
 original and any ci-doctor can use it as a `file://` registry, or serve it.
 """
 
@@ -25,7 +24,6 @@ from ci_doctor.matchers.registry.resolve import (
     session,
     unknown_registry,
 )
-from ci_doctor.matchers.registry.signing import SIGNATURE
 from ci_doctor.matchers.validate import contained
 
 
@@ -52,7 +50,7 @@ def mirror(cfg: MatchersConfig, alias: str, dest: Path, client: httpx.Client | N
     location = registry_dir(alias, cfg.registries[alias])
     cache = Cache.open(cfg)
     with session(cfg, client) as http:
-        text, signature = index_text(alias, location, http, cache)
+        text = index_text(alias, location, http, cache)
         index = parse_index(alias, location, text)
         entries = [*index.matchers.values(), *index.bundles.values()]
         with ThreadPoolExecutor(max_workers=cfg.fetch_workers, thread_name_prefix="ci-doctor-fetch") as pool:
@@ -69,7 +67,5 @@ def mirror(cfg: MatchersConfig, alias: str, dest: Path, client: httpx.Client | N
         path = contained(dest, entry.path)
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_bytes(path, body.encode("utf-8"))
-    if signature is not None:  # the official registry's: a mirror of it still verifies as official
-        atomic_write_bytes(dest / SIGNATURE, signature)
     atomic_write_bytes(dest / INDEX, text.encode("utf-8"))  # last: an index never lists a missing file
     return len(entries)

@@ -3,8 +3,8 @@
 Matchers and bundles are stored by the sha256 their index lists (`blobs/sha256/ab/abcd…`):
 a file whose hash is unchanged is never fetched again, from any registry, and a
 blob is trusted because its name is its hash. Each http(s) registry's `index.yaml`
-and its signature are kept with their HTTP validators and how long the server
-said they stay fresh, so they are reused without a request while fresh and
+is kept with its HTTP validators and how long the server
+said it stays fresh, so it is reused without a request while fresh and
 revalidated with a conditional GET after that. Local registries aren't cached: reading them is already a disk read.
 
 The cache is an optimisation, never a requirement: a directory that can't be
@@ -162,7 +162,7 @@ class Cache:
         self._store(self._blob_path(sha256), body)
 
     def file(self, location: str, rel: str) -> CachedFile | None:
-        """A registry file cached by path (its index or signature), if cached and readable.
+        """A registry file cached by path (its index), if cached and readable.
 
         Args:
             location: The registry's directory URL.
@@ -182,29 +182,6 @@ class Cache:
         folders = sorted((self.root / "registries").glob("*/")) if (self.root / "registries").is_dir() else []
         found = [i for i in (_read_file(f, INDEX) for f in folders) if i is not None]
         return sorted(found, key=lambda i: i.fetched_at)
-
-    def signed_version(self, location: str) -> int | None:
-        """The highest signed index version seen from this registry, for the rollback check.
-
-        Args:
-            location: The registry's directory URL.
-
-        Returns:
-            The version, or None if none was recorded.
-        """
-        try:
-            return int(json.loads((self._registry_dir(location) / "signed.json").read_text())["version"])
-        except (OSError, ValueError, KeyError, TypeError):
-            return None
-
-    def record_signed_version(self, location: str, version: int) -> None:
-        """Remember a verified index version, so an older one is refused later.
-
-        Args:
-            location: The registry's directory URL.
-            version: The version just verified.
-        """
-        self._store(self._registry_dir(location) / "signed.json", json.dumps({"version": version}).encode())
 
     def blob_paths(self) -> list[Path]:
         """Every cached file.
@@ -233,7 +210,7 @@ class Cache:
             shutil.rmtree(self.root / sub, ignore_errors=True)
 
     def put_file(self, location: str, rel: str, body: bytes, validators: Validators, max_age: float) -> None:
-        """Store a freshly fetched registry file (its index or signature).
+        """Store a freshly fetched registry file (its index).
 
         Args:
             location: The registry's directory URL.

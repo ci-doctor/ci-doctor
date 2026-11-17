@@ -64,7 +64,7 @@ def fx_registry(tmp_path_factory: pytest.TempPathFactory) -> Path:
     Returns:
         The registry directory. Tests that edit a registry write their own.
     """
-    return support.sign_registry(support.py_registry(tmp_path_factory.mktemp("registry")))
+    return support.py_registry(tmp_path_factory.mktemp("registry"))
 
 
 @pytest.fixture(autouse=True)
@@ -77,18 +77,6 @@ def _private_cache(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest
     """
     root = tmp_path_factory.mktemp("cache")
     monkeypatch.setattr("ci_doctor.matchers.registry.cache.default_root", lambda: root)
-
-
-@pytest.fixture(autouse=True)
-def _test_signing_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The official registry's index is checked against the test key, and only it.
-
-    Args:
-        monkeypatch: pytest fixture to swap the trusted keys.
-    """
-    monkeypatch.setattr(
-        "ci_doctor.matchers.registry.signing.OFFICIAL_KEYS", {support.TEST_KEY_ID: support.TEST_PUBLIC_KEY}
-    )
 
 
 @pytest.fixture

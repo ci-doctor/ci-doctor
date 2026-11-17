@@ -187,6 +187,14 @@ def test_an_https_registry_loads_through_the_shared_client(fx_registry):
     assert [m.id for m in matchers] == ["fx/pytest", "fx/python_traceback"]
 
 
+@pytest.mark.parametrize("served", [False, True])
+def test_official_can_be_any_copy_of_the_registry(served, fx_registry):
+    """A plain clone or a server of one stands in for `official`: no signature is asked for."""
+    location = "https://reg.test/m/" if served else str(fx_registry)
+    client = _http(_files(fx_registry)) if served else None
+    assert len(load(_cfg(["official/all"], official=location), client=client)) == 2
+
+
 def test_a_plain_http_registry_loads_and_warns(caplog, fx_registry):
     """Allowed — an internal server without TLS is the user's call — but never silently."""
     client = _http(_files(fx_registry), base="http://reg.internal/m/")

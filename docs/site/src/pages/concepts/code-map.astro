@@ -22,7 +22,12 @@ const packages = [
             {
                 path: "lib/",
                 entry: "pattern_set()",
-                role: "Shared low-level helpers. `regex.py`: RE2 for every regex a user or a matcher supplies, linear time by construction, so no pattern can hang a job; `pattern_set` matches a whole list in one pass per line. `files.py`: atomic writes.",
+                role: "Shared low-level helpers. `regex.py`: RE2 for every regex a user or a matcher supplies, linear time by construction, so no pattern can hang a job; `pattern_set` matches a whole list in one pass per line. `files.py`: atomic writes. `edit/`: change one entry of a JSON, Markdown, TOML or YAML file and keep the rest, comments included.",
+            },
+            {
+                path: "agent/",
+                entry: "build()",
+                role: "A coding agent calling ci-doctor. `server.py` is the MCP server, a surface like `cli/`: each tool calls `service/` and returns, and nothing here calls a model. `harness/` is `ci-doctor agent install`: one module per coding agent in `targets/`.",
             },
             {
                 path: "errors.py",
@@ -68,7 +73,7 @@ const packages = [
             },
             {
                 path: "ports.py",
-                entry: "LogSegmenter, RunFetcher",
+                entry: "CIProvider, LogSegmenter",
                 role: "The protocols a provider must satisfy. The entire reason `core/` can stay blind to which CI system produced a log.",
             },
             {
@@ -87,13 +92,13 @@ const packages = [
                 role: "Strip ANSI, collapse `\\r` progress rewrites to their final state, optionally drop the timestamp prefix, drop configured noise, then fold runs of identical lines into one with a count.",
             },
             {
-                path: "analyze.py",
+                path: "evidence.py",
                 entry: "build_bundle()",
                 role: "The orchestrator for the evidence: picks the last section carrying the blamed phase, then denoise → extract → fit into one `EvidenceBundle`.",
             },
             {
                 path: "redact.py",
-                entry: "redact()",
+                entry: "redact_text()",
                 role: "The secret scrubber. Run on the prompt and again on the finished report.",
             },
         ],
@@ -141,7 +146,7 @@ const packages = [
     },
     {
         dir: "matchers/",
-        blurb: "What a matcher, bundle and index file is, and how a matcher is tested. Imports nothing from `registry/`.",
+        blurb: "What a matcher, bundle and index file is, and how a matcher is tested. Nothing outside `registry/` imports `registry/`.",
         files: [
             {
                 path: "models.py",
@@ -166,7 +171,7 @@ const packages = [
         ],
     },
     {
-        dir: "registry/",
+        dir: "matchers/registry/",
         blurb: "Where matchers come from: registries, read on every run and validated like untrusted input, and building one.",
         files: [
             {
@@ -243,8 +248,8 @@ const packages = [
             },
             {
                 path: "schema.py",
-                entry: "LLMAnswer",
-                role: "The shape a model answer must have. A reply that does not validate is discarded, not trusted.",
+                entry: "Report",
+                role: "The report's shape: what a model must answer with, and what `report.json` holds. A reply that does not validate is discarded, not trusted.",
             },
         ],
     },
@@ -263,9 +268,9 @@ const packages = [
                 role: "`report.md`, and the body of the MR/PR note.",
             },
             {
-                path: "json_out.py",
-                entry: "—",
-                role: "`report.json`, for anything downstream that wants to parse rather than read.",
+                path: "pipeline.py",
+                entry: "triage_line()",
+                role: "The run header and the code-vs-infra triage count above the jobs.",
             },
         ],
     },
