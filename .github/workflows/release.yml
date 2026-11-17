@@ -59,6 +59,12 @@ jobs:
         if: steps.gate.outputs.release == 'true'
         run: uv build
 
+      # arm64 is built under emulation on this amd64 runner.
+      - uses: docker/setup-qemu-action@v4
+        if: steps.gate.outputs.release == 'true'
+        with:
+          platforms: arm64
+
       - uses: docker/setup-buildx-action@v4
         if: steps.gate.outputs.release == 'true'
 
@@ -69,19 +75,28 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Loaded, not pushed: a Dockerfile error must fail here, before the tag exists.
+      # Both platforms into the builder's cache, not pushed: a Dockerfile error must fail
+      # here, before the tag exists. The push below reuses these layers.
       # Fully-qualified tags: a bare `ci-doctor:X` resolves to docker.io/library/ci-doctor.
       - name: Build the Docker image
         if: steps.gate.outputs.release == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
-          load: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             docker.io/fennet/ci-doctor:${{ steps.bump.outputs.version }}
             docker.io/fennet/ci-doctor:latest
 
-      # The air-gap tarball; the bare `ci-doctor:X` tag is what the docs say to retag.
+      # The runner's image store holds one platform per tag, so each is loaded and run alone.
+      - name: Smoke-test the Docker image on each platform
+        if: steps.gate.outputs.release == 'true'
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            docker buildx build --platform "$platform" --load -t ci-doctor-smoke .
+            docker run --rm --platform "$platform" ci-doctor-smoke --version
+          done
+
       # Editors resolve it via its $id, /releases/latest/download/ci-doctor.schema.json.
       - name: Generate the config JSON Schema
         if: steps.gate.outputs.release == 'true'
@@ -153,6 +168,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             docker.io/fennet/ci-doctor:${{ steps.bump.outputs.version }}
