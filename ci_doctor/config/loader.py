@@ -86,7 +86,7 @@ def _shipped_defaults() -> dict:
     Returns:
         The baseline config layer, before any user input.
     """
-    text = resources.files("ci_doctor.config").joinpath("defaults.yml").read_text()
+    text = resources.files("ci_doctor.config").joinpath("defaults.yml").read_text(encoding="utf-8")
     return _load_yaml(text)
 
 
@@ -190,7 +190,7 @@ def _file_layer(path: Path) -> dict:
     Returns:
         The file's layer, not yet validated.
     """
-    layer = _load_yaml(path.read_text())
+    layer = _load_yaml(path.read_text(encoding="utf-8"))
     registries = (layer.get("matchers") or {}).get("registries")
     if isinstance(registries, dict):  # anything else fails validation later
         for alias, value in registries.items():

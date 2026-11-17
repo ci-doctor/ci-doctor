@@ -307,7 +307,7 @@ def write_index(root: Path, *, check: bool = False) -> int:
             p for p, body in files.items() if not p.is_file() or p.read_text(encoding="utf-8") != body
         ]
         if out_of_date or stale:
-            names = ", ".join(str(p.relative_to(root)) for p in [*out_of_date, *stale])
+            names = ", ".join(p.relative_to(root).as_posix() for p in [*out_of_date, *stale])
             raise SetupError(f"out of date: {names}. Run `ci-doctor registry index {root}`")
     else:
         (root / "bundles").mkdir(exist_ok=True)

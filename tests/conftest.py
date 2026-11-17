@@ -34,7 +34,19 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
         """
         raise RuntimeError("network access is not allowed in tests (air-gap guarantee)")
 
-    monkeypatch.setattr(socket.socket, "connect", guard)
+    real_connect = socket.socket.connect
+
+    def connect(sock: socket.socket, address: object) -> None:
+        """Loopback only: Windows builds asyncio's socketpair by connecting to itself.
+
+        Raises:
+            RuntimeError: For any other address.
+        """
+        if isinstance(address, tuple) and address[0] in ("127.0.0.1", "::1"):
+            return real_connect(sock, address)
+        guard()
+
+    monkeypatch.setattr(socket.socket, "connect", connect)
     monkeypatch.setattr(socket, "create_connection", guard)
 
 
@@ -77,6 +89,18 @@ def _private_cache(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest
     """
     root = tmp_path_factory.mktemp("cache")
     monkeypatch.setattr("ci_doctor.matchers.registry.cache.default_root", lambda: root)
+
+
+@pytest.fixture(autouse=True)
+def _wide_log_console(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Log lines never wrap in tests: a long temp path (macOS, Windows) must not split a match.
+
+    Args:
+        monkeypatch: pytest fixture to widen the console.
+    """
+    from ci_doctor.cli._console.terminal import LOG_CONSOLE
+
+    monkeypatch.setattr(LOG_CONSOLE, "width", 10_000)
 
 
 @pytest.fixture

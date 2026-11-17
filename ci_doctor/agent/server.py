@@ -89,7 +89,9 @@ def build(files: ConfigFiles) -> MCPServer:
     server = MCPServer(
         "ci-doctor",
         version=__version__,
-        instructions=resources.files("ci_doctor.llm.prompts").joinpath("mcp.instructions.txt").read_text(),
+        instructions=resources.files("ci_doctor.llm.prompts")
+        .joinpath("mcp.instructions.txt")
+        .read_text(encoding="utf-8"),
     )
 
     @server.tool(annotations=_READ_REMOTE)

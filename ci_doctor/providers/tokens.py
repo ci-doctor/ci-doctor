@@ -31,6 +31,6 @@ def read_token(token_file: str | None, token_env: str, environ: Mapping[str, str
     if token_file:
         path = Path(token_file)
         if path.is_file():
-            return path.read_text().strip()
+            return path.read_text(encoding="utf-8").strip()
         log.warning(f"token_file {path} not found; falling back to env")
     return environ.get(token_env)

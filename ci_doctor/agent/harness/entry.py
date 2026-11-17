@@ -19,7 +19,12 @@ def on_path() -> bool:
 
 def instructions() -> str:
     """The instructions agents read about ci-doctor, without the markers."""
-    return resources.files("ci_doctor.llm.prompts").joinpath("harness.instructions.md").read_text().strip()
+    return (
+        resources.files("ci_doctor.llm.prompts")
+        .joinpath("harness.instructions.md")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
 
 
 def server_entry(*args: str, with_type: bool = True) -> dict[str, Any]:

@@ -86,7 +86,11 @@ line-length = 110
 # ANN: every parameter and return in the shipped package is annotated. `ty` only
 #      checks what it is given, so an unannotated argument is a hole it reads as
 #      Unknown and silently stops checking through.
-extend-select = ["S", "D", "I", "UP", "B", "C4", "ANN"]
+# PLW1514: an encoding on every open/read_text/write_text, or Windows reads cp1252.
+extend-select = ["S", "D", "I", "UP", "B", "C4", "ANN", "PLW1514"]
+select = ["E4", "E7", "E9", "F"]  # ruff's stable defaults, pinned: preview would widen them
+preview = true  # PLW1514 is a preview rule; explicit-preview-rules keeps it the only one
+explicit-preview-rules = true
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -94,7 +98,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 # ANN off for tests: a test function returns None and says so by being a test.
 # `support.py` and `conftest.py` are annotated anyway — they are shared code.
-"tests/**" = ["S101", "S603", "ANN"]  # assert is the test; subprocess there is fixture setup
+"tests/**" = ["S101", "S603", "ANN", "PLW1514"]  # assert is the test; subprocess there is fixture setup
 "ci_doctor/cli/**" = ["B008"]  # typer declares options as call-valued defaults, by design
 
 [tool.pytest.ini_options]

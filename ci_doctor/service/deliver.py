@@ -48,8 +48,8 @@ def write_artifacts(results: list[JobResult], cfg: Config, run: Run | None) -> N
         cfg: The effective config, supplying the output paths.
         run: The analyzed run, or None for offline replay.
     """
-    Path(cfg.output.markdown_path).write_text(pipeline_markdown(run, results))
-    Path(cfg.output.json_path).write_text(json.dumps(payload(results), indent=2))
+    Path(cfg.output.markdown_path).write_text(pipeline_markdown(run, results), encoding="utf-8")
+    Path(cfg.output.json_path).write_text(json.dumps(payload(results), indent=2), encoding="utf-8")
 
 
 def post_note(ci_provider: object, run: Run | None, results: list[JobResult], cfg: Config) -> str | None:

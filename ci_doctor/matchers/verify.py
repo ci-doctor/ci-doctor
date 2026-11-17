@@ -165,7 +165,9 @@ def _fixtures(root: Path, path: Path, report: Report) -> dict[Path, list[str]]:
     logs = {}
     for log in sorted((path.parent / "fixtures").glob("*.log")):
         if (size := log.stat().st_size) > MAX_FIXTURE_BYTES:
-            report.problems.append(f"{log.relative_to(root)}: {size} bytes, over {MAX_FIXTURE_BYTES}")
+            report.problems.append(
+                f"{log.relative_to(root).as_posix()}: {size} bytes, over {MAX_FIXTURE_BYTES}"
+            )
             continue
         logs[log] = read_fixture(log)
     return logs
@@ -200,9 +202,9 @@ def _goldens(root: Path, m: _Matcher, report: Report, wanted: set[str], *, updat
             path = golden(log, out.output.id, m.spec.id)
             got = selection(lines, own)
             if problem := _compare(
-                path, got, out.output.id, stats[o], label=path.relative_to(root), update=update
+                path, got, out.output.id, stats[o], label=path.relative_to(root).as_posix(), update=update
             ):
-                report.problems.append(f"{log.relative_to(root)}: {problem}")
+                report.problems.append(f"{log.relative_to(root).as_posix()}: {problem}")
     report.problems += [
         f"{out.output.id} ({name}): this variant anchors in none of its matcher's fixtures"
         for o, out in outs
@@ -212,7 +214,7 @@ def _goldens(root: Path, m: _Matcher, report: Report, wanted: set[str], *, updat
 
 
 def _compare(
-    path: Path, got: str, output_id: str, stats: OutputReport, *, label: Path, update: bool
+    path: Path, got: str, output_id: str, stats: OutputReport, *, label: str, update: bool
 ) -> str | None:
     """Write or compare one golden, counting it as positive or negative.
 
@@ -238,7 +240,7 @@ def _compare(
         stats.negative += 1
     if got == want:
         return None
-    diff = list(difflib.unified_diff(want.splitlines(), got.splitlines(), str(label), "actual", lineterm=""))
+    diff = list(difflib.unified_diff(want.splitlines(), got.splitlines(), label, "actual", lineterm=""))
     if len(diff) > MAX_DIFF_LINES:
         diff = [*diff[:MAX_DIFF_LINES], f"… [{len(diff) - MAX_DIFF_LINES} lines elided] …"]
     return f"{output_id} differs from {path.name}\n" + "\n".join(diff)
@@ -301,7 +303,7 @@ def _cross_fire(root: Path, matchers: list[_Matcher], report: Report, wanted: se
                     or digests[log] in own[id(other)]
                 ):
                     continue
-                report.cross_fire.append({"output": out.id, "fixture": str(log.relative_to(root))})
+                report.cross_fire.append({"output": out.id, "fixture": log.relative_to(root).as_posix()})
 
 
 def _runner_trailers(matchers: list[_Matcher], report: Report, wanted: set[str]) -> None:
@@ -344,7 +346,9 @@ def _load(root: Path, paths: list[Path], report: Report, named: set[str] | None)
                 report.problems.append(str(err))
             continue
         if spec.id in {m.spec.id for m in matchers}:
-            report.problems.append(f"{path.relative_to(root)}: matcher name {spec.id!r} is used twice")
+            report.problems.append(
+                f"{path.relative_to(root).as_posix()}: matcher name {spec.id!r} is used twice"
+            )
             continue
         matchers.append(_Matcher(path, spec, compile_plan([spec]), _fixtures(root, path, report)))
     return matchers

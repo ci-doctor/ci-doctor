@@ -354,4 +354,4 @@ def _load(name: str) -> str:
     Returns:
         The template text.
     """
-    return resources.files("ci_doctor.llm.prompts").joinpath(name).read_text()
+    return resources.files("ci_doctor.llm.prompts").joinpath(name).read_text(encoding="utf-8")
