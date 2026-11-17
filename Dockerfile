@@ -1,8 +1,8 @@
 # https://docs.astral.sh/uv/guides/integration/docker/ — the runtime image gets only the venv.
 # Both stages must use the same Python image: the venv links to its interpreter.
-FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.9 AS uv
 
-FROM python:3.14-slim AS builder
+FROM python:3.15-slim AS builder
 COPY --from=uv /uv /bin/
 
 # Built at its final path: console-script shebangs are absolute.
@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && uv export --locked --all-extras --no-dev --no-hashes --no-emit-project -o /opt/ci-doctor/constraints.txt
 
 
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 COPY --from=builder /opt/ci-doctor /opt/ci-doctor
 # `pip install "ci-doctorr[openai]"` then lands in the venv, at the locked versions.
