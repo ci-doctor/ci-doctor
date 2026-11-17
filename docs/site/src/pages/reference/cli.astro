@@ -50,8 +50,8 @@ ci-doctor matchers examine MATCHER LOG [--framing github|gitlab|plain]  # what e
 # missing; ci-doctor --write-to FILE matchers ... writes FILE instead, and reads it too.
 # Output is a table by default; ci-doctor --plain matchers ... prints one bare line per row.`;
 
-const matchersAuthor = `ci-doctor matchers verify [ROOT] [--update] [--min-positive N] [--min-negative N]
-                          [--exempt FILE] [--cross-fire] [--json FILE]
+const matchersAuthor = `ci-doctor matchers verify [ROOT] [--only NAME[.OUTPUT]]... [--update]
+                          [--min-positive N] [--min-negative N] [--exempt FILE] [--cross-fire] [--json FILE]
 ci-doctor matchers schema [--version N | --out DIR]  # a matcher file's JSON Schema; --out writes every version`;
 
 const registryUse = `ci-doctor registry add NAME=LOCATION...  # add or override, after fetching its index.yaml
@@ -210,6 +210,11 @@ INFO     job failing-job: deterministic report (no LLM configured)`;
         <code>--cross-fire</code> also fails on an output firing on another
         matcher's fixture, and <code>--json</code> writes the whole report to a file.
         <code>--update</code> rewrites the <code>.expected</code> files for review.
+        <code>--only</code> checks just the matchers (<code>NAME</code>) or outputs
+        (<code>NAME.OUTPUT</code>) it names, with every rule, and with
+        <code>--update</code> rewrites only their files; an unknown name exits 1.
+        A mismatch prints a unified diff of the <code>.expected</code> file against
+        the actual selection, cut at 60 lines with the cut marked.
         Writing a registry is on <a href={url("/reference/registry/")}>Hosting a registry</a>.
     </p>
 

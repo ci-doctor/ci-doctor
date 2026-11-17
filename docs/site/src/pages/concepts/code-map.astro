@@ -161,7 +161,7 @@ const packages = [
             {
                 path: "verify.py",
                 entry: "verify()",
-                role: "`matchers verify`: runs each output alone over its matcher's fixture logs, framing stripped as each log's name declares, and compares with the committed `.expected` files; also checks variant coverage, runner trailers and cross-fire.",
+                role: "`matchers verify`: runs each output alone over its matcher's fixture logs, framing stripped as each log's name declares, and compares with the committed `.expected` files; also checks variant coverage, runner trailers and cross-fire. `--only` narrows it to named matchers or outputs.",
             },
             {
                 path: "examine.py",

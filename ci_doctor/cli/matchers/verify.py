@@ -13,12 +13,18 @@ _DEFAULT = Policy()
 
 
 class VerifyCommand(Command):
-    """Run every matcher over its fixtures and compare each output with its committed .expected file."""
+    """Run every matcher over its fixtures and compare each output with its committed .expected file.
+
+    `--only` checks just the matchers or outputs it names, with every rule; cross-fire
+    still runs them over every fixture in the registry. A mismatch prints a diff.
+    """
 
     name = "verify"
     examples = (
         "ci-doctor matchers verify   # the registry in this folder",
         "ci-doctor matchers verify --update   # rewrite the .expected files, then review them",
+        "ci-doctor matchers verify --only ruff --only pytest.failures",
+        "ci-doctor matchers verify --update --only ruff   # rewrite only ruff's .expected files",
         "ci-doctor matchers verify --cross-fire --json verify.json",
     )
 
@@ -45,10 +51,13 @@ class VerifyCommand(Command):
         cross_fire: bool = typer.Option(
             False, "--cross-fire", help="Fail when an output fires on another matcher's fixture."
         ),
+        only: list[str] | None = typer.Option(
+            None, "--only", help="Check only this matcher (NAME) or output (NAME.OUTPUT). Repeatable."
+        ),
         json_out: Path | None = typer.Option(
             None, "--json", help="Also write the full report (counts, variant coverage, cross-fires) here."
         ),
     ) -> None:
         policy = Policy(min_positive, min_negative, exempt, cross_fire)
-        n = verify(root, update=update, policy=policy, json_out=json_out)
+        n = verify(root, update=update, policy=policy, json_out=json_out, only=only or None)
         done(f"{n} matchers verified" + (" (.expected files written; review the diff)" if update else ""))

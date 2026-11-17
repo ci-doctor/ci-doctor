@@ -15,6 +15,7 @@ matchers/<ecosystem>/<id>/fixtures/<case>[.<output>].expected`;
 const build = `ci-doctor matchers examine matchers/acme/deploy_cli/matcher.yaml ./job.log   # see what it selects
 ci-doctor matchers verify --update .     # write the .expected files, then read the diff
 ci-doctor matchers verify .              # every rule, every golden
+ci-doctor matchers verify . --only deploy_cli   # just the matcher you're working on
 ci-doctor registry index .               # write index.yaml and the ecosystem bundles
 ci-doctor registry index . --check       # in CI: fail when either is stale`;
 
@@ -70,6 +71,13 @@ const config = `matchers:
         <li>an output other than a <code>fallback</code> fires on a runner's own "job failed" line, which would make it fire on every failed job;</li>
         <li>an output has fewer positive or negative fixtures than the registry asks for.</li>
     </ul>
+    <p>
+        A selection that differs prints a diff of its <code>.expected</code> file
+        against what the output selects now. <code>--only NAME</code> (or
+        <code>NAME.OUTPUT</code>, repeatable) checks just those, still running them
+        over every fixture in the registry for cross-fire; with <code>--update</code>
+        it rewrites only their <code>.expected</code> files.
+    </p>
     <p>
         How many fixtures are enough is your registry's policy, set by flags. The
         defaults are the official registry's. <code>--json</code> writes the full

@@ -343,3 +343,76 @@ def test_two_matchers_with_one_name_are_reported(registry):
     shutil.copytree(registry / PYTEST_DIR, registry / "matchers/js/pytest")
     with pytest.raises(SetupError, match="matcher name 'pytest' is used twice"):
         verify(registry)
+
+
+def test_only_checks_the_named_matcher_and_nothing_else(registry):
+    """A broken pytest golden fails `--only pytest` and not `--only python_traceback`."""
+    expected = registry / FIX / "assert_plain.expected"
+    expected.write_text(expected.read_text().replace("2700", "2900"))
+    assert verify(registry, only=["python_traceback"]) == 1
+    with pytest.raises(SetupError, match="pytest differs"):
+        verify(registry, only=["pytest"])
+
+
+def test_only_can_name_one_output(npm):
+    """`NAME.OUTPUT` checks that output alone."""
+    policy = Policy(min_positive=1, min_negative=1)
+    (npm / "matchers/js/npm/fixtures/script.run.expected").write_text("changed\n")
+    assert verify(npm, policy=policy, only=["npm.install"]) == 1
+    with pytest.raises(SetupError, match="npm.run differs"):
+        verify(npm, policy=policy, only=["npm.run"])
+
+
+def test_an_unknown_only_name_fails(registry):
+    """A typo is an error, not a run that checks nothing."""
+    with pytest.raises(SetupError, match="no matcher or output named 'ruff'"):
+        verify(registry, only=["pytest", "ruff"])
+
+
+def test_update_with_only_rewrites_only_that_matcher(registry):
+    """`--update --only pytest` leaves python_traceback's goldens as they are."""
+    mine = registry / FIX / "assert_plain.expected"
+    theirs = registry / "matchers/python/python_traceback/fixtures/zero_division.expected"
+    good = mine.read_text()
+    mine.write_text("stale\n")
+    theirs.write_text("stale\n")
+    verify(registry, update=True, only=["pytest"])
+    assert mine.read_text() == good
+    assert theirs.read_text() == "stale\n"
+
+
+def test_only_still_cross_fires_over_every_fixture(registry):
+    """python_traceback alone is still run over pytest's fixtures."""
+    (registry / FIX / "with_traceback.log").write_text(_plain(["$ pytest", *TRACEBACK, *PYTEST_OUT]))
+    verify(registry, update=True)
+    with pytest.raises(SetupError, match="python_traceback fires on .*with_traceback.log"):
+        verify(registry, policy=Policy(cross_fire=True), only=["python_traceback"])
+
+
+def test_a_long_diff_is_cut_with_a_marker_and_names_the_golden_by_path(registry):
+    """At most 60 diff lines, the cut shown (invariant #6), the golden named from the registry root."""
+    (registry / FIX / "assert_plain.expected").write_text("".join(f"line {i}\n" for i in range(100)))
+    with pytest.raises(SetupError) as err:
+        verify(registry, only=["pytest"])
+    message = str(err.value)
+    assert f"--- {FIX}/assert_plain.expected" in message
+    assert "lines elided] …" in message
+    assert "line 99" not in message
+
+
+def test_the_cli_takes_only(registry, monkeypatch, capsys):
+    """`--only` is repeatable on the command line."""
+    argv = [
+        "ci-doctor",
+        "matchers",
+        "verify",
+        str(registry),
+        "--only",
+        "pytest",
+        "--only",
+        "python_traceback",
+    ]
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 0 and "2 matchers verified" in capsys.readouterr().out
