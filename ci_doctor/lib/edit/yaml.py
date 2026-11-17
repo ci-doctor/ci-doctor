@@ -184,17 +184,22 @@ def _block(
     """
     stop = len(lines) if stop is None else stop
     head = re.compile(rf"^{re.escape(indent)}{re.escape(key)}:")
-    for first in range(start, stop):
-        if head.match(lines[first]):
-            if not inline_ok and lines[first][len(indent) + len(key) + 1 :].split("#")[0].strip():
-                raise Unsafe(f"`{key}` is written inline")
-            end = first + 1
-            while end < stop and _inside(lines[end], len(indent)):
-                end += 1
-            while end > first + 1 and _blank_or_comment(lines[end - 1]):
-                end -= 1  # a comment before the next key belongs to that key
-            return first, end
-    return None
+    first = next((i for i in range(start, stop) if head.match(lines[i])), None)
+    if first is None:
+        return None
+    if not inline_ok and lines[first][len(indent) + len(key) + 1 :].split("#")[0].strip():
+        raise Unsafe(f"`{key}` is written inline")
+    return first, _block_end(lines, first, len(indent), stop)
+
+
+def _block_end(lines: Lines, first: int, depth: int, stop: int) -> int:
+    """Where the block whose key is on line `first`, at `depth`, ends: past its children."""
+    end = first + 1
+    while end < stop and _inside(lines[end], depth):
+        end += 1
+    while end > first + 1 and _blank_or_comment(lines[end - 1]):
+        end -= 1  # a comment before the next key belongs to that key
+    return end
 
 
 def _child_indent(lines: Lines, start: int, end: int) -> str:
