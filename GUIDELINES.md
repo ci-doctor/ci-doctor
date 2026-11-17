@@ -26,7 +26,7 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 ci_doctor/
   cli/              the command line, laid out like the command tree (§2.1)
   mcp/              the MCP server: the same services as tools, for a coding agent (§2.4)
-  harness/          `ci-doctor mcp install`: one module per coding agent in targets/ (§2.4)
+  harness/          `ci-doctor agent install`: one module per coding agent in targets/ (§2.4)
   service/          what each command or tool does, with no terminal in it: analyze,
                     brief, deliver, matchers, setup, report
   config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit,
@@ -65,7 +65,7 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | An LLM backend | `llm/backends.py` + a pip extra | Only a provider Pydantic AI ships; lazy-import the SDK inside the client. |
 | A command or subcommand | `cli/<group…>/<command>.py` (surface) + `service/` or the owning package (work) | See §2.1. |
 | An MCP tool | `mcp/server.py` (surface) + `service/` (work) | See §2.4. |
-| A coding agent for `mcp install` | `harness/targets/<name>.py` | One line in `harness/registry.py`'s `TARGETS`. |
+| A coding agent for `agent install` | `harness/targets/<name>.py` | One line in `harness/registry.py`'s `TARGETS`. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
 | A way to fetch a registry | `registry/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
@@ -83,9 +83,9 @@ cli/
   __init__.py       the root app, global options, main()
   _lib/             what commands share: command.py (the base), context.py (config read
                     and written), terminal.py (--plain, --no-color), outputs/ (message,
-                    table, pager)
-  analyze.py …      one module per command
-  matchers/ …       one package per group: matchers/, registry/, cache/, mcp/
+                    table, pager, json_output, changes)
+  analyze.py …      one module per command (mcp.py is `ci-doctor mcp`)
+  matchers/ …       one package per group: matchers/, registry/, cache/, agent/
 ```
 
 - **A command is one `Command` subclass in its own module.** Its docstring is the
@@ -94,7 +94,7 @@ cli/
   COMMANDS)`: explicit, so a typo is an import error, not a missing command.
 - **Examples and `--json`.** A command sets `examples`, shown at the end of its `--help`;
   `test_every_command_has_examples_that_name_it` keeps them in step with its name. A
-  command that lists things takes `--json` (`_lib.outputs.data`): the same data as one
+  command that lists things takes `--json` (`_lib.outputs.json_output`): the same data as one
   JSON document, built from the data and not from the table's text.
 - **No logic in `cli/`.** A command parses, calls `service/` (or the owning package) and
   prints. `service/` imports no typer or click; `tests/test_layout.py` pins both.
@@ -164,14 +164,16 @@ the MCP SDK.
   `add_matchers` and `remove_matchers` call `service/matchers.py`, as the commands do.
   Edits go to `./.ci-doctor.yml` unless `--write-to` names another file.
 - **Text the agent is told** lives in `llm/prompts/`, like every prompt (invariant #8).
-- **`ci-doctor mcp install` connects agents to the server.** Each agent is a module in
+- **`ci-doctor agent install` connects agents to the server.** Each agent is a module in
   `harness/targets/` that knows its config file and format; `harness/formats/` has one
   module per format (JSON, Markdown, TOML, YAML), each changing only ci-doctor's entry and
   keeping the rest of the file. TOML and YAML are edited as text so comments stay, and a
   YAML edit must parse to the intended data or it is not written. A file it cannot edit
   safely (it does not parse, or is JSON with comments) is skipped and its config printed
-  instead. A file that held only ci-doctor's part is deleted on uninstall. Tests run in a fake `HOME`
-  (`tests/test_harness.py`), and `uninstall` must restore every file byte for byte.
+  instead. Uninstall removes ci-doctor's entry and any container that leaves empty; a JSON
+  config is never deleted (the agent manages it, so `{}` stays), and a Markdown, TOML or YAML
+  file left with nothing in it is. JSON is written with a 2-space indent. Tests run in a fake
+  `HOME` (`tests/test_harness.py`), and `uninstall` must leave every file's data as it was.
 
 ## 3. Invariants — do not break these
 
@@ -428,7 +430,7 @@ token read and a second version probe for nothing.
 provider needs only a few calls, and `ApiClient` already handles auth, TLS,
 pagination, rate limits and redirects. A new adapter only names its endpoints and maps
 the JSON in `_to_job`. On a log, turn an `ApiError` into `None` (no log) or
-`LogUnavailable` (could not read it), per §7. Test it with `support.FakeApi`.
+`errors.LogUnavailable` (could not read it), per §7. Test it with `support.FakeApi`.
 
 ### 5.5 Resolve the repository outside CI
 

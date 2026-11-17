@@ -1,4 +1,4 @@
-"""`ci-doctor mcp serve`, which is also what `ci-doctor mcp` runs."""
+"""`ci-doctor mcp`: serve ci-doctor to a coding agent. Connecting agents to it is `ci-doctor agent`."""
 
 import os
 from pathlib import Path
@@ -15,15 +15,16 @@ from ci_doctor.errors import SetupError
 PROJECT_HELP = "The project to serve. Default: the current directory, where most agents start the server."
 
 
-class ServeCommand(Command):
+class McpCommand(Command):
     """Serve ci-doctor to a coding agent over MCP, on stdio.
 
     The agent is the model: it gets each failed job's evidence and explains it, and
     can pick matchers for the project. Matcher edits go to `./.ci-doctor.yml` unless
-    `--write-to` names another file.
+    `--write-to` names another file. To add it to an agent's config, run
+    `ci-doctor agent install`.
     """
 
-    name = "serve"
+    name = "mcp"
     examples = (
         "ci-doctor mcp   # what agents run",
         "ci-doctor mcp --project ~/src/app",

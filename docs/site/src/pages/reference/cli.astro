@@ -72,10 +72,10 @@ ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
 # It prints the verdict, writes report.md + report.json, and (if configured
 # and confidence >= medium) posts/updates one idempotent MR/PR note.`;
 
-const mcpInstall = `ci-doctor mcp install [--target auto|all|claude,cursor,...] [--location local|global]
-                      [--yes] [--no-permissions] [--print-config ID]
-ci-doctor mcp uninstall [--target ...] [--location ...] [--yes]
-ci-doctor mcp [--project DIR]   # the server itself, which agents start`;
+const mcpInstall = `ci-doctor mcp [--project DIR]   # the server itself, which agents start
+ci-doctor agent install [--target auto|all|claude,cursor,...] [--location local|global]
+                        [--yes] [--no-permissions] [--dry-run]
+ci-doctor agent uninstall [--target ...] [--location ...] [--yes]`;
 
 const verbose = `ci-doctor -v analyze failing-job.log
 
@@ -247,13 +247,16 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         so the <code>llm:</code> block is ignored.
     </p>
     <p>
-        <code>ci-doctor mcp install</code> connects it to Claude Code, Cursor, Codex CLI,
-        opencode, Hermes Agent, Gemini CLI, Antigravity and Kiro. For each it writes the MCP
+        <code>ci-doctor agent install</code> connects it to Claude Code, Cursor, Codex CLI,
+        opencode, Hermes Agent, Gemini CLI, Antigravity, Kiro and pi (which needs its
+        <code>pi-mcp-adapter</code> extension for MCP). For each it writes the MCP
         server entry and a short instructions block, and for Claude Code it auto-allows the
         read-only tools. <code>local</code> (the default) writes this project's files;
         <code>global</code> writes yours. Running it again changes nothing, and
-        <code>uninstall</code> removes only what it added. A file it cannot edit safely is
-        left alone, and the config is printed to add by hand.
+        <code>--dry-run</code> shows each file and the config it would add, writing nothing.
+        <code>agent uninstall</code> removes ci-doctor's entries and any container they
+        leave empty; an agent's JSON config file is never deleted. A file it cannot edit
+        safely is left alone, and the config is printed to add by hand.
     </p>
     <Code code={mcpInstall} lang="text" theme="github-dark" />
     <table>

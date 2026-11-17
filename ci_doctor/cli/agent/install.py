@@ -1,12 +1,11 @@
-"""`ci-doctor mcp install`."""
+"""`ci-doctor agent install`."""
 
 import typer
 from typing_extensions import override
 
 from ci_doctor.cli._lib.command import Command
-from ci_doctor.cli._lib.outputs.changes import confirm, show
+from ci_doctor.cli._lib.outputs.changes import confirm, preview, show
 from ci_doctor.cli._lib.outputs.message import say
-from ci_doctor.errors import SetupError
 from ci_doctor.harness.entry import on_path
 from ci_doctor.harness.install import install
 from ci_doctor.harness.registry import TARGETS, select
@@ -18,13 +17,14 @@ class InstallCommand(Command):
 
     Writes each agent's MCP config, a short instructions block, and (Claude Code only)
     an allow list for the read-only tools. Running it again changes nothing.
+    `--dry-run` shows each file and the config that would go in it, and writes nothing.
     """
 
     name = "install"
     examples = (
-        "ci-doctor mcp install   # the agents found here, in this project",
-        "ci-doctor mcp install --target claude,cursor --location global --yes",
-        "ci-doctor mcp install --print-config codex --location global",
+        "ci-doctor agent install   # the agents found here, in this project",
+        "ci-doctor agent install --target claude,cursor --location global --yes",
+        "ci-doctor agent install --target codex --location global --dry-run",
     )
 
     @override
@@ -40,24 +40,16 @@ class InstallCommand(Command):
         permissions: bool = typer.Option(
             True, "--permissions/--no-permissions", help="Auto-allow the read-only tools in Claude Code."
         ),
-        print_config: str | None = typer.Option(
-            None,
-            "--print-config",
-            metavar="ID",
-            help="Print one agent's config to add by hand; write nothing.",
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="Show the files and the config that would be added; write nothing."
         ),
     ) -> None:
-        if print_config is not None:
-            agent = TARGETS.get(print_config.strip())
-            if agent is None:
-                raise SetupError(f"--print-config takes one agent: {', '.join(TARGETS)}")
-            if location not in agent.locations:
-                raise SetupError(f"{agent.name} has no {location} config; use --location global")
-            typer.echo(agent.snippet(location))
-            return
         agents = select(target)
         if not agents:
             say("no coding agents found here; name them with --target, e.g. --target claude", "yellow")
+            return
+        if dry_run:
+            preview(agents, location)
             return
         if not confirm(agents, location, yes, "add ci-doctor to"):
             return

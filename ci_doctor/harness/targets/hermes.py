@@ -9,7 +9,7 @@ import yaml
 
 from ci_doctor.harness.entry import COMMAND, SERVER
 from ci_doctor.harness.formats import Change, Unsafe, safely
-from ci_doctor.harness.formats.yaml_text import (
+from ci_doctor.harness.formats.yaml import (
     Lines,
     add_item,
     edit_yaml,

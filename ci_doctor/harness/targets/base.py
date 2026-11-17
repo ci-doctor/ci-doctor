@@ -9,7 +9,7 @@ from typing import Any, ClassVar
 
 from ci_doctor.harness.entry import SERVER, server_entry
 from ci_doctor.harness.formats import Change, safely
-from ci_doctor.harness.formats.json_keys import set_json, unset_json
+from ci_doctor.harness.formats.json import set_json, unset_json
 from ci_doctor.harness.formats.markdown import START, set_block, unset_block
 
 
@@ -32,6 +32,8 @@ class Target(ABC):
     id: ClassVar[str]
     name: ClassVar[str]
     locations: ClassVar[frozenset[Location]] = BOTH
+    #: What else the agent needs before it can start ci-doctor, told to the user after install.
+    requires: ClassVar[str | None] = None
 
     @abstractmethod
     def detected(self) -> bool:
@@ -138,7 +140,7 @@ class McpJsonTarget(Target):
 
     def uninstall(self, location: Location) -> list[Change]:  # noqa: D102 - documented on Target
         config = self.config(location)
-        changes = [safely(config, lambda: unset_json(config, (self.key, SERVER), new=self.new_file))]
+        changes = [safely(config, lambda: unset_json(config, (self.key, SERVER)))]
         if (notes := self.instructions(location)) is not None:
             changes.append(unset_block(notes))
         return changes

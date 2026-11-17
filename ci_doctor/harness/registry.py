@@ -1,4 +1,4 @@
-"""Every agent `ci-doctor mcp install` knows, and how a `--target` value picks among them."""
+"""Every agent `ci-doctor agent install` knows, and how a `--target` value picks among them."""
 
 from ci_doctor.errors import SetupError
 from ci_doctor.harness.targets.antigravity import Antigravity
@@ -10,11 +10,22 @@ from ci_doctor.harness.targets.gemini import GeminiCli
 from ci_doctor.harness.targets.hermes import Hermes
 from ci_doctor.harness.targets.kiro import Kiro
 from ci_doctor.harness.targets.opencode import Opencode
+from ci_doctor.harness.targets.pi import Pi
 
 #: Adding an agent: one module in `targets/` and one line here.
 TARGETS: dict[str, Target] = {
     target.id: target
-    for target in (ClaudeCode(), Cursor(), Codex(), Opencode(), Hermes(), GeminiCli(), Antigravity(), Kiro())
+    for target in (
+        ClaudeCode(),
+        Cursor(),
+        Codex(),
+        Opencode(),
+        Hermes(),
+        GeminiCli(),
+        Antigravity(),
+        Kiro(),
+        Pi(),
+    )
 }
 
 

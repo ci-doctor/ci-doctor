@@ -5,7 +5,7 @@ from typing import ClassVar
 
 from ci_doctor.harness.entry import READ_ONLY_TOOLS, SERVER
 from ci_doctor.harness.formats import Change, safely
-from ci_doctor.harness.formats.json_keys import add_json_items, drop_json_items
+from ci_doctor.harness.formats.json import add_json_items, drop_json_items
 from ci_doctor.harness.targets.base import Location, McpJsonTarget
 
 

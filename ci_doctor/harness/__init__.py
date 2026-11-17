@@ -1,4 +1,4 @@
-"""Connecting ci-doctor's MCP server to coding agents: `ci-doctor mcp install` and `uninstall`.
+"""Connecting ci-doctor's MCP server to coding agents: `ci-doctor agent install` and `uninstall`.
 
 Each agent (Claude Code, Cursor, Codex, ...) keeps its MCP config in its own file and
 format. One module per agent in `targets/` knows where and how; `registry.py` lists

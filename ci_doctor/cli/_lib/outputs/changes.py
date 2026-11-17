@@ -1,4 +1,4 @@
-"""Showing what `mcp install` and `mcp uninstall` will do, and what they did."""
+"""Showing what `agent install` and `agent uninstall` will do, and what they did."""
 
 import sys
 from pathlib import Path
@@ -39,6 +39,26 @@ def confirm(agents: list[Target], location: Location, yes: bool, verb: str) -> b
     return typer.confirm("Go ahead?", default=True)
 
 
+def preview(agents: list[Target], location: Location) -> None:
+    """Show what `agent install` would write for each agent, writing nothing (`--dry-run`).
+
+    Args:
+        agents: The agents.
+        location: `local` or `global`.
+    """
+    say(f"Dry run, nothing is written. ci-doctor would be added to ({location}):", "bold")
+    for agent in agents:
+        say(agent.name, "bold")
+        if location not in agent.locations:
+            skipped(f"  skipped: no {location} config; use --location global")
+            continue
+        for path in agent.paths(location):
+            say(f"  {_short(path)}")
+        if agent.requires:
+            say(f"  needs {agent.requires}", "yellow")
+        say(agent.snippet(location))
+
+
 def show(outcomes: list[Outcome], location: Location) -> None:
     """Print one line per file changed, and the snippet for any file left alone.
 
@@ -63,6 +83,8 @@ def show(outcomes: list[Outcome], location: Location) -> None:
                 skipped(f"  {change.action}: {_short(change.path)}")
             else:
                 done(f"  {change.action} {_short(change.path)}")
+        if outcome.target.requires:
+            say(f"  needs {outcome.target.requires}", "yellow")
         if any(c.action == "skipped" for c in outcome.changes):
             say("  Add this by hand:", "yellow")
             say(outcome.target.snippet(location))

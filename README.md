@@ -128,14 +128,15 @@ and the agent explains the failure, so no `llm:` block is needed. Connect your a
 from the repository's root:
 
 ```sh
-ci-doctor mcp install                    # the agents found on this machine, in this project
-ci-doctor mcp install --location global  # in your own config, for every project
-ci-doctor mcp install --print-config cursor  # print one agent's config, write nothing
-ci-doctor mcp uninstall                  # remove only what install added
+ci-doctor agent install                    # the agents found on this machine, in this project
+ci-doctor agent install --location global  # in your own config, for every project
+ci-doctor agent install --dry-run          # show the files and config, write nothing
+ci-doctor agent uninstall                  # remove ci-doctor's entries again
 ```
 
 It supports Claude Code, Cursor, Codex CLI, opencode, Hermes Agent, Gemini CLI,
-Antigravity and Kiro (`--target claude,cursor` picks). For each it writes the MCP server
+Antigravity, Kiro and pi (`--target claude,cursor` picks; pi also needs its
+`pi-mcp-adapter` extension). For each it writes the MCP server
 entry and a short instructions block (`CLAUDE.md`, `AGENTS.md`, ...), and for Claude
 Code it auto-allows the read-only tools. Running it again changes nothing; a file it
 cannot edit safely is left alone and the config is printed to add by hand. To analyze

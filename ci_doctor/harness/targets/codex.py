@@ -9,7 +9,7 @@ from typing import ClassVar
 from ci_doctor.harness.entry import COMMAND, SERVER
 from ci_doctor.harness.formats import Change, safely
 from ci_doctor.harness.formats.markdown import set_block, unset_block
-from ci_doctor.harness.formats.toml_table import set_toml_table, unset_toml_table
+from ci_doctor.harness.formats.toml import set_toml_table, unset_toml_table
 from ci_doctor.harness.targets.base import GLOBAL_ONLY, Location, Target
 
 _TABLE = f"mcp_servers.{SERVER}"

@@ -1,4 +1,4 @@
-"""`ci-doctor mcp uninstall`."""
+"""`ci-doctor agent uninstall`."""
 
 import typer
 from typing_extensions import override
@@ -12,12 +12,12 @@ from ci_doctor.harness.targets.base import Location
 
 
 class UninstallCommand(Command):
-    """Remove ci-doctor from coding agents: only what `mcp install` added."""
+    """Remove ci-doctor from coding agents: its entries, and any container they leave empty."""
 
     name = "uninstall"
     examples = (
-        "ci-doctor mcp uninstall",
-        "ci-doctor mcp uninstall --target cursor --location global --yes",
+        "ci-doctor agent uninstall",
+        "ci-doctor agent uninstall --target cursor --location global --yes",
     )
 
     @override

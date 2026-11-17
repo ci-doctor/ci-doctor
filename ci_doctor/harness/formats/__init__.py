@@ -5,19 +5,16 @@ file that cannot be edited safely (it does not parse, or a rewrite would lose it
 comments) raises `Unsafe`; `safely` turns that into a skipped change, and the file is
 left alone.
 
-Install records the files and the keys it created. On removal, only those may be
-deleted once empty; everything the user had stays, an empty `mcpServers` included.
-Anything missing from the record counts as the user's, so a lost record never deletes
-anything.
+Removal takes out ci-doctor's entry and any container it leaves empty. A JSON config
+is never deleted, since the agent manages it; a Markdown, TOML or YAML file left with
+nothing in it is.
 """
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from ci_doctor.config.loader import user_config
 from ci_doctor.lib.files import atomic_write
 
 Action = Literal["created", "updated", "unchanged", "removed", "absent", "skipped"]
@@ -59,12 +56,13 @@ def safely(path: Path, edit: Callable[[], Change]) -> Change:
 
 
 def write(path: Path, before: str | None, text: str, *, removing: bool = False) -> Change:
-    """Write `text` if it differs from `before`, keeping the record of what install created.
+    """Write `text` if it differs from `before`.
 
     Args:
         path: The file.
         before: Its current text, or None if it does not exist.
-        text: Its new text. After a removal, empty text deletes a file install created.
+        text: Its new text. After a removal, empty text deletes the file: nothing is left
+            in it, so there is nothing of the user's to keep.
         removing: Whether this edit removes ci-doctor's part.
 
     Returns:
@@ -73,69 +71,14 @@ def write(path: Path, before: str | None, text: str, *, removing: bool = False) 
     if text == before:
         return Change(path, "absent" if removing else "unchanged")
     if removing:
-        if not text.strip() and created(path):
-            path.unlink()
-        else:
+        if text.strip():
             atomic_write(path, text)
-        forget(path)
+        else:
+            path.unlink()
         return Change(path, "removed")
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(path, text)
-    if before is not None:
-        return Change(path, "updated")
-    remember(path, file=True)
-    return Change(path, "created")
-
-
-def created(path: Path) -> bool:
-    """Whether install created this file, so a removal may delete it."""
-    return bool(_load().get(_key(path), {}).get("file"))
-
-
-def created_keys(path: Path) -> set[tuple[str, ...]]:
-    """The keys install added to this file, so a removal may drop them once empty."""
-    return {tuple(k) for k in _load().get(_key(path), {}).get("keys", [])}
-
-
-def remember(path: Path, *, file: bool = False, keys: list[tuple[str, ...]] | None = None) -> None:
-    """Note that install created this file, or these keys in it."""
-    record = _load()
-    entry = record.setdefault(_key(path), {"file": False, "keys": []})
-    entry["file"] = entry["file"] or file
-    entry["keys"] = sorted({tuple(k) for k in entry["keys"]} | set(keys or []))
-    _save(record)
-
-
-def forget(path: Path) -> None:
-    """Drop the record for a file once ci-doctor's part is removed from it."""
-    record = _load()
-    if record.pop(_key(path), None) is not None:
-        _save(record)
-
-
-def _key(path: Path) -> str:
-    return str(path.resolve())
-
-
-def _record_file() -> Path:
-    return user_config().parent / "mcp-install-created.json"
-
-
-def _load() -> dict[str, dict]:
-    try:
-        record = json.loads(_record_file().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return record if isinstance(record, dict) else {}
-
-
-def _save(record: dict[str, dict]) -> None:
-    path = _record_file()
-    if record:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write(path, json.dumps(record, indent=2, sort_keys=True) + "\n")
-    else:
-        path.unlink(missing_ok=True)
+    return Change(path, "updated" if before is not None else "created")
 
 
 def read(path: Path) -> str | None:
