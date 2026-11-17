@@ -5,15 +5,15 @@ from pathlib import Path
 import typer
 from typing_extensions import override
 
+from ci_doctor.cli._console.output.message import say
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
-from ci_doctor.cli._lib.outputs.message import say
 from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
-from ci_doctor.matchers.cache import Cache
 from ci_doctor.matchers.examine import examine
 from ci_doctor.matchers.logs import Framing, framing_of
-from ci_doctor.matchers.registry import Resolved, check_ref, fetch_matcher, session
+from ci_doctor.matchers.registry.cache import Cache
+from ci_doctor.matchers.registry.resolve import Resolved, check_ref, fetch_matcher, session
 from ci_doctor.matchers.validate import load_matcher
 
 
@@ -21,6 +21,10 @@ class ExamineCommand(Command):
     """Run one matcher over one log and show what each output selects, exactly as verify would."""
 
     name = "examine"
+    examples = (
+        "ci-doctor matchers examine matchers/python/pytest/matcher.yaml failing.github.log",
+        "ci-doctor matchers examine official/pytest job.log --framing gitlab",
+    )
 
     @override
     def run(

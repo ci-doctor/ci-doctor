@@ -3,8 +3,8 @@
 import pytest
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.core.analyze import build_bundle
 from ci_doctor.core.attribution import attribute
+from ci_doctor.core.evidence import build_bundle
 from ci_doctor.core.models import FailureReason, Job
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.engine import compile_plan

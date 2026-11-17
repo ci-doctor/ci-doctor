@@ -1,11 +1,11 @@
 """Edit one top-level block of a config file and leave the rest byte for byte.
 
-The block is spliced as text so the file's comments survive (only those inside the
-block are lost); the result is re-parsed and validated before anything is written.
+The block is spliced as text (`lib.edit.yaml`) so the file's comments survive (only
+those inside the block are lost); the result is re-parsed and validated before anything
+is written.
 """
 
 import copy
-import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -14,9 +14,8 @@ from pydantic import ValidationError
 
 from ci_doctor.config.schemas import Config
 from ci_doctor.errors import SetupError
+from ci_doctor.lib.edit.yaml import set_key
 from ci_doctor.lib.files import atomic_write
-
-_TOP_LEVEL = re.compile(r"^[^\s#]")
 
 
 def _read(path: Path) -> tuple[str, dict]:
@@ -56,31 +55,6 @@ def read_block(path: Path, key: str) -> dict:
     return copy.deepcopy(_read(path)[1].get(key) or {})
 
 
-def _splice(text: str, key: str, dumped: str) -> str:
-    """Replace the `key:` block in `text` with `dumped`, or append it.
-
-    Args:
-        text: The file's current text.
-        key: The top-level key.
-        dumped: The new block, ending in a newline.
-
-    Returns:
-        The new file text.
-    """
-    lines = text.splitlines(keepends=True)
-    key_line = re.compile(rf"^{re.escape(key)}\s*:")
-    start = next((i for i, ln in enumerate(lines) if key_line.match(ln)), None)
-    if start is None:
-        return text + ("" if not text or text.endswith("\n") else "\n") + dumped
-    end = next((i for i in range(start + 1, len(lines)) if _TOP_LEVEL.match(lines[i])), len(lines))
-    while end > start + 1 and lines[end - 1].startswith("#"):  # comments above the next key are its own
-        end -= 1
-    tail = end
-    while tail > start + 1 and not lines[tail - 1].strip():  # keep the blank gap before what follows
-        tail -= 1
-    return "".join(lines[:start]) + dumped + "".join(lines[tail:])
-
-
 def edit_block(path: Path, key: str, mutate: Callable[[dict], None]) -> None:
     """Apply `mutate` to the file's `key:` block and write it back.
 
@@ -96,7 +70,7 @@ def edit_block(path: Path, key: str, mutate: Callable[[dict], None]) -> None:
     text, data = _read(path)
     block = copy.deepcopy(data.get(key) or {})
     mutate(block)
-    new_text = _splice(text, key, yaml.safe_dump({key: block}, sort_keys=False, default_flow_style=False))
+    new_text = "\n".join(set_key(text.splitlines(), key, block)) + "\n"
     try:
         reparsed = yaml.safe_load(new_text)
         if reparsed != {**data, key: block}:

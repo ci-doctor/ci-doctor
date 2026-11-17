@@ -1,6 +1,6 @@
 """Reading a registry file safely, and the rules a registry adds on top of the schema.
 
-One module for both callers, so the rules can't drift: `matchers index` and
+One module for both callers, so the rules can't drift: `registry index` and
 `matchers verify` load with ``author=True`` (the registry's own CI, strict), and
 ci-doctor itself loads with ``author=False`` when it fetches a file, because a
 self-hosted registry may never have run our CI.
@@ -162,7 +162,7 @@ def load_matcher(path: Path, *, author: bool = False) -> Spec:
 
     Args:
         path: The file, at `matchers/<eco>/<id>/matcher.yaml` in its registry.
-        author: Also check that the id matches its directory, as `matchers index` /
+        author: Also check that the id matches its directory, as `registry index` /
             `verify` do.
 
     Returns:

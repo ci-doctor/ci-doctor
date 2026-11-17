@@ -9,20 +9,28 @@ from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
 
 from ci_doctor import __version__
-from ci_doctor.cli._lib import context, terminal
+from ci_doctor.cli._console import terminal
+from ci_doctor.cli._lib import context
 from ci_doctor.cli._lib.command import Command, register
+from ci_doctor.cli.agent import app as agent_app
 from ci_doctor.cli.analyze import AnalyzeCommand
+from ci_doctor.cli.cache import app as cache_app
 from ci_doctor.cli.config import ConfigCommand
 from ci_doctor.cli.matchers import app as matchers_app
+from ci_doctor.cli.mcp import McpCommand
+from ci_doctor.cli.registry import app as registry_app
 from ci_doctor.cli.report import ReportCommand
 from ci_doctor.errors import SetupError
 
 log = logging.getLogger("ci_doctor.cli")
-COMMANDS: Sequence[Command] = [AnalyzeCommand(), ConfigCommand(), ReportCommand()]
+COMMANDS: Sequence[Command] = [AnalyzeCommand(), ConfigCommand(), ReportCommand(), McpCommand()]
 
 app = typer.Typer(add_completion=False, help="Explain why a CI pipeline failed (read-only postmortem).")
 register(app, COMMANDS)
 app.add_typer(matchers_app, name="matchers")
+app.add_typer(registry_app, name="registry")
+app.add_typer(cache_app, name="cache")
+app.add_typer(agent_app, name="agent")
 
 
 def _version_callback(value: bool) -> None:

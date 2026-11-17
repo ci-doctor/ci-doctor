@@ -4,8 +4,7 @@ How the code is built: where things go, what must never break, and the conventio
 every change follows. **Read this before writing code** — for humans and for agents.
 
 For the contribution *process* (setup, running tests, commits, pushing) see
-[CONTRIBUTING.md](CONTRIBUTING.md). For *why* the architecture is shaped this way —
-the failure modes it defends against — see [docs/PLAN.md](docs/PLAN.md).
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -25,24 +24,32 @@ acquire → segment → attribute → denoise → extract → budget → (LLM) �
 ```
 ci_doctor/
   cli/              the command line, laid out like the command tree (§2.1)
-  service/          what each command does, with no terminal in it: analyze, deliver,
-                    setup, report
-  config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit
+  agent/            a coding agent calling ci-doctor (§2.4); `llm/` is the other direction
+    server.py       the MCP server: the same services as tools
+    harness/        `ci-doctor agent install`: one module per coding agent in targets/
+  service/          what each command or tool does, with no terminal in it: analyze,
+                    brief, deliver, matchers, setup, report
+  config/           schemas/ (§2.2), defaults.yml, the layered loader, dump, edit,
+                    files (which files are read, which one is edited)
   core/             provider-neutral: models, ports, attribution (pure), denoise,
-                    redact, analyze
+                    redact, evidence
   engine/           the matching engine, pure (§2.3): spec/ (matcher files), compile/
                     (spec → Plan), run/ (Plan × lines → windows), select/ (evidence)
   lib/              shared low-level helpers, a leaf: regex.py (RE2 for every user-
-                    or matcher-supplied regex), files.py (atomic writes)
+                    or matcher-supplied regex), files.py (atomic writes), edit/ (change
+                    one entry of a JSON, Markdown, TOML or YAML file, keep the rest)
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
-  matchers/         matcher registries: file formats (models), validate, index and
-                    verify (the author's side), registry (resolve + load)
-    transports/     local, http: how a registry's files are read
+  matchers/         matcher files: formats (models), validate, and testing a matcher
+                    (examine, verify, schema, logs)
+    registry/       where matchers come from: resolve (include → matchers), cache,
+                    index and mirror (building and copying a registry)
+      transports/   local, http: how a registry's files are read
   providers/
     registry.py     vendor name -> adapter / segmenter, imported on demand
-    gitlab/         python-gitlab adapter + segmenter + reasons
-    github/         PyGithub adapter + segmenter + reasons
+    api_client.py   the HTTP client every provider calls its API through
+    gitlab/         REST adapter + segmenter + reasons
+    github/         REST adapter + segmenter + reasons
 tests/              synthetic-log builders (support.py) + unit and e2e tests
 docs/site/          Astro documentation site — see docs/site/GUIDELINES.md before editing
 examples/           .gitlab-ci.yml + GitHub Actions workflows
@@ -58,38 +65,56 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 | Evidence selection | `core/denoise.py`, `engine/` | Config-driven where possible; `engine/` stays pure (§2.3). |
 | An LLM backend | `llm/backends.py` + a pip extra | Only a provider Pydantic AI ships; lazy-import the SDK inside the client. |
 | A command or subcommand | `cli/<group…>/<command>.py` (surface) + `service/` or the owning package (work) | See §2.1. |
+| An MCP tool | `agent/server.py` (surface) + `service/` (work) | See §2.4. |
+| A coding agent for `agent install` | `agent/harness/targets/<name>.py` | One line in `agent/harness/registry.py`'s `TARGETS`. |
 | Output format | `render/` | Implements the `Renderer` port. |
 | A matcher / language pack | a matchers registry, not this repo | **Data, not code.** See §5.1. |
-| A way to fetch a registry | `matchers/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
+| A way to fetch a registry | `matchers/registry/transports/<name>.py` | One line in `TRANSPORTS`; bounded and contained. |
 | A tunable value | `config/schemas/<key>.py` (scalar) or `defaults.yml` (data) | Prefer a config knob over a hardcoded pattern. |
 
 `core/` imports only `core.ports` abstractions. Adapters implement them.
 
 ### 2.1 The command line
 
-`cli/` mirrors the command tree: `cli/matchers/registry/ping.py` is
-`ci-doctor matchers registry ping`.
+`cli/` mirrors the command tree: `cli/registry/ping.py` is
+`ci-doctor registry ping`.
 
 ```
 cli/
   __init__.py       the root app, global options, main()
   _lib/             what commands share: command.py (the base), context.py (config read
-                    and written), terminal.py (--plain, --no-color), outputs/ (message,
-                    table, pager)
-  analyze.py …      one module per command
-  matchers/         one package per group
+                    and written)
+  _console/         the terminal: terminal.py (--plain, --no-color), output/ (prints,
+                    never asks: message, table, pager, json_output, changes), tui/
+                    (asks the user; generic pieces only)
+  analyze.py …      one module per command (mcp.py is `ci-doctor mcp`)
+  matchers/ …       one package per group: matchers/, registry/, cache/, agent/
 ```
 
 - **A command is one `Command` subclass in its own module.** Its docstring is the
   `--help`, `run` (`@override`) the entry point; its helpers and table rows are private
   members. A group's `__init__.py` lists them in `COMMANDS` and calls `register(app,
   COMMANDS)`: explicit, so a typo is an import error, not a missing command.
+- **Examples and `--json`.** A command sets `examples`, shown at the end of its `--help`;
+  `test_every_command_has_examples_that_name_it` keeps them in step with its name. A
+  command that lists things takes `--json` (`_console.output.json_output`): the same data as one
+  JSON document, built from the data and not from the table's text.
 - **No logic in `cli/`.** A command parses, calls `service/` (or the owning package) and
   prints. `service/` imports no typer or click; `tests/test_layout.py` pins both.
 - **Global options** (`-f`, `--write-to`, `--plain`, `--no-color`) are read through
-  `_lib.context` and `_lib.terminal`. Print through `_lib.outputs` so `--plain` works; a
+  `_lib.context` and `_console.terminal`. Print through `_console.output` so `--plain` works; a
   table row is a frozen dataclass subclassing `Row`, its fields the columns.
 - **Config edits** go to the user config unless `--write-to` names another file.
+- **Asking the user** goes through `_console/tui/` (`from ci_doctor.cli._console.tui import ...`):
+  `pick_many`, `pick_one` and `yes_no`, inline `questionary` prompts (arrows, space, Enter)
+  that never take over the screen. questionary is imported on first use. A command asks only when
+  `interactive()` (a terminal on both ends, not `--plain`) and it was given no flags; any
+  flag means a script or a decision already made. Ctrl-C or end of input raises
+  `Cancelled`, which an editing command turns into "nothing written", exit 0. Tests type
+  real keystrokes through the `keys` fixture (`tests/conftest.py`); `keys.close()` is end
+  of input.
+  `tui/` holds no command's flow: a command's questions are its own private members
+  (see `agent install`), like its other helpers.
 
 ### 2.2 The config schema
 
@@ -115,16 +140,57 @@ new front end, never a change to how matching runs. Its layers, bottom first:
 | `select/` | Windows → evidence: `merge`, `shed`, `render`, `fired`, and the token `budget` |
 
 The public surface is `load`, `compile_plan`, `run`, `select`, `fired` and `fit`, plus
-the types. `core/analyze.py`, `matchers/verify.py` and `matchers/examine.py` all take the
+the types. `core/evidence.py`, `matchers/verify.py` and `matchers/examine.py` all take the
 same path through it, so a test and production can't drift.
 
 `tests/test_layout.py` pins four rules:
 
 1. `engine/` imports nothing from `ci_doctor` but `ci_doctor.lib`; third-party, only
-   pydantic. `lib/` itself imports nothing from `ci_doctor` but `ci_doctor.errors`.
+   pydantic. `lib/` itself imports nothing from `ci_doctor` but `ci_doctor.errors` and its own modules.
 2. A layer imports only the layers below it.
 3. Code outside `engine/` imports `ci_doctor.engine`, never a submodule.
 4. `config/` imports nothing from `core/`.
+
+### 2.4 The MCP server
+
+`ci-doctor mcp` serves the same services to a coding agent over stdio. `agent/` is a
+surface like `cli/`: a tool parses, calls `service/` and returns; `tests/test_layout.py`
+pins that it imports no `cli`, typer, click or rich, and that nothing but `server.py`
+imports the MCP SDK.
+
+- **The agent is the model.** `service/analyze.py` has two stages. *Diagnose*
+  (`diagnose_run`) is deterministic and ends in a **brief** per failed job
+  (`service/brief.py`): the settled phase, the budgeted excerpt, the matchers behind
+  it and the analyst instructions, redacted. *Explain* turns a brief into a `Report`.
+  `ci-doctor analyze` runs both, `llm/report.py` building its prompt from the brief;
+  the `analyze_run` tool runs only the first and returns the brief, so the agent and
+  the configured LLM are shown the same data. No client is built on this path
+  (invariant #12).
+- **A new model step follows the same shape:** an input model in `service/`, built and
+  redacted in one place and knowing nothing of prompts; a prompt in `llm/` built from
+  that model alone; and an output schema. The CLI runs the step with the configured
+  LLM; an MCP tool returns the input model. Neither asks which surface called it.
+- **A tool is a nested function in `build`**, its docstring the description the agent
+  reads, its return annotation the output schema. Wrap it in `_reported` so a failure
+  comes back as a message, and give it the annotation that says whether it writes.
+- **Finding a run is MCP only.** `list_runs` calls `service/runs.py`, which checks
+  the filter and redacts the titles; there is no CLI command for it. The filter is in
+  neutral words (`RunStatus`, `RunEvent` in `core/models.py`); each adapter turns it into
+  its own query.
+- **Matcher selection is shared with the CLI.** `search_matchers`, `list_matchers`,
+  `add_matchers` and `remove_matchers` call `service/matchers.py`, as the commands do.
+  Edits go to `./.ci-doctor.yml` unless `--write-to` names another file.
+- **Text the agent is told** lives in `llm/prompts/`, like every prompt (invariant #8).
+- **`ci-doctor agent install` connects agents to the server.** Each agent is a module in
+  `agent/harness/targets/` that knows its config file and format; `lib/edit/` has one
+  module per format (JSON, Markdown, TOML, YAML), each changing only ci-doctor's entry and
+  keeping the rest of the file. TOML and YAML are edited as text so comments stay, and a
+  YAML edit must parse to the intended data or it is not written. A file it cannot edit
+  safely (it does not parse, or is JSON with comments) is skipped and its config printed
+  instead. Uninstall removes ci-doctor's entry and any container that leaves empty; a JSON
+  config is never deleted (the agent manages it, so `{}` stays), and a Markdown, TOML or YAML
+  file left with nothing in it is. JSON is written with a 2-space indent. Tests run in a fake
+  `HOME` (`tests/test_harness.py`), and `uninstall` must leave every file's data as it was.
 
 ## 3. Invariants — do not break these
 
@@ -160,6 +226,11 @@ invariants go on the end. The first three, and #10, are load-bearing:
     version. Pinned by the frozen Plan snapshots in `tests/engine/v1/cases/`, and by the
     `contract` CI job, which verifies the official registry at HEAD. A snapshot diff
     means a new schema version, not a new snapshot.
+12. **The MCP server calls no model, and writes one thing.** The agent on the other
+    end is the model, so `llm:` is ignored there. Stdout carries only the protocol.
+    The server writes no report file and posts no note; its single write is the
+    `matchers:` block of the target config, through the same validated edit as
+    `matchers add`. Pinned by `tests/test_mcp.py`.
 
 ## 4. Writing tests
 
@@ -220,6 +291,9 @@ parametrized over `support.PROVIDERS` then covers the format.
 | Report shape, category, LLM fallback | `test_report.py` |
 | Terminal/markdown output | `test_render.py` |
 | End-to-end offline run | `test_offline_pipeline.py` |
+| An MCP tool | `test_mcp.py`, through the SDK's in-memory client |
+| `agent install` / `uninstall` | `test_harness.py`, in a fake `HOME` |
+| A question the CLI asks | `test_tui.py`, typed through the `keys` fixture |
 
 ## 5. Cookbook
 
@@ -259,7 +333,7 @@ Then **add fixtures** next to the file: `fixtures/<case>.github.log` or
 `<case>.gitlab.log` for a raw CI log, `<case>.log` for plain tool output. Run
 `ci-doctor matchers examine matcher.yaml <log>` while writing the pattern, then
 `ci-doctor matchers verify --update`, review the `.expected` files (one per output), and
-`ci-doctor matchers index` to regenerate `index.yaml` and the ecosystem bundles.
+`ci-doctor registry index` to regenerate `index.yaml` and the ecosystem bundles.
 Without fixtures a matcher proves nothing — one that never matches fails silently,
 because the tail window still returns something. `verify` asks, per output, for 3
 positive and 2 negative fixtures by default, and a positive for every variant.
@@ -356,7 +430,9 @@ pipelines and merge requests are the same API, and connecting twice would mean a
 token read and a second version probe for nothing.
 
 1. `providers/<name>/{provider,segmenter,reasons}.py` implementing `CIProvider`,
-   `SCMProvider`, or both, plus `LogSegmenter` for a CI.
+   `SCMProvider`, or both, plus `LogSegmenter` for a CI. A `CIProvider` lists runs too
+   (`list_runs`): map each neutral filter onto the vendor's query, and the vendor's
+   states back onto `RunStatus`, keeping the raw word in `raw_status`.
 2. Canonicalise section names to the tokens the `phases:` map already uses
    (`checkout`, `run`, `post`, …) so phase assignment needs no core change.
 3. One line in `providers/registry.py`'s `ADAPTERS`, and one in `SEGMENTERS` if it
@@ -371,10 +447,11 @@ token read and a second version probe for nothing.
 6. `test_core_carries_no_vendor_name_in_its_code` must stay green — add the new
    vendor to its regex. If it fires, the abstraction broke.
 
-**Prefer the vendor's own SDK** over hand-rolled REST calls — `python-gitlab` and
-`PyGithub` are already dependencies, and pagination, retries and auth are not worth
-re-implementing. Keep the SDK's objects inside the adapter: `_to_job` is the only place
-allowed to know what they look like.
+**Call the vendor's REST API through `providers/api_client.py`, not an SDK.** A
+provider needs only a few calls, and `ApiClient` already handles auth, TLS,
+pagination, rate limits and redirects. A new adapter only names its endpoints and maps
+the JSON in `_to_job`. On a log, turn an `ApiError` into `None` (no log) or
+`errors.LogUnavailable` (could not read it), per §7. Test it with `support.FakeApi`.
 
 ### 5.5 Resolve the repository outside CI
 
@@ -396,6 +473,24 @@ do the same rather than hard-failing on a missing variable.
 - No unrequested abstractions: no interface with one implementation, no config for a
   value that never changes.
 - `# noqa: <CODE>` needs a trailing reason (see existing `BLE001` uses).
+
+### 6.1 Comments and docstrings
+
+Write them for a colleague reading the code for the first time.
+
+- **Short.** One idea per comment. A docstring's first line fits on one line; its
+  body is a few sentences at most. If it needs more, the code or the design needs work.
+- **Plain words.** Say it the way you would say it out loud. No metaphors, no
+  emphasis, no selling.
+- **Why, not what.** Skip what the code already says. A name that needs a comment
+  needs a better name.
+- **Now, not history.** "Used to", "was" and "no longer" belong in the commit message.
+  The one exception is §7, which records what bit us so it does not bite again.
+- **Args, Returns, Raises: one line each** where the value allows. Describe the
+  value, not its type; the annotation already says that.
+- **Cite, don't repeat.** Name an invariant by number (`invariant #5`) or a section
+  (`§7`) instead of restating it.
+- **Keep them true.** Change a comment with the code it describes, or delete it.
 
 ## 7. Gotchas that have already bitten us
 
@@ -459,6 +554,14 @@ Real bugs, kept here so they don't recur:
   the engine runs, so test matchers against segmented lines (`read_fixture` in
   `matchers/verify.py` does it, by the fixture's `.github.log` / `.gitlab.log` name),
   never `raw_log.splitlines()`.
+- **A log that could not be read is not a job that never ran.** A provider answered every
+  failed log fetch with `None`, and attribution rule 1 reads `None` as "the job never got a
+  runner", so a 403 (GitHub job logs need admin rights) became phase `provision`, reason
+  `no_runner`, confidence high, with an empty excerpt — a confident wrong diagnosis. A
+  provider now returns `None` only for a log that is absent (404, 410, empty) and raises
+  `LogUnavailable` for the rest; `analyze_run` records it as `Job.log_error`, attribution
+  skips rule 1 and caps the verdict at low confidence, and the report, the prompt and the
+  MCP brief all say the log was unavailable. A new provider must draw the same line.
 - **The domain models are plain dataclasses, not pydantic** — nothing validates what an
   adapter puts in them. A `datetime` where the model says `str | None` sails through and
   crashes much later, in the JSON dump. Normalise at the adapter boundary.

@@ -14,23 +14,28 @@ log?) is the matchers registry's job: it pins every matcher with fixture logs an
 **Adding a provider** means one entry in :data:`LOGS`, a builder for its format;
 `test_attribution.py` fails until every registered segmenter has one, and every
 provider-parametrized test then covers it.
+
+A provider's REST API is a :class:`FakeApi`, served through `httpx.MockTransport`,
+so no test opens a socket.
 """
 
 import base64
 import hashlib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
+import httpx
 import yaml
 from nacl.signing import SigningKey
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.core.models import Section
 from ci_doctor.engine import MatcherV1, Spec
-from ci_doctor.matchers.index import write_index
-from ci_doctor.matchers.registry import load
-from ci_doctor.matchers.signing import SIGNATURE, sign
+from ci_doctor.matchers.registry.index import write_index
+from ci_doctor.matchers.registry.resolve import load
+from ci_doctor.matchers.registry.signing import SIGNATURE, sign
 from ci_doctor.providers.registry import SEGMENTERS, segmenter_for
 
 #: A step or section: its name, then the lines it printed.
@@ -298,3 +303,68 @@ def sign_registry(root: Path, *, version: int = 1, expires: datetime | None = No
     )
     (root / SIGNATURE).write_bytes(body)
     return root
+
+
+#: A response; a list served in turn, the last one repeating; or a function of the request.
+Reply = httpx.Response | list[httpx.Response] | Callable[[httpx.Request], httpx.Response]
+
+
+class FakeApi:
+    """A provider's REST API in memory: replies by `(method, path)`, and a record of every request.
+
+    Paths match as sent, without the query string and with `%2F` kept. An unknown
+    route returns 404.
+    """
+
+    def __init__(self, routes: Mapping[tuple[str, str], Reply]) -> None:
+        """Serve `routes`.
+
+        Args:
+            routes: `{("GET", "/repos/acme/app/actions/runs/1"): httpx.Response(200, json=...)}`.
+        """
+        self.routes = {
+            key: list(reply) if isinstance(reply, list) else reply for key, reply in routes.items()
+        }
+        self.requests: list[httpx.Request] = []
+        self.transport = httpx.MockTransport(self._answer)
+
+    def _answer(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        key = (request.method, request.url.raw_path.split(b"?")[0].decode())
+        reply = self.routes.get(key)
+        if reply is None:
+            return httpx.Response(404, json={"message": "Not Found"})
+        if callable(reply):
+            return reply(request)
+        if isinstance(reply, list):
+            reply = reply.pop(0) if len(reply) > 1 else reply[0]
+        # A new copy each time: the client reads a response only once.
+        return httpx.Response(reply.status_code, headers=reply.headers, content=reply.content)
+
+    def sent(self, method: str, path: str) -> list[httpx.Request]:
+        """The requests sent to one route, in order.
+
+        Args:
+            method: The HTTP method.
+            path: The path, as in the routes.
+
+        Returns:
+            The matching requests.
+        """
+        return [
+            r for r in self.requests if (r.method, r.url.raw_path.split(b"?")[0].decode()) == (method, path)
+        ]
+
+
+def json_reply(body: Any, status: int = 200, **headers: str) -> httpx.Response:
+    """A JSON response. Header names use `_` for `-` (`x_next_page="2"`).
+
+    Args:
+        body: The JSON body.
+        status: The status code.
+        **headers: Response headers, underscores standing for dashes.
+
+    Returns:
+        The response.
+    """
+    return httpx.Response(status, json=body, headers={k.replace("_", "-"): v for k, v in headers.items()})

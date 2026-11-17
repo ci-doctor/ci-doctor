@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Literal
 
 from ci_doctor.config.loader import default_config
-from ci_doctor.core.analyze import evidence_lines
 from ci_doctor.core.attribution import attribute
 from ci_doctor.core.denoise import denoise
+from ci_doctor.core.evidence import evidence_lines
 from ci_doctor.core.models import FailureReason, Job
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.providers.registry import segmenter_for

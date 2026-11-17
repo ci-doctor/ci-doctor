@@ -35,6 +35,21 @@ def test_service_has_no_terminal_in_it():
     assert _offenders((PACKAGE / "service").rglob("*.py"), ("typer", "click")) == {}
 
 
+SERVER = PACKAGE / "agent" / "server.py"
+
+
+def test_the_agent_package_has_no_terminal_in_it_and_the_server_owns_the_sdk():
+    """`agent/` is a surface like `cli/`, without its terminal; only `agent/server.py` imports the MCP SDK."""
+    assert _offenders((PACKAGE / "agent").rglob("*.py"), ("typer", "click", "rich", "ci_doctor.cli")) == {}
+    assert _offenders([p for p in PACKAGE.rglob("*.py") if p != SERVER], ("mcp",)) == {}
+
+
+def test_only_the_mcp_command_imports_the_server():
+    """A tool calls `service/`; a service reaching back into the server would turn that around."""
+    others = [p for p in PACKAGE.rglob("*.py") if p not in (SERVER, PACKAGE / "cli/mcp.py")]
+    assert _offenders(others, ("ci_doctor.agent.server",)) == {}
+
+
 def test_each_config_key_has_its_own_schema_module():
     """`config/schemas/` mirrors `.ci-doctor.yml`: the model for `llm:` lives in `schemas/llm.py`."""
     from pydantic import BaseModel
@@ -52,7 +67,7 @@ def test_each_config_key_has_its_own_schema_module():
 
 
 def test_each_command_module_holds_one_command():
-    """`cli/<group…>/<name>.py` is one `Command` subclass named `name`; shared code lives in `_lib/`."""
+    """`cli/<group…>/<name>.py` is one `Command` subclass named `name`; shared code lives in `_lib/` and `_console/`."""
     import importlib
     import inspect
 
@@ -61,7 +76,7 @@ def test_each_command_module_holds_one_command():
     cli = PACKAGE / "cli"
     found = {}
     for path in cli.rglob("*.py"):
-        if "_lib" in path.parts or path.name.startswith("__"):
+        if any(part.startswith("_") for part in path.relative_to(cli).parts):
             continue
         module = importlib.import_module(
             "ci_doctor." + ".".join(path.relative_to(PACKAGE).with_suffix("").parts)
@@ -123,6 +138,13 @@ def test_outside_code_imports_the_engine_only_through_its_surface():
     assert bad == {}
 
 
+def test_registry_imports_matchers_and_never_the_other_way():
+    """`matchers/registry` → `matchers` → `engine`: what a matcher is never depends on where it is fetched from."""
+    registry = PACKAGE / "matchers" / "registry"
+    files = [p for p in (PACKAGE / "matchers").rglob("*.py") if registry not in p.parents]
+    assert _offenders(files, ("ci_doctor.matchers.registry",)) == {}
+
+
 def test_config_imports_nothing_from_core():
     """`core` reads the config; the config reaching back into `core` was an import cycle."""
     assert _offenders((PACKAGE / "config").rglob("*.py"), ("ci_doctor.core",)) == {}
@@ -133,6 +155,14 @@ def test_lib_is_a_leaf():
     bad = {
         str(p.relative_to(PACKAGE)): out
         for p in (PACKAGE / "lib").rglob("*.py")
-        if (out := sorted(m for m in _imports(p) if m.startswith("ci_doctor.") and m != "ci_doctor.errors"))
+        if (
+            out := sorted(
+                m
+                for m in _imports(p)
+                if m.startswith("ci_doctor.")
+                and m != "ci_doctor.errors"
+                and not m.startswith("ci_doctor.lib.")
+            )
+        )
     }
     assert bad == {}

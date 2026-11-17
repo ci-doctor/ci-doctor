@@ -44,7 +44,7 @@ ENV PATH="/opt/ci-doctor/bin:$PATH" \
 
 # A warm start: the official registry's files in root's cache (~/.cache/ci-doctor), so a
 # run only revalidates the index. Best effort: a registry hiccup must not fail the build.
-RUN ci-doctor matchers pull official/all || echo "ci-doctor: official registry not pre-cached"
+RUN ci-doctor cache pull official/all || echo "ci-doctor: official registry not pre-cached"
 
 # Root on purpose: it writes report.md into a mounted dir it doesn't own (GitLab, -v $PWD).
 WORKDIR /app

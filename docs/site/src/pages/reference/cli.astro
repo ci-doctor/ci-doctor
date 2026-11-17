@@ -39,32 +39,31 @@ config ok: ci=gitlab, scm=gitlab, 23 matchers from 1 registries.`;
 
 const matchersUse = `ci-doctor matchers add ALIAS/NAME...      # append to matchers.include
 ci-doctor matchers remove ALIAS/NAME...   # drop entries from matchers.include
-ci-doctor matchers list                   # what include resolves to, and via which bundle
-ci-doctor matchers search TERM [--registry ALIAS]
-ci-doctor matchers info ALIAS/NAME        # description, tags, each output's role, registry, path; a bundle's members
+ci-doctor matchers list [--json]          # what include resolves to, and via which bundle
+ci-doctor matchers search TERM [--registry ALIAS] [--json]
+ci-doctor matchers info ALIAS/NAME [--json]  # description, tags, each output's role, registry, path; a bundle's members
 ci-doctor matchers examine MATCHER LOG [--framing github|gitlab|plain]  # what each output selects from LOG
-
-ci-doctor matchers registry add NAME=LOCATION...  # add or override, after fetching its index.yaml
-ci-doctor matchers registry remove NAME...        # refused while include still uses it
-ci-doctor matchers registry list
-ci-doctor matchers registry ping [NAME...]        # reachability, latency, matcher and bundle count
-
-ci-doctor matchers pull [ALIAS/NAME...]  # fetch into the cache without analysing; include when omitted
-ci-doctor matchers mirror NAME DIR       # copy a whole registry, hash-checked, to serve or use as a path
-
-ci-doctor matchers cache info    # where the cache is, its size, each registry's index age and files cached
-ci-doctor matchers cache prune   # delete files no cached index lists (old versions of changed matchers)
-ci-doctor matchers cache clean   # delete everything; the next run fetches every file again
 
 # The global ci-doctor -f PATH adds config files to read. The commands that edit the
 # config write your user config (~/.config/ci-doctor/config.yml on Linux), created if
 # missing; ci-doctor --write-to FILE matchers ... writes FILE instead, and reads it too.
 # Output is a table by default; ci-doctor --plain matchers ... prints one bare line per row.`;
 
-const matchersAuthor = `ci-doctor matchers index [ROOT] [--check]    # validate, then write index.yaml and the ecosystem bundles
-ci-doctor matchers verify [ROOT] [--update] [--min-positive N] [--min-negative N]
+const matchersAuthor = `ci-doctor matchers verify [ROOT] [--update] [--min-positive N] [--min-negative N]
                           [--exempt FILE] [--cross-fire] [--json FILE]
 ci-doctor matchers schema [--version N | --out DIR]  # a matcher file's JSON Schema; --out writes every version`;
+
+const registryUse = `ci-doctor registry add NAME=LOCATION...  # add or override, after fetching its index.yaml
+ci-doctor registry remove NAME...        # refused while include still uses it
+ci-doctor registry list [--json]
+ci-doctor registry ping [NAME...] [--json]  # reachability, latency, matcher and bundle count
+ci-doctor registry index [ROOT] [--check]   # validate, then write index.yaml and the ecosystem bundles
+ci-doctor registry mirror NAME DIR       # copy a whole registry, hash-checked, to serve or use as a path`;
+
+const cacheUse = `ci-doctor cache info [--json]  # where the cache is, its size, each registry's index age and files cached
+ci-doctor cache prune   # delete files no cached index lists (old versions of changed matchers)
+ci-doctor cache clean   # delete everything; the next run fetches every file again
+ci-doctor cache pull [ALIAS/NAME...]  # fetch into the cache without analysing; include when omitted`;
 
 const deterministic = `# Deterministic report, no model required:
 ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
@@ -72,6 +71,11 @@ ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
 
 # It prints the verdict, writes report.md + report.json, and (if configured
 # and confidence >= medium) posts/updates one idempotent MR/PR note.`;
+
+const mcpInstall = `ci-doctor mcp [--project DIR]   # the server itself, which agents start
+ci-doctor agent install [--target auto|all|claude,cursor,...] [--location local|global]
+                        [--no-permissions] [--dry-run]
+ci-doctor agent uninstall [--target ...] [--location ...]`;
 
 const verbose = `ci-doctor -v analyze failing-job.log
 
@@ -84,12 +88,15 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
 
 <Base
     title="CLI"
-    description="The ci-doctor command line: analyze, config and matchers, their flags, exit codes, and what --verbose prints."
+    description="The ci-doctor command line: analyze, config, matchers, registry, cache and mcp, their flags, exit codes, and what --verbose prints."
 >
     <h1>CLI</h1>
     <p class="lead">
-        Three commands: <code>analyze</code>, <code>config</code> and
-        <code>matchers</code>. A broken setup exits 1; once analysis starts,
+        The commands: <code>analyze</code>, <code>config</code> and <code>report</code>, and
+        four groups: <code>matchers</code> (what runs), <code>registry</code> (where matchers come
+        from), <code>cache</code> (the local copy) and <code>mcp</code> (coding agents). Every
+        command's <code>--help</code> ends with examples, and every listing takes
+        <code>--json</code> for scripts. A broken setup exits 1; once analysis starts,
         the exit code is always 0.
     </p>
 
@@ -157,10 +164,8 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
 
     <h2><code>matchers</code></h2>
     <p>
-        Selects matchers and manages the registries they come from. How
-        registries and <code>alias/name</code> refs work is on <a
-            href={url("/concepts/matchers/")}>Matchers</a
-        >.
+        Chooses the matchers a project runs, and tests them. How registries and
+        <code>alias/name</code> refs work is on <a href={url("/concepts/matchers/")}>Matchers</a>.
     </p>
     <Code code={matchersUse} lang="text" theme="github-dark" />
     <p>
@@ -170,18 +175,12 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         included, directly or through a bundle. <code>remove</code> drops only
         entries written in <code>include</code>; to drop a matcher that came in
         through a bundle, remove the bundle; to drop one output of a matcher, list
-        it under <code>matchers.exclude</code>. Removing an override of
-        <code>official</code> falls back to its default address.
+        it under <code>matchers.exclude</code>.
     </p>
     <p>
         <code>search</code>, <code>info</code>, <code>add</code> and
         <code>examine</code> read registries through the same cache as
-        <code>analyze</code>; <code>registry ping</code> never does, since it is
-        there to test the registry. <code>pull</code> warms the cache ahead of a
-        run (a Docker build, a CI setup step). <code>mirror</code> writes every
-        file a registry serves into <code>DIR</code>, the index last, after every
-        file has passed its hash check; <code>DIR</code> must be empty, missing, or
-        an earlier mirror. How the cache works is on <a
+        <code>analyze</code>. How the cache works is on <a
             href={url("/concepts/matchers/")}>Matchers</a
         >.
     </p>
@@ -195,23 +194,94 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         variants that fired, and exits 0 even when nothing matches.
     </p>
     <p>
-        Two commands are for registry authors, run in the registry's own CI.
+        Two commands are for matcher authors, run in a registry's own CI.
         <code>ROOT</code> is the registry folder and defaults to the current
         directory:
     </p>
     <Code code={matchersAuthor} lang="text" theme="github-dark" />
     <p>
-        <code>index --check</code> writes nothing and exits 1 when the committed
-        <code>index.yaml</code> or a generated ecosystem bundle is stale.
         <code>verify</code> exits 1 when an output's selection differs from its
         <code>.expected</code> file, a variant is proven by no fixture, an output
         fires on a runner's own "job failed" line, or an output has fewer fixtures
         than <code>--min-positive</code> / <code>--min-negative</code> (3 and 2 by
         default; <code>--exempt</code> names a file of matchers held to one).
         <code>--cross-fire</code> also fails on an output firing on another
-        matcher's fixture, and <code>--json</code> writes the whole report.
+        matcher's fixture, and <code>--json</code> writes the whole report to a file.
         <code>--update</code> rewrites the <code>.expected</code> files for review.
         Writing a registry is on <a href={url("/reference/registry/")}>Hosting a registry</a>.
+    </p>
+
+    <h2><code>registry</code></h2>
+    <p>
+        Where matchers come from, and building one. Removing an override of
+        <code>official</code> falls back to its default address.
+        <code>registry ping</code> never reads the cache, since it is there to test
+        the registry.
+    </p>
+    <Code code={registryUse} lang="text" theme="github-dark" />
+    <p>
+        <code>index</code> is for registry authors: <code>index --check</code> writes
+        nothing and exits 1 when the committed <code>index.yaml</code> or a generated
+        ecosystem bundle is stale. <code>mirror</code> writes every file a registry
+        serves into <code>DIR</code>, the index last, after every file has passed its
+        hash check; <code>DIR</code> must be empty, missing, or an earlier mirror.
+    </p>
+
+    <h2><code>cache</code></h2>
+    <p>
+        The local copy of registry files that <code>analyze</code> and the
+        <code>matchers</code> commands read through.
+    </p>
+    <Code code={cacheUse} lang="text" theme="github-dark" />
+    <p>
+        <code>pull</code> warms the cache ahead of a run (a Docker build, a CI setup
+        step); it exits 1 when <code>matchers.cache</code> is <code>false</code>.
+    </p>
+
+    <h2><code>mcp</code></h2>
+    <p>
+        <code>ci-doctor mcp</code> serves ci-doctor to a coding agent over
+        <a href="https://modelcontextprotocol.io">MCP</a>, on stdio. The agent is the
+        model: <code>analyze_run</code> returns each failed
+        job's settled phase and redacted evidence, and the agent writes the explanation,
+        so the <code>llm:</code> block is ignored.
+    </p>
+    <p>
+        <code>ci-doctor agent install</code> connects it to Claude Code, Cursor, Codex CLI,
+        opencode, Hermes Agent, Gemini CLI, Antigravity, Kiro and pi (which needs its
+        <code>pi-mcp-adapter</code> extension for MCP). For each it writes the MCP
+        server entry and a short instructions block, and for Claude Code it auto-allows the
+        read-only tools. <code>local</code> (the default) writes this project's files;
+        <code>global</code> writes yours. Running it again changes nothing, and
+        <code>--dry-run</code> shows each file and the config it would add, writing nothing.
+        Run with no flags in a terminal, it asks instead: which agents (detected ones
+        ticked), this project or all of them, and whether to auto-allow the read-only
+        tools in Claude Code, then lists the files and asks before writing them. With
+        flags, or from a script, it writes without asking; <code>--dry-run</code> shows
+        what it would write first.
+        <code>agent uninstall</code> removes ci-doctor's entries and any container they
+        leave empty; an agent's JSON config file is never deleted. Run with no flags in a
+        terminal, it lists the files and asks first; with flags, or from a script, it
+        removes without asking. A file it cannot edit
+        safely is left alone, and the config is printed to add by hand.
+    </p>
+    <Code code={mcpInstall} lang="text" theme="github-dark" />
+    <table>
+        <thead><tr><th>Tool</th><th>Does</th></tr></thead>
+        <tbody>
+            <tr><td><code>list_runs</code></td><td>Lists the project's runs, newest first, with filters.</td></tr>
+            <tr><td><code>analyze_run</code></td><td>Briefs each failed job of a pipeline/run.</td></tr>
+            <tr><td><code>search_matchers</code></td><td>Finds matchers and bundles in the configured registries.</td></tr>
+            <tr><td><code>list_matchers</code></td><td>Shows what the config selects, and via which bundle.</td></tr>
+            <tr><td><code>add_matchers</code></td><td>Adds entries to <code>matchers.include</code>.</td></tr>
+            <tr><td><code>remove_matchers</code></td><td>Drops entries from <code>matchers.include</code>.</td></tr>
+            <tr><td><code>check_setup</code></td><td>Validates the config and loads every selected matcher.</td></tr>
+        </tbody>
+    </table>
+    <p>
+        The two edit tools write only the <code>matchers:</code> block, to
+        <code>./.ci-doctor.yml</code> unless <code>--write-to</code> names another file.
+        Nothing else is written: no report files, no MR/PR note.
     </p>
 
     <h2>Reporting a bug</h2>

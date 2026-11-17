@@ -6,13 +6,14 @@ conftest blocks all real sockets, so if any stage tried the network this fails.
 import pytest
 
 from ci_doctor.config.loader import load_config
-from ci_doctor.core.analyze import build_bundle
 from ci_doctor.core.attribution import attribute
+from ci_doctor.core.evidence import build_bundle
 from ci_doctor.core.models import FailureReason, Job
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.engine import compile_plan
 from ci_doctor.llm.report import produce_report
 from ci_doctor.render.markdown import MarkdownRenderer
+from ci_doctor.service.brief import build_brief
 from tests import support
 
 
@@ -27,7 +28,9 @@ def test_full_offline_pipeline_no_network(provider, fx_registry):
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
     bundle = build_bundle(job, attr, job.sections, cfg, compile_plan(support.registry_matchers(fx_registry)))
-    report = produce_report(job, attr, bundle, cfg)  # llm unconfigured -> deterministic, no network
+    report = produce_report(
+        job, attr, bundle, cfg, build_brief(job, attr, bundle, cfg)
+    )  # llm unconfigured -> deterministic, no network
 
     md = MarkdownRenderer().render(report)
     js = report.model_dump_json(indent=2)

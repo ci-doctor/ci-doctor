@@ -12,12 +12,12 @@ const packages = [
             {
                 path: "cli/",
                 entry: "main()",
-                role: "The command line, one module per command and one package per group (`cli/matchers/registry/ping.py` is `ci-doctor matchers registry ping`). Parses, calls `service/`, prints, and owns the exit code: 1 for a `SetupError`, 0 for everything else, a crash included.",
+                role: "The command line, one module per command and one package per group (`cli/registry/ping.py` is `ci-doctor registry ping`). Parses, calls `service/`, prints, and owns the exit code: 1 for a `SetupError`, 0 for everything else, a crash included.",
             },
             {
                 path: "service/",
                 entry: "analyze_run()",
-                role: "What each command does, with no terminal in it: `analyze` (segment → assign phases → attribute → build bundle → report, over a live run or a log file), `deliver` (artifacts, MR note), `setup` (the dry run).",
+                role: "What each command does, with no terminal in it: `analyze` (over a live run or a log file, in two stages: diagnose is segment → assign phases → attribute → build bundle → brief and calls no model, explain is brief → report; the MCP server runs only the first), `deliver` (artifacts, MR note), `setup` (the dry run).",
             },
             {
                 path: "lib/",
@@ -141,13 +141,8 @@ const packages = [
     },
     {
         dir: "matchers/",
-        blurb: "Where matchers come from: registries, read on every run and validated like untrusted input.",
+        blurb: "What a matcher, bundle and index file is, and how a matcher is tested. Imports nothing from `registry/`.",
         files: [
-            {
-                path: "registry.py",
-                entry: "load()",
-                role: "Resolves `matchers.include` against each registry's index, expands bundles, fetches every selected matcher, validates it again and renames it `alias/id`. Any failure is a `SetupError`.",
-            },
             {
                 path: "models.py",
                 entry: "Index, Bundle",
@@ -159,11 +154,6 @@ const packages = [
                 role: "Reads a registry file safely (no YAML aliases, paths contained in the registry) and applies the rules a registry adds on top of the schema. Shared by load time and the author's checks, so they cannot drift.",
             },
             {
-                path: "index.py",
-                entry: "write_index()",
-                role: "`matchers index`: validates every matcher and bundle (unique names, known includes, no cycles), generates one bundle per ecosystem folder, and writes a deterministic `index.yaml`.",
-            },
-            {
                 path: "verify.py",
                 entry: "verify()",
                 role: "`matchers verify`: runs each output alone over its matcher's fixture logs, framing stripped as each log's name declares, and compares with the committed `.expected` files; also checks variant coverage, runner trailers and cross-fire.",
@@ -173,10 +163,36 @@ const packages = [
                 entry: "examine()",
                 role: "`matchers examine`: one matcher over one log, as `verify` reads it, each output's selection with its anchors marked.",
             },
+        ],
+    },
+    {
+        dir: "registry/",
+        blurb: "Where matchers come from: registries, read on every run and validated like untrusted input, and building one.",
+        files: [
+            {
+                path: "resolve.py",
+                entry: "load()",
+                role: "Resolves `matchers.include` against each registry's index, expands bundles, fetches every selected matcher, validates it again and renames it `alias/id`. Any failure is a `SetupError`.",
+            },
             {
                 path: "transports/",
                 entry: "transport_for()",
                 role: "How a registry's files are read, picked by the location's shape: `local` (a path or `file://`) or `http` (bounded redirects and sizes).",
+            },
+            {
+                path: "cache.py",
+                entry: "Cache",
+                role: "The local copy of registry files, checked against each index's sha256, so a run works through an outage and `cache pull` can fill it ahead of time.",
+            },
+            {
+                path: "index.py",
+                entry: "write_index()",
+                role: "`registry index`: validates every matcher and bundle (unique names, known includes, no cycles), generates one bundle per ecosystem folder, and writes a deterministic `index.yaml`.",
+            },
+            {
+                path: "mirror.py",
+                entry: "mirror()",
+                role: "`registry mirror`: copies one whole registry into a folder, for an air-gapped install.",
             },
         ],
     },

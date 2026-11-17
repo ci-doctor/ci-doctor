@@ -175,6 +175,28 @@ def test_attribution(provider, log, reason, expected):
     assert (attr.phase, attr.reason, attr.rule_id) == expected
 
 
+def test_a_log_that_could_not_be_read_is_not_a_job_that_never_ran():
+    """The provider's reason still names the phase, but without the log nothing confirms it."""
+    never_ran = Job(id="1", name="j", status="failed", failure_reason=R.SCRIPT_FAILURE, log=None)
+    assert attribute(never_ran, []).rule_id == "empty_log_no_runner"
+
+    unreadable = Job(id="1", name="j", status="failed", failure_reason=R.SCRIPT_FAILURE, log_error="HTTP 403")
+    verdict = attribute(unreadable, [])
+    assert (verdict.phase, verdict.reason, verdict.rule_id) == (
+        Phase.SCRIPT,
+        R.SCRIPT_FAILURE,
+        "script_failure_is_script",
+    )
+    assert verdict.confidence == "low"
+
+
+def test_an_unreadable_log_with_no_provider_reason_is_no_signal():
+    """Nothing to go on is said as such, not guessed as a runner that never came."""
+    job = Job(id="1", name="j", status="failed", failure_reason=U, log_error="HTTP 403")
+    verdict = attribute(job, [])
+    assert (verdict.phase, verdict.rule_id, verdict.confidence) == (Phase.UNKNOWN, "no_signal", "low")
+
+
 def test_every_scenario_is_covered_by_every_provider():
     """A scenario proved against one log format only is an untested format.
 

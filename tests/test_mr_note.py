@@ -1,90 +1,56 @@
-"""Idempotent MR-note posting against an in-memory python-gitlab double."""
+"""Posting the MR note, and updating it on a rerun, against an in-memory GitLab API."""
 
-from types import SimpleNamespace
+import json
 
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import MergeRequestRef
 from ci_doctor.providers.gitlab.provider import GitLabProvider
+from tests.support import FakeApi, json_reply
 
 MARKER = "<!-- ci-doctor:pipeline:99 -->"
+NOTES = "/api/v4/projects/1/merge_requests/7/notes"
 
 
-class _Note:
-    """In-memory stand-in for a python-gitlab note, recording whether it was saved."""
-
-    def __init__(self, body):
-        """Create a note with the given body."""
-        self.body = body
-        self.saved = False
-
-    def save(self):
-        """Record that the note was updated in place."""
-        self.saved = True
-
-
-class _Notes:
-    """In-memory stand-in for a merge request's notes collection."""
-
-    def __init__(self, existing):
-        """Seed the collection with any pre-existing notes."""
-        self._list = existing
-        self.created = []
-
-    def list(self, all=True):
-        """Return every note."""
-        return self._list
-
-    def create(self, data):
-        """Add a note and record it as newly created."""
-        note = _Note(data["body"])
-        self._list.append(note)
-        self.created.append(note)
-        return note
-
-
-def _provider(existing_notes):
-    """Build a GitLabProvider wired to fake notes, plus the notes collection."""
-    notes = _Notes(existing_notes)
-    mr_obj = SimpleNamespace(notes=notes)
-    project = SimpleNamespace(mergerequests=SimpleNamespace(get=lambda iid: mr_obj))
-    gl = SimpleNamespace(projects=SimpleNamespace(get=lambda pid: project))
-    prov = GitLabProvider(load_config(environ={}), client=gl, environ={"CI_PROJECT_ID": "1"})
-    return prov, notes
+def _provider(routes, environ=None):
+    """A GitLabProvider on a FakeApi serving `routes`. Returns both."""
+    api = FakeApi(routes)
+    env = {"CI_PROJECT_ID": "1"} if environ is None else environ
+    return GitLabProvider(load_config(environ={}), env, transport=api.transport), api
 
 
 def test_creates_note_when_absent():
     """With no previous note, one is created carrying the marker."""
-    prov, notes = _provider([])
+    prov, api = _provider({("GET", NOTES): json_reply([]), ("POST", NOTES): json_reply({"id": 1}, 201)})
     prov.post_note(MergeRequestRef(iid="7"), "the report", MARKER)
-    assert len(notes.created) == 1
-    assert MARKER in notes.created[0].body
+    [created] = api.sent("POST", NOTES)
+    assert json.loads(created.content)["body"] == f"the report\n\n{MARKER}"
 
 
 def test_updates_existing_note_idempotently():
     """Our previous note is found by marker and edited, never duplicated."""
-    existing = [_Note(f"old report\n\n{MARKER}")]
-    prov, notes = _provider(existing)
+    prov, api = _provider(
+        {
+            ("GET", NOTES): json_reply(
+                [{"id": 3, "body": "lgtm"}, {"id": 4, "body": f"old report\n\n{MARKER}"}]
+            ),
+            ("PUT", f"{NOTES}/4"): json_reply({"id": 4}),
+        }
+    )
     prov.post_note(MergeRequestRef(iid="7"), "new report", MARKER)
-    assert notes.created == []  # updated in place, not a second comment
-    assert existing[0].saved is True
-    assert "new report" in existing[0].body
+    assert api.sent("POST", NOTES) == []  # updated in place, not a second comment
+    [edited] = api.sent("PUT", f"{NOTES}/4")
+    assert json.loads(edited.content)["body"].startswith("new report")
 
 
 def test_mr_resolved_from_ci_env():
     """The MR is read from CI_MERGE_REQUEST_IID, not guessed from branch or SHA."""
-    gl = SimpleNamespace(
-        projects=SimpleNamespace(
-            get=lambda pid: SimpleNamespace(
-                pipelines=SimpleNamespace(
-                    get=lambda pid: SimpleNamespace(
-                        id=1, ref="mr", sha="x", web_url="", jobs=SimpleNamespace(list=lambda all=True: [])
-                    )
-                )
-            )
-        )
-    )
-    prov = GitLabProvider(
-        load_config(environ={}), client=gl, environ={"CI_PROJECT_ID": "1", "CI_MERGE_REQUEST_IID": "42"}
+    pipeline = "/api/v4/projects/1/pipelines/1"
+    prov, _ = _provider(
+        {
+            ("GET", pipeline): json_reply({"id": 1, "ref": "mr", "sha": "x", "web_url": ""}),
+            ("GET", f"{pipeline}/jobs"): json_reply([]),
+        },
+        {"CI_PROJECT_ID": "1", "CI_MERGE_REQUEST_IID": "42"},
     )
     run = prov.fetch_run("1")
     assert run.mr is not None and run.mr.iid == "42"

@@ -28,7 +28,7 @@ _LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 _ENV_PREFIX = "CI_DOCTOR_"
 _TOP_LEVEL = set(Config.model_fields)  # provider, gitlab, llm, ...
-_DEFAULT_REPO_CONFIG = Path(".ci-doctor.yml")
+REPO_CONFIG = Path(".ci-doctor.yml")
 
 
 def user_config() -> Path:
@@ -175,7 +175,7 @@ def _repo_paths(repo_config: str | Path | Iterable[str | Path] | None) -> list[P
         repo_config = [repo_config]
     paths = [Path(p) for p in repo_config or []]
     if not paths:
-        return [_DEFAULT_REPO_CONFIG] if _DEFAULT_REPO_CONFIG.is_file() else []
+        return [REPO_CONFIG] if REPO_CONFIG.is_file() else []
     if missing := [p for p in paths if not p.is_file()]:
         raise SetupError(f"config file not found: {missing[0]}")
     return paths

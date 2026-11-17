@@ -120,6 +120,42 @@ When a pipeline has several failed jobs, the report is framed as a pipeline: a h
 with a code-vs-infra triage count, then each job under its own separator, in the order
 they ran.
 
+## Use it from a coding agent (MCP)
+
+`ci-doctor mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio, in the base
+install. Your agent is the model: ci-doctor hands it each failed job's phase and evidence
+and the agent explains the failure, so no `llm:` block is needed. Connect your agents
+from the repository's root:
+
+```sh
+ci-doctor agent install                    # asks which agents and where (from a script: the ones found here)
+ci-doctor agent install --target auto      # the agents found here, no questions
+ci-doctor agent install --location global  # in your own config, for every project
+ci-doctor agent install --dry-run          # show the files and config, write nothing
+ci-doctor agent uninstall                  # remove ci-doctor's entries (asks first in a terminal)
+```
+
+It supports Claude Code, Cursor, Codex CLI, opencode, Hermes Agent, Gemini CLI,
+Antigravity, Kiro and pi (`--target claude,cursor` picks; pi also needs its
+`pi-mcp-adapter` extension). For each it writes the MCP server
+entry and a short instructions block (`CLAUDE.md`, `AGENTS.md`, ...), and for Claude
+Code it auto-allows the read-only tools. Running it again changes nothing; a file it
+cannot edit safely is left alone and the config is printed to add by hand. To analyze
+live runs, set `CI_DOCTOR_GITHUB_TOKEN` or `CI_DOCTOR_GITLAB_TOKEN` where the agent runs.
+To set it up by hand, see [`examples/mcp.example.json`](examples/mcp.example.json).
+
+| Tool | Does |
+|---|---|
+| `list_runs` | Lists the project's runs, newest first, filtered by status, branch, commit, actor, event or date |
+| `analyze_run` | Briefs each failed job of a run for the agent to explain |
+| `search_matchers`, `list_matchers` | Browse the registries; show what the config selects |
+| `add_matchers`, `remove_matchers` | Edit `matchers.include` in `./.ci-doctor.yml` (`--write-to` picks another file) |
+| `check_setup` | Validate the config and load every selected matcher |
+
+Ask the agent to "pick ci-doctor matchers for this project": it reads the repository,
+searches the registries and adds what fits. Only the two edit tools write anything, and
+only the `matchers:` block; the CI system and the repository are never touched.
+
 ## Configuration
 
 Layered and pydantic-validated — `defaults.yml` < your user config < repo `.ci-doctor.yml` < `CI_DOCTOR_*` env
@@ -226,8 +262,7 @@ bundles and registries; the official catalogue is at https://matchers.cidoc.dev.
 
 For contributors: how the code is built — where things go, the invariants, how to write
 tests — is [GUIDELINES.md](https://github.com/ci-doctor/ci-doctor/blob/master/GUIDELINES.md); how to get a change in — setup, commits,
-pre-push checks — is [CONTRIBUTING.md](https://github.com/ci-doctor/ci-doctor/blob/master/CONTRIBUTING.md). The original design spec, kept
-for provenance, is [docs/PLAN.md](https://github.com/ci-doctor/ci-doctor/blob/master/docs/PLAN.md).
+pre-push checks — is [CONTRIBUTING.md](https://github.com/ci-doctor/ci-doctor/blob/master/CONTRIBUTING.md).
 
 ## Development
 

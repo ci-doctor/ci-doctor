@@ -45,7 +45,7 @@ def _jr(name, *, stage="build", infra=False, confidence="high"):
     )
     job = Job(id=name, name=name, status="failed", stage=stage)
     attr = Attribution(report.failure_phase, "script_failure", confidence, None, "rule")
-    return JobResult(job, attr, report)
+    return JobResult(job, attr, report, None)
 
 
 def _run(results):

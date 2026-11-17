@@ -36,6 +36,10 @@ gitlab:
   ca_bundle: null                # path to a custom/internal CA bundle
   verify_ssl: true
   timeout_seconds: 30
+  limits:                        # caps that make a stuck API fail instead of hang
+    max_pages: 100               # pages of one list (100 items each); past it the call fails
+    rate_limit_retries: 3        # rate-limit waits before giving up; 0 fails on the first
+    rate_limit_max_wait_seconds: 60  # a longer single wait fails at once
 
 github:                          # used when github is the ci or the scm
   base_url: https://api.github.com     # default; override with a GHE base, e.g. https://ghe/api/v3
@@ -44,6 +48,10 @@ github:                          # used when github is the ci or the scm
   ca_bundle: null
   verify_ssl: true
   timeout_seconds: 30
+  limits:                        # same keys and defaults as gitlab.limits
+    max_pages: 100
+    rate_limit_retries: 3
+    rate_limit_max_wait_seconds: 60
 
 llm:
   enabled: true                  # false => deterministic-only report

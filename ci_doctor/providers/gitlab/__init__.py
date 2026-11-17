@@ -1,1 +1,1 @@
-"""GitLab CI adapter: python-gitlab provider, log segmenter and reason mapping."""
+"""GitLab CI adapter: REST provider, log segmenter and reason mapping."""

@@ -1,5 +1,6 @@
-"""Matcher registries: static directories of matchers and bundles, built and tested here.
+"""Matcher files: what a matcher, bundle and index is, and how a matcher is tested.
 
-Not `core/`: this package reads files (and, later, the network). A registry is
-untrusted input, so everything it serves goes through :mod:`.validate` first.
+Not `core/`: this package reads files. A matcher file is untrusted input, so
+everything goes through :mod:`.validate` first. Fetching matchers from a registry is
+`registry/`, which imports the rest of this package and never the other way round.
 """

@@ -5,8 +5,8 @@ from pathlib import Path
 import typer
 from typing_extensions import override
 
+from ci_doctor.cli._console.output.message import done
 from ci_doctor.cli._lib.command import Command
-from ci_doctor.cli._lib.outputs.message import done
 from ci_doctor.matchers.verify import Policy, verify
 
 _DEFAULT = Policy()
@@ -16,6 +16,11 @@ class VerifyCommand(Command):
     """Run every matcher over its fixtures and compare each output with its committed .expected file."""
 
     name = "verify"
+    examples = (
+        "ci-doctor matchers verify   # the registry in this folder",
+        "ci-doctor matchers verify --update   # rewrite the .expected files, then review them",
+        "ci-doctor matchers verify --cross-fire --json verify.json",
+    )
 
     @override
     def run(
