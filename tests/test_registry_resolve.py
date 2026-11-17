@@ -7,6 +7,7 @@ shared `fx_registry`, and `http(s)://` goes through `httpx.MockTransport`.
 import contextlib
 import hashlib
 import logging
+import sys
 
 import httpx
 import pytest
@@ -341,6 +342,9 @@ def test_an_index_path_cannot_leave_the_registry(tmp_path, path):
         load(_cfg(["r/x"], r=_registry(tmp_path, index=doc)))
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="creating a symlink on Windows needs a privilege CI runners lack"
+)
 def test_a_symlink_cannot_leave_a_local_registry(tmp_path):
     """The path text passes; the real path does not."""
     (tmp_path / "secret.yaml").write_text(yaml.safe_dump({"id": "x", **_MATCHER}))

@@ -1,0 +1,3 @@
+# Every text file is LF on checkout, on every OS: fixture logs, goldens and plan
+# snapshots are compared byte for byte, and Windows would otherwise check them out CRLF.
+* text=auto eol=lf

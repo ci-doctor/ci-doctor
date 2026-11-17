@@ -2,6 +2,7 @@
 
 import os
 import stat
+import sys
 
 import pytest
 import yaml
@@ -88,6 +89,7 @@ def test_a_non_mapping_file_is_refused(tmp_path):
         edit.edit_block(path, "matchers", _add("a/b"))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no POSIX file modes or umask")
 def test_an_edit_keeps_the_files_mode(tmp_path):
     """The temp file is 0600; the config must not end up that way."""
     path = tmp_path / "c.yml"
@@ -97,6 +99,7 @@ def test_an_edit_keeps_the_files_mode(tmp_path):
     assert stat.S_IMODE(path.stat().st_mode) == 0o644
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no POSIX file modes or umask")
 def test_a_new_file_gets_the_umask_default_mode(tmp_path):
     """A created config is readable like any file the user's tools create."""
     old = os.umask(0o022)
@@ -107,6 +110,9 @@ def test_a_new_file_gets_the_umask_default_mode(tmp_path):
     assert stat.S_IMODE((tmp_path / "new.yml").stat().st_mode) == 0o644
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="creating a symlink on Windows needs a privilege CI runners lack"
+)
 def test_an_edit_through_a_symlink_writes_its_target(tmp_path):
     """A symlinked `.ci-doctor.yml` (dotfiles repo) stays a symlink."""
     target = tmp_path / "dotfiles" / "ci-doctor.yml"

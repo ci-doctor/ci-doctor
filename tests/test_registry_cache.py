@@ -194,6 +194,7 @@ def test_the_default_location_is_the_platform_cache_dir(monkeypatch, tmp_path, p
     """Each platform's per-user cache directory, never the config directory."""
     monkeypatch.setattr("sys.platform", platform)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))  # Path.home() on Windows
     monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value.format(tmp=tmp_path))

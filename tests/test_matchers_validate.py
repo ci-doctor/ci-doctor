@@ -6,6 +6,7 @@ builds).
 """
 
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -129,6 +130,9 @@ def test_yaml_anchors_and_aliases_are_rejected(registry):
         load_matcher(path)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="creating a symlink on Windows needs a privilege CI runners lack"
+)
 def test_a_symlink_cannot_lead_outside_the_registry(registry, tmp_path):
     """Containment is checked on the real path, not the index path's text."""
     secret = tmp_path / "secret.yaml"
