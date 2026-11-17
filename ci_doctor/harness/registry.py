@@ -29,11 +29,24 @@ TARGETS: dict[str, Target] = {
 }
 
 
+#: Taken when no agent is found on this machine: the most common one.
+FALLBACK = "claude"
+
+
+def found() -> list[Target]:
+    """The agents found on this machine, or Claude Code when none is (as CodeGraph's installer does).
+
+    Returns:
+        The targets, in registry order; never empty.
+    """
+    return [t for t in TARGETS.values() if t.detected()] or [TARGETS[FALLBACK]]
+
+
 def select(spec: str) -> list[Target]:
     """The targets a `--target` value names.
 
     Args:
-        spec: `auto` (the agents found on this machine), `all`, or comma-separated ids.
+        spec: `auto` (the agents found here, Claude Code if none), `all`, or comma-separated ids.
 
     Returns:
         The targets, in registry order.
@@ -42,7 +55,7 @@ def select(spec: str) -> list[Target]:
         SetupError: On an unknown id.
     """
     if spec == "auto":
-        return [t for t in TARGETS.values() if t.detected()]
+        return found()
     if spec == "all":
         return list(TARGETS.values())
     ids = [part.strip() for part in spec.split(",") if part.strip()]

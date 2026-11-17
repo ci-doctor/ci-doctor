@@ -74,7 +74,7 @@ ci-doctor --config .ci-doctor.yml analyze "$CI_PIPELINE_ID"
 
 const mcpInstall = `ci-doctor mcp [--project DIR]   # the server itself, which agents start
 ci-doctor agent install [--target auto|all|claude,cursor,...] [--location local|global]
-                        [--yes] [--no-permissions] [--dry-run]
+                        [--no-permissions] [--dry-run]
 ci-doctor agent uninstall [--target ...] [--location ...] [--yes]`;
 
 const verbose = `ci-doctor -v analyze failing-job.log
@@ -254,6 +254,11 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         read-only tools. <code>local</code> (the default) writes this project's files;
         <code>global</code> writes yours. Running it again changes nothing, and
         <code>--dry-run</code> shows each file and the config it would add, writing nothing.
+        Run with no flags in a terminal, it asks instead: which agents (detected ones
+        ticked), this project or all of them, and whether to auto-allow the read-only
+        tools in Claude Code, then lists the files and asks before writing them. With
+        flags, or from a script, it writes without asking; <code>--dry-run</code> shows
+        what it would write first.
         <code>agent uninstall</code> removes ci-doctor's entries and any container they
         leave empty; an agent's JSON config file is never deleted. A file it cannot edit
         safely is left alone, and the config is printed to add by hand.

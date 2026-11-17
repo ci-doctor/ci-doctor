@@ -1,0 +1,29 @@
+"""The terminal UI: questions a command asks a person, as plain `rich` prompts.
+
+Generic only: no command's flow lives here. A command builds its questions from these
+pieces in its own private members (`agent install` is the example).
+"""
+
+from ci_doctor.cli._lib.tui.components import (
+    Cancelled,
+    Option,
+    Prompter,
+    RichPrompter,
+    interactive,
+    pick_many,
+    pick_one,
+    toggle,
+    yes_no,
+)
+
+__all__ = [
+    "Cancelled",
+    "Option",
+    "Prompter",
+    "RichPrompter",
+    "interactive",
+    "pick_many",
+    "pick_one",
+    "toggle",
+    "yes_no",
+]

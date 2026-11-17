@@ -4,6 +4,7 @@
 real agent is detected. Nothing here touches the developer's own configs.
 """
 
+import io
 import json
 import sys
 import tomllib
@@ -18,7 +19,7 @@ from ci_doctor.config.files import ConfigFiles
 from ci_doctor.errors import SetupError
 from ci_doctor.harness.entry import READ_ONLY_TOOLS, SERVER
 from ci_doctor.harness.install import install, uninstall
-from ci_doctor.harness.registry import TARGETS, select
+from ci_doctor.harness.registry import TARGETS, found, select
 from ci_doctor.mcp.server import build
 
 CASES = [(t.id, loc) for t in TARGETS.values() for loc in sorted(t.locations)]
@@ -202,15 +203,31 @@ def test_a_global_only_agent_is_skipped_for_local(home):
     assert uninstall([TARGETS["codex"]], "local")[0].skipped
 
 
-def test_auto_picks_the_agents_found_on_this_machine(home):
-    """Detection looks for each agent's folder (and its command, here hidden by the empty PATH)."""
-    assert select("auto") == []
+def test_found_is_the_agents_on_this_machine_or_claude_code(home):
+    """Detection looks for each agent's folder (its command is hidden by the empty PATH); none means Claude Code."""
+    assert [t.id for t in found()] == ["claude"]
     (home / ".cursor").mkdir()
     (home / ".codex").mkdir()
-    assert [t.id for t in select("auto")] == ["cursor", "codex"]
+    assert [t.id for t in found()] == ["cursor", "codex"]
+
+
+def test_target_takes_auto_all_or_ids(home):
+    """As CodeGraph: `auto` is what is found here (Claude Code if nothing), `all` every agent, else ids."""
+    assert [t.id for t in select("auto")] == ["claude"]
+    (home / ".cursor").mkdir()
+    assert [t.id for t in select("auto")] == ["cursor"]
+    assert len(select("all")) == len(TARGETS)
     assert [t.id for t in select("codex, claude")] == ["claude", "codex"]
-    with pytest.raises(SetupError, match="unknown agent 'vscode'"):
+    with pytest.raises(SetupError, match="unknown agent 'vscode'; choose from: claude, .*, auto, all$"):
         select("vscode")
+
+
+def test_from_a_script_with_no_target_install_writes_claude_code_when_nothing_is_found(
+    home, monkeypatch, capsys
+):
+    """No terminal and no --target: the agents found here, Claude Code when none is."""
+    code, _, _ = _run(monkeypatch, capsys, "install")
+    assert code == 0 and (home.parent / "project" / ".mcp.json").exists()
 
 
 # --- the commands -------------------------------------------------------------
@@ -226,8 +243,8 @@ def _run(monkeypatch, capsys, *argv):
 
 
 def test_install_writes_the_project_config_and_says_what_it_did(home, monkeypatch, capsys):
-    """`agent install --target claude --yes` writes `.mcp.json` here and lists every file."""
-    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude", "--yes")
+    """`agent install --target claude` writes `.mcp.json` here and lists every file."""
+    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude")
     assert code == 0
     assert json.loads((home.parent / "project" / ".mcp.json").read_text())["mcpServers"][SERVER]["args"] == [
         "mcp"
@@ -262,17 +279,17 @@ def test_an_unknown_target_is_a_usage_error(home, monkeypatch, capsys):
     assert code == 1 and "claude" in err and "internal error" not in err
 
 
-def test_without_a_terminal_install_asks_for_yes(home, monkeypatch, capsys):
-    """Nothing is written without a yes: from a script, that means `--yes`."""
-    code, _, err = _run(monkeypatch, capsys, "install", "--target", "claude")
-    assert code == 1 and "pass --yes" in err
-    assert not (home.parent / "project" / ".mcp.json").exists()
+def test_from_a_script_install_writes_what_its_flags_name(home, monkeypatch, capsys):
+    """No terminal to ask in: the flags are the decision, so the files are listed and written."""
+    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude")
+    assert code == 0 and "This will add ci-doctor to" in out
+    assert (home.parent / "project" / ".mcp.json").exists()
 
 
 def test_a_skipped_file_prints_the_snippet_and_exits_1(home, monkeypatch, capsys):
     """The rest is done; the file left alone gets the config to add by hand, and the exit says so."""
     (home.parent / "project" / ".mcp.json").write_text("{not json")
-    code, out, err = _run(monkeypatch, capsys, "install", "--target", "claude", "--yes")
+    code, out, err = _run(monkeypatch, capsys, "install", "--target", "claude")
     assert code == 1 and "left as they were" in err
     assert "Add this by hand" in out and '"ci-doctor"' in out
     assert (home.parent / "project" / ".claude" / "CLAUDE.md").exists()  # the rest was still done
@@ -336,7 +353,7 @@ def test_uninstall_lists_only_the_agents_that_have_ci_doctor(home, monkeypatch, 
     code, out, _ = _run(monkeypatch, capsys, "uninstall", "--yes")
     assert code == 0 and "nothing to remove" in out
 
-    _run(monkeypatch, capsys, "install", "--target", "gemini", "--yes")
+    _run(monkeypatch, capsys, "install", "--target", "gemini")
     code, out, _ = _run(monkeypatch, capsys, "uninstall", "--yes")
     assert code == 0 and "Gemini CLI" in out and "Claude Code" not in out and "Cursor" not in out
 
@@ -404,7 +421,7 @@ def test_uninstall_keeps_the_users_own_entries_in_a_container(home):
 
 def test_install_warns_when_agents_cannot_find_ci_doctor(home, monkeypatch, capsys):
     """Agents start the server by name; if `ci-doctor` is not on PATH, say so and how to fix it."""
-    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude", "--yes")
+    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude")
     assert code == 0 and "`ci-doctor` is not on your PATH" in out and "uv tool install ci-doctorr" in out
 
     bin_dir = home / "bin"
@@ -412,7 +429,7 @@ def test_install_warns_when_agents_cannot_find_ci_doctor(home, monkeypatch, caps
     (bin_dir / "ci-doctor").write_text("#!/bin/sh\n")
     (bin_dir / "ci-doctor").chmod(0o755)
     monkeypatch.setenv("PATH", str(bin_dir))
-    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude", "--yes")
+    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude")
     assert code == 0 and "not on your PATH" not in out
 
 
@@ -431,7 +448,7 @@ def test_antigravity_uninstall_finds_an_entry_left_in_its_old_config(home, monke
 
 def test_pi_install_names_the_extension_it_needs(home, monkeypatch, capsys):
     """Pi has no MCP of its own: the server goes in its `mcp.json`, and install says to add the adapter."""
-    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "pi", "--location", "global", "--yes")
+    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "pi", "--location", "global")
     config = json.loads((home / ".pi" / "agent" / "mcp.json").read_text())
     assert code == 0 and config["mcpServers"][SERVER] == {"command": "ci-doctor", "args": ["mcp"]}
     assert "analyze_run" in (home / ".pi" / "agent" / "AGENTS.md").read_text()
@@ -443,3 +460,60 @@ def test_pi_follows_its_agent_dir(home, monkeypatch):
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(home / "elsewhere"))
     TARGETS["pi"].install("global", permissions=True)
     assert (home / "elsewhere" / "mcp.json").exists() and not (home / ".pi").exists()
+
+
+def _answer(monkeypatch, capsys, typed, *flags):
+    """Run `ci-doctor agent install` as if in a terminal, typing `typed`; returns (code, stdout)."""
+    monkeypatch.setattr("ci_doctor.cli.agent.install.interactive", lambda: True)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(typed))
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--no-color", "agent", "install", *flags])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    return exc.value.code, capsys.readouterr().out
+
+
+def test_with_no_flags_it_asks_and_enter_takes_every_default(home, monkeypatch, capsys):
+    """Nothing found here, so Claude Code is ticked; Enter four times installs it in this project."""
+    code, out = _answer(monkeypatch, capsys, "\n\n\n\n")
+    project = home.parent / "project"
+    assert code == 0 and "[x] Claude Code" in out and "not found" in out
+    assert SERVER in json.loads((project / ".mcp.json").read_text())["mcpServers"]
+    allow = json.loads((project / ".claude" / "settings.json").read_text())["permissions"]["allow"]
+    assert allow == [f"mcp__{SERVER}__{tool}" for tool in READ_ONLY_TOOLS]
+
+
+def test_the_answers_choose_the_agents_and_the_location(home, monkeypatch, capsys):
+    """Untick Claude, tick Cursor, pick "All my projects": no allow-list question, Cursor's own file."""
+    code, out = _answer(monkeypatch, capsys, "1 2\n\n2\n\n")
+    assert code == 0 and "Auto-allow" not in out
+    assert SERVER in json.loads((home / ".cursor" / "mcp.json").read_text())["mcpServers"]
+    assert not (home.parent / "project" / ".mcp.json").exists()
+
+
+def test_a_global_only_pick_is_not_asked_where(home, monkeypatch, capsys):
+    """Codex has no project config, so the location question is skipped with a note."""
+    code, out = _answer(monkeypatch, capsys, "1 3\n\n\n")
+    assert code == 0 and "Where?" not in out and "no project config" in out
+    assert "[mcp_servers.ci-doctor]" in (home / ".codex" / "config.toml").read_text()
+
+
+@pytest.mark.parametrize(
+    ("typed", "message"),
+    [
+        ("\n\n\nn\n", "Nothing written."),
+        ("none\n\n", "No agent selected; nothing written."),
+        ("\n", "Cancelled; nothing written."),
+    ],
+)
+def test_saying_no_picking_nothing_or_cancelling_writes_nothing(home, monkeypatch, capsys, typed, message):
+    """No at the end, an empty pick, or end of input: exit 0 and no file anywhere."""
+    code, out = _answer(monkeypatch, capsys, typed)
+    assert code == 0 and message in out
+    assert not [p for p in home.parent.rglob("*") if p.is_file()]
+
+
+def test_any_flag_skips_the_questions(home, monkeypatch, capsys):
+    """A flag means a script or a decision already made: nothing is read from the terminal."""
+    code, out = _answer(monkeypatch, capsys, "", "--target", "cursor")
+    assert code == 0 and "Which agents" not in out
+    assert (home.parent / "project" / ".cursor" / "mcp.json").exists()

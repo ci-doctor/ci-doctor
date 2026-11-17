@@ -128,7 +128,8 @@ and the agent explains the failure, so no `llm:` block is needed. Connect your a
 from the repository's root:
 
 ```sh
-ci-doctor agent install                    # the agents found on this machine, in this project
+ci-doctor agent install                    # asks which agents and where (from a script: the ones found here)
+ci-doctor agent install --target auto      # the agents found here, no questions
 ci-doctor agent install --location global  # in your own config, for every project
 ci-doctor agent install --dry-run          # show the files and config, write nothing
 ci-doctor agent uninstall                  # remove ci-doctor's entries again

@@ -23,7 +23,9 @@ class UninstallCommand(Command):
     @override
     def run(
         self,
-        target: str = typer.Option("all", "--target", "-t", help=f"all, auto, or ids: {','.join(TARGETS)}."),
+        target: str = typer.Option(
+            "all", "--target", "-t", help=f"all (the default), or ids: {','.join(TARGETS)}."
+        ),
         location: Location = typer.Option(
             Location.LOCAL, "--location", "-l", help="local: this project's files. global: your own."
         ),
