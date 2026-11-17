@@ -11,7 +11,7 @@ from typing_extensions import override
 
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
-from ci_doctor.cli._lib.outputs.data import JSON_OPTION, emit
+from ci_doctor.cli._lib.outputs.json_output import JSON_OPTION, emit
 from ci_doctor.cli._lib.outputs.table import Cell, Row, table
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
