@@ -1,7 +1,9 @@
 """CLI surface: the exit-0 invariant, log levels, replay, and `config`."""
 
 import json
+import logging
 import sys
+from pathlib import Path
 
 import pytest
 from rich.color import ColorSystem
@@ -116,14 +118,24 @@ def test_a_setup_error_is_the_one_exit_one(monkeypatch, capsys):
     assert "index.yaml is out of date" in capsys.readouterr().err
 
 
-def test_verbose_enables_debug_logging():
-    """`--verbose` turns on DEBUG; without it the level returns to INFO."""
-    import logging
-
-    terminal.configure_logging(True)
-    assert logging.getLogger("ci_doctor").level == logging.DEBUG
-    terminal.configure_logging(False)  # default INFO when not verbose and no env override
-    assert logging.getLogger("ci_doctor").level == logging.INFO
+@pytest.mark.parametrize(
+    ("flag", "env", "expected"),
+    [
+        (None, None, logging.INFO),
+        ("warning", None, logging.WARNING),
+        (None, "debug", logging.DEBUG),
+        ("error", "debug", logging.ERROR),
+        (None, "nonsense", logging.INFO),
+    ],
+)
+def test_the_log_level_comes_from_the_flag_then_the_env_then_info(monkeypatch, flag, env, expected):
+    """`--log-level` wins over `CI_DOCTOR_LOG_LEVEL`; an unknown env value falls back to info."""
+    if env is None:
+        monkeypatch.delenv("CI_DOCTOR_LOG_LEVEL", raising=False)
+    else:
+        monkeypatch.setenv("CI_DOCTOR_LOG_LEVEL", env)
+    terminal.configure_logging(flag)
+    assert logging.getLogger("ci_doctor").level == expected
 
 
 @pytest.mark.parametrize("provider", support.PROVIDERS)
@@ -141,6 +153,30 @@ def test_from_file_replay_smoke(provider, monkeypatch, capsys, registry_config):
     assert "script" in out
     assert (tmp_path / "report.md").exists()
     assert (tmp_path / "report.json").exists()
+
+
+STAGES = (
+    "config: ci ",
+    "matchers: 2 loaded from fx",
+    "analyzing 1 job(s)",
+    "blamed the",
+    "evidence kept",
+    "deterministic report",
+)
+
+
+@pytest.mark.parametrize(("level", "shown"), [((), True), (("--log-level", "warning"), False)])
+def test_info_shows_each_stage_of_a_run_and_never_the_log(monkeypatch, capsys, registry_config, level, shown):
+    """One line per stage at the default level, none at `warning`; never a line of the log itself."""
+    monkeypatch.delenv("CI_DOCTOR_LOG_LEVEL", raising=False)
+    log = _job_log(registry_config, support.PROVIDERS[0])
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--no-color", *level, "analyze", log])
+    with pytest.raises(SystemExit):
+        cli.main()
+    err = capsys.readouterr().err
+    assert [stage in err for stage in STAGES] == [shown] * len(STAGES)
+    content = [line.strip() for line in Path(log).read_text().splitlines() if len(line.strip()) > 12]
+    assert content and not [line for line in content if line in err]
 
 
 @pytest.mark.parametrize("provider", support.PROVIDERS)
@@ -283,12 +319,12 @@ def test_a_setup_error_is_logged_at_error_level_without_colour_under_plain(monke
     # A colour terminal, were it not for --plain: rich picks its colour system at construction.
     monkeypatch.setattr(terminal.LOG_CONSOLE, "_force_terminal", True)
     monkeypatch.setattr(terminal.LOG_CONSOLE, "_color_system", ColorSystem.STANDARD)
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--plain", "-v", "analyze", "123"])
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--plain", "analyze", "123"])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     err = capsys.readouterr().err
     assert exc.value.code == 1
-    assert err.lstrip().startswith("DEBUG")  # -v is global
+    assert err.lstrip().startswith("INFO     config:")
     assert "ERROR    no matchers or bundles selected" in err
     assert "\x1b[" not in err
 

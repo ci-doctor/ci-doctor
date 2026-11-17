@@ -87,8 +87,9 @@ def diagnose_job(job: Job, cfg: Config, plan: Plan, segmenter: LogSegmenter | No
     log.debug(f"job {job.name}: {len(job.sections)} top-level sections")
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
-    log.debug(
-        f"job {job.name}: attribution phase={attr.phase} reason={attr.reason} rule={attr.rule_id} confidence={attr.confidence}",
+    log.info(
+        f"job {job.name}: blamed the {attr.phase} phase"
+        f" (reason {attr.reason}, rule {attr.rule_id}, confidence {attr.confidence})"
     )
     bundle = build_bundle(job, attr, job.sections, cfg, plan)
     return Diagnosis(job, attr, bundle, build_brief(job, attr, bundle, cfg))
@@ -179,10 +180,8 @@ def _fetch(run_id: str, cfg: Config, job_id: str | None) -> tuple[Run, CIProvide
     jobs = select_failed_jobs(run.jobs, cfg.analysis.include_allowed_failures)
     if job_id is not None:
         jobs = [j for j in jobs if j.id == job_id]
-    log.debug(f"run {run_id}: {len(run.jobs)} jobs, {len(jobs)} failed and selected")
-
     selected = _ordered(jobs)[: cfg.analysis.max_jobs_analyzed]
-    log.info(f"analyzing {len(selected)} failed job(s) from run {run_id}")
+    log.info(f"run {run_id}: {len(run.jobs)} jobs, {len(jobs)} failed; analyzing {len(selected)}")
     # ponytail: one log at a time, to stay well under rate limits. The client is
     # thread-safe, so these fetches can run in parallel if this gets slow.
     for job in selected:

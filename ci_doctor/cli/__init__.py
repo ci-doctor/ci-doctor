@@ -67,7 +67,12 @@ def _root(
     no_color: bool = typer.Option(
         False, "--no-color", help="Disable coloured output (also honours NO_COLOR)."
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging, for every command."),
+    log_level: terminal.LogLevel | None = typer.Option(
+        None,
+        "--log-level",
+        help="How much to log on stderr: debug, info (the default), warning or error. Env: CI_DOCTOR_LOG_LEVEL.",
+        case_sensitive=False,
+    ),
     version: bool = typer.Option(
         False, "--version", callback=_version_callback, is_eager=True, help="Show version and exit."
     ),
@@ -77,7 +82,7 @@ def _root(
     ctx.meta[context.WRITE_TO] = write_to
     ctx.meta[terminal.PLAIN] = plain
     ctx.meta[terminal.NO_COLOR] = no_color or plain
-    terminal.configure_logging(verbose, colour=not (no_color or plain))
+    terminal.configure_logging(log_level, colour=not (no_color or plain))
 
 
 def main() -> None:

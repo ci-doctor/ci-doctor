@@ -234,7 +234,7 @@ def test_stdout_carries_only_protocol(project):
         },
     }
     proc = subprocess.run(
-        [sys.executable, "-m", "ci_doctor.cli", "--verbose", "mcp"],
+        [sys.executable, "-m", "ci_doctor.cli", "--log-level", "debug", "mcp"],
         input=json.dumps(request) + "\n",
         capture_output=True,
         text=True,

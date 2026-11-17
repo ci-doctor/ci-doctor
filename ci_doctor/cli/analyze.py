@@ -68,7 +68,7 @@ class AnalyzeCommand(Command):
             SetupError: On a broken setup, detected before analysis starts.
         """
         cfg = load_config(config_files())
-        log.debug(f"ci={cfg.ci} scm={cfg.scm_vendor} target={target} job_id={job_id}")
+        log.info(f"config: ci {cfg.ci}, git host {cfg.scm_vendor or 'none'}")
         if target is None:
             raise SetupError("nothing to do: pass a pipeline id, or the path to a log to replay.")
         replay = Path(target).is_file()

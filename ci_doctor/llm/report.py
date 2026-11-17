@@ -11,6 +11,7 @@ never change the pipeline outcome.
 
 import json
 import logging
+import time
 from collections.abc import Mapping
 from importlib import resources
 from string import Template
@@ -125,11 +126,11 @@ def produce_report(
     if str(attr.reason) in cfg.analysis.skip_llm_for:
         # The reason already settles it (no runner, missing artifact, cancelled):
         # a model has nothing left to explain, so don't pay for the call.
-        log.debug(f"reason {attr.reason} is in analysis.skip_llm_for -> deterministic report")
+        log.info(f"job {job.name}: deterministic report (reason {attr.reason} is in analysis.skip_llm_for)")
         return redact_report(deterministic_report(job, attr, bundle), cfg.redaction, environ)
 
     if not (cfg.llm.enabled and (client is not None or backend_ready(cfg.llm))):
-        log.debug(f"LLM disabled/not ready (backend={cfg.llm.backend}) -> deterministic report")
+        log.info(f"job {job.name}: deterministic report (no LLM configured)")
         return redact_report(deterministic_report(job, attr, bundle), cfg.redaction, environ)
 
     if client is None:
@@ -145,7 +146,9 @@ def produce_report(
         f"job {job.name}: calling LLM backend={cfg.llm.backend} model={cfg.llm.model} (may take a while)"
     )
     log.debug(f"prompt={len(prompt)} chars")
+    start = time.perf_counter()
     report = _call_and_validate(client, prompt)
+    log.info(f"job {job.name}: LLM answered in {time.perf_counter() - start:.1f}s")
     if report is None:
         log.info("no valid LLM report; using deterministic fallback")
         report = deterministic_report(job, attr, bundle, degraded=True)

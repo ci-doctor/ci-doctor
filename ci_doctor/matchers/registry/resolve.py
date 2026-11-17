@@ -151,6 +151,7 @@ def _conditional_body(
     store = cache if transport.cacheable else None
     cached = store.file(location, rel) if store is not None else None
     if cached is not None and time.time() < cached.fresh_until:
+        log.debug(f"registry {alias!r}: {rel} from the cache, still fresh")
         return cached.body
     since = cached.validators if cached is not None else None
     try:
@@ -165,8 +166,10 @@ def _conditional_body(
         return cached.body
     if fetched.body is None and cached is not None and store is not None:
         store.revalidated(location, rel, fetched.validators, fetched.max_age)
+        log.debug(f"registry {alias!r}: {rel} unchanged (304), from the cache")
         return cached.body
     body = fetched.body or b""
+    log.debug(f"registry {alias!r}: {rel} fetched, {len(body)} bytes")
     if store is not None:
         store.put_file(location, rel, body, fetched.validators, fetched.max_age)
     return body
@@ -597,8 +600,9 @@ def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[Spec]:
         # map() keeps include order, and re-raises the first failure in that order.
         with ThreadPoolExecutor(max_workers=cfg.fetch_workers, thread_name_prefix="ci-doctor-fetch") as pool:
             fetched = list(pool.map(lambda key: fetch_matcher(Ref.parse(key), resolved, http), keys))
-    log.debug(
-        f"loaded {len(keys)} matchers from {len(resolved.indexes)} registries in {time.perf_counter() - start:.1f}s"
+    log.info(
+        f"matchers: {len(keys)} loaded from {', '.join(resolved.indexes) or 'no registry'}"
+        f" in {time.perf_counter() - start:.1f}s"
     )
     # `alias/id` keeps the same bare id from two registries apart.
     specs = [m.model_copy(update={"id": key}) for key, m in zip(keys, fetched, strict=True)]

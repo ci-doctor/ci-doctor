@@ -222,8 +222,9 @@ def load_config(
     """
     layers = [_shipped_defaults()]
     try:
-        user = [p for p in [user_config()] if p.is_file()]
-        layers += [_file_layer(path) for path in [*user, *_repo_paths(repo_config)]]
+        files = [*(p for p in [user_config()] if p.is_file()), *_repo_paths(repo_config)]
+        log.debug(f"config files: {', '.join(map(str, files)) or 'none'}")
+        layers += [_file_layer(path) for path in files]
         layers.append(_env_overlay(os.environ if environ is None else environ))
         layers.append(overrides or {})
         merged: dict = {}

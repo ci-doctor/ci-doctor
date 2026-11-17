@@ -69,7 +69,7 @@ export const nav: NavSection[] = [
     label: 'Reference',
     blurb: 'Every command, flag and config key, with its default.',
     pages: [
-      { href: '/reference/cli/', label: 'CLI', blurb: 'analyze, config and matchers (try, verify, schema …): arguments, flags, exit codes, and --verbose output.' },
+      { href: '/reference/cli/', label: 'CLI', blurb: 'analyze, config and matchers (try, verify, schema …): arguments, flags, exit codes, and --log-level output.' },
       { href: '/reference/configuration/', label: 'Configuration', blurb: 'How the five layers combine, the env-var form, LLM backends, and every key.' },
       { href: '/reference/matcher-format/', label: 'Matcher format v1', blurb: 'Every key of a schema 1 matcher file: outputs, variants, match nodes, templates, windows, limits.' },
       { href: '/reference/registry/', label: 'Hosting a registry', blurb: 'The registry layout, fixtures, verify and index, and where to host it.' },

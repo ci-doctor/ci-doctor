@@ -109,6 +109,9 @@ def build_bundle(
     log.debug(
         f"blamed phase {attr.phase}: denoise {len(raw)}->{len(clean)}, extract ->{len(excerpt.lines)}, fit ->{len(evidence.lines)} lines (truncated={evidence.truncated})",
     )
+    log.info(
+        f"job {job.name}: evidence kept {len(evidence.lines)} of {len(raw)} lines, {len(used)} matcher output(s) fired"
+    )
 
     secondary = [f"{phase}: warnings present (non-causal)" for phase in attr.secondary_phases]
     metadata = {
