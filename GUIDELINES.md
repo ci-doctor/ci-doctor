@@ -4,8 +4,7 @@ How the code is built: where things go, what must never break, and the conventio
 every change follows. **Read this before writing code** — for humans and for agents.
 
 For the contribution *process* (setup, running tests, commits, pushing) see
-[CONTRIBUTING.md](CONTRIBUTING.md). For *why* the architecture is shaped this way —
-the failure modes it defends against — see [docs/PLAN.md](docs/PLAN.md).
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

@@ -262,8 +262,7 @@ bundles and registries; the official catalogue is at https://matchers.cidoc.dev.
 
 For contributors: how the code is built — where things go, the invariants, how to write
 tests — is [GUIDELINES.md](https://github.com/ci-doctor/ci-doctor/blob/master/GUIDELINES.md); how to get a change in — setup, commits,
-pre-push checks — is [CONTRIBUTING.md](https://github.com/ci-doctor/ci-doctor/blob/master/CONTRIBUTING.md). The original design spec, kept
-for provenance, is [docs/PLAN.md](https://github.com/ci-doctor/ci-doctor/blob/master/docs/PLAN.md).
+pre-push checks — is [CONTRIBUTING.md](https://github.com/ci-doctor/ci-doctor/blob/master/CONTRIBUTING.md).
 
 ## Development
 

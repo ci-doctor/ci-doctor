@@ -5,8 +5,7 @@ engineering guidelines — where code goes, the invariants that must not break, 
 to write tests, the cookbook and the style rules — live in
 **[GUIDELINES.md](GUIDELINES.md)**, and you should read that before writing code.
 
-Why the architecture is shaped this way is [docs/PLAN.md](docs/PLAN.md); the
-user-facing overview is the [README](README.md).
+The user-facing overview is the [README](README.md).
 
 ---
 

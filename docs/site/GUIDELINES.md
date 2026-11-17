@@ -2,8 +2,7 @@
 
 How the docs site at <https://docs.cidoc.dev> is organised, and the
 rules a change to it has to follow. The code equivalent is
-[GUIDELINES.md](../../GUIDELINES.md); the *why* behind the architecture is
-[PLAN.md](../PLAN.md).
+[GUIDELINES.md](../../GUIDELINES.md).
 
 Build and preview commands are in [README.md](README.md).
 
