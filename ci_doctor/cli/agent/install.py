@@ -6,16 +6,7 @@ from typing_extensions import override
 from ci_doctor import __version__
 from ci_doctor.cli._console.output.changes import plan, preview, show
 from ci_doctor.cli._console.output.message import say
-from ci_doctor.cli._console.tui import (
-    Cancelled,
-    Option,
-    Prompter,
-    RichPrompter,
-    interactive,
-    pick_many,
-    pick_one,
-    yes_no,
-)
+from ci_doctor.cli._console.tui import Cancelled, Option, interactive, pick_many, pick_one, yes_no
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.harness.entry import on_path
 from ci_doctor.harness.install import install
@@ -76,18 +67,16 @@ class InstallCommand(Command):
 
     def _ask(self) -> None:
         """No flags in a terminal: ask which agents, where, and whether to auto-allow; then install."""
-        prompter = RichPrompter()
         try:
-            prompter.show(f"ci-doctor {__version__} · connect coding agents", "bold")
-            agents = self._agents(prompter)
+            say(f"ci-doctor {__version__} · connect coding agents", "bold")
+            agents = self._agents()
             if not agents:
                 say("No agent selected; nothing written.")
                 return
-            location = self._location(prompter, agents)
-            permissions = self._permissions(prompter, agents)
-            prompter.show("")
+            location = self._location(agents)
+            permissions = self._permissions(agents)
             plan(agents, location, "add ci-doctor to")
-            if not yes_no(prompter, "Go ahead?"):
+            if not yes_no("Go ahead?"):
                 say("Nothing written.")
                 return
         except Cancelled:
@@ -95,13 +84,13 @@ class InstallCommand(Command):
             return
         self._install(agents, location, permissions=permissions)
 
-    def _agents(self, prompter: Prompter) -> list[Target]:
+    def _agents(self) -> list[Target]:
         """Every agent, the ones found here ticked (Claude Code when none is)."""
         targets = list(TARGETS.values())
         here = found()
         ticked = [i for i, t in enumerate(targets) if t in here]
         options = [Option(t, t.name, self._hint(t, t.detected())) for t in targets]
-        return pick_many(prompter, "Which agents should ci-doctor configure?", options, ticked)
+        return pick_many("Which agents should ci-doctor configure?", options, ticked)
 
     @staticmethod
     def _hint(target: Target, detected: bool) -> str:
@@ -114,23 +103,23 @@ class InstallCommand(Command):
         return " · ".join(parts)
 
     @staticmethod
-    def _location(prompter: Prompter, agents: list[Target]) -> Location:
+    def _location(agents: list[Target]) -> Location:
         """This project (the default) or every project; not asked when no agent has a project config."""
         if all(Location.LOCAL not in a.locations for a in agents):
-            prompter.show("Writing your own config: these agents have no project config.", "dim")
+            say("Writing your own config: these agents have no project config.", "dim")
             return Location.GLOBAL
         options = [
             Option(Location.LOCAL, "Just this project", "./.mcp.json, ./AGENTS.md, ..."),
             Option(Location.GLOBAL, "All my projects", "~/.claude.json, ~/.codex, ..."),
         ]
-        return pick_one(prompter, "Where?", options)
+        return pick_one("Where?", options)
 
     @staticmethod
-    def _permissions(prompter: Prompter, agents: list[Target]) -> bool:
+    def _permissions(agents: list[Target]) -> bool:
         """Asked only when Claude Code is picked: it is the one agent with an allow list."""
         if not any(a.id == "claude" for a in agents):
             return True
-        return yes_no(prompter, "Auto-allow ci-doctor's read-only tools in Claude Code?")
+        return yes_no("Auto-allow ci-doctor's read-only tools in Claude Code?")
 
     @staticmethod
     def _install(agents: list[Target], location: Location, *, permissions: bool) -> None:

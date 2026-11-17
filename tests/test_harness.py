@@ -4,7 +4,6 @@
 real agent is detected. Nothing here touches the developer's own configs.
 """
 
-import io
 import json
 import sys
 import tomllib
@@ -462,72 +461,79 @@ def test_pi_follows_its_agent_dir(home, monkeypatch):
     assert (home / "elsewhere" / "mcp.json").exists() and not (home / ".pi").exists()
 
 
-def _answer(monkeypatch, capsys, typed, *flags):
-    """Run `ci-doctor agent install` as if in a terminal, typing `typed`; returns (code, stdout)."""
-    monkeypatch.setattr("ci_doctor.cli.agent.install.interactive", lambda: True)
-    monkeypatch.setattr(sys, "stdin", io.StringIO(typed))
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--no-color", "agent", "install", *flags])
+DOWN, SPACE, ENTER = "\x1b[B", " ", "\r"
+
+
+def _answer(monkeypatch, capsys, keys, typed, *argv):
+    """Run `ci-doctor agent <argv>` (`install` by default) in a terminal, typing `typed` then ending input.
+
+    Returns:
+        The exit code and stdout.
+    """
+    argv = argv or ("install",)
+    monkeypatch.setattr(f"ci_doctor.cli.agent.{argv[0]}.interactive", lambda: True)
+    keys.send_text(typed)
+    keys.close()
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--no-color", "agent", *argv])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     return exc.value.code, capsys.readouterr().out
 
 
-def test_with_no_flags_it_asks_and_enter_takes_every_default(home, monkeypatch, capsys):
+def test_with_no_flags_it_asks_and_enter_takes_every_default(home, monkeypatch, capsys, keys):
     """Nothing found here, so Claude Code is ticked; Enter four times installs it in this project."""
-    code, out = _answer(monkeypatch, capsys, "\n\n\n\n")
+    code, _ = _answer(monkeypatch, capsys, keys, ENTER * 4)
     project = home.parent / "project"
-    assert code == 0 and "[x] Claude Code" in out and "not found" in out
+    assert code == 0
     assert SERVER in json.loads((project / ".mcp.json").read_text())["mcpServers"]
     allow = json.loads((project / ".claude" / "settings.json").read_text())["permissions"]["allow"]
     assert allow == [f"mcp__{SERVER}__{tool}" for tool in READ_ONLY_TOOLS]
 
 
-def test_the_answers_choose_the_agents_and_the_location(home, monkeypatch, capsys):
+def test_the_answers_choose_the_agents_and_the_location(home, monkeypatch, capsys, keys):
     """Untick Claude, tick Cursor, pick "All my projects": no allow-list question, Cursor's own file."""
-    code, out = _answer(monkeypatch, capsys, "1 2\n\n2\n\n")
-    assert code == 0 and "Auto-allow" not in out
+    code, _ = _answer(monkeypatch, capsys, keys, SPACE + DOWN + SPACE + ENTER + DOWN + ENTER + ENTER)
+    assert code == 0
     assert SERVER in json.loads((home / ".cursor" / "mcp.json").read_text())["mcpServers"]
     assert not (home.parent / "project" / ".mcp.json").exists()
 
 
-def test_a_global_only_pick_is_not_asked_where(home, monkeypatch, capsys):
+def test_a_global_only_pick_is_not_asked_where(home, monkeypatch, capsys, keys):
     """Codex has no project config, so the location question is skipped with a note."""
-    code, out = _answer(monkeypatch, capsys, "1 3\n\n\n")
-    assert code == 0 and "Where?" not in out and "no project config" in out
+    code, out = _answer(monkeypatch, capsys, keys, SPACE + DOWN + DOWN + SPACE + ENTER + ENTER)
+    assert code == 0 and "no project config" in out
     assert "[mcp_servers.ci-doctor]" in (home / ".codex" / "config.toml").read_text()
 
 
 @pytest.mark.parametrize(
     ("typed", "message"),
     [
-        ("\n\n\nn\n", "Nothing written."),
-        ("none\n\n", "No agent selected; nothing written."),
-        ("\n", "Cancelled; nothing written."),
+        (ENTER * 3 + "n", "Nothing written."),
+        (SPACE + ENTER, "No agent selected; nothing written."),
+        (ENTER, "Cancelled; nothing written."),
     ],
 )
-def test_saying_no_picking_nothing_or_cancelling_writes_nothing(home, monkeypatch, capsys, typed, message):
+def test_saying_no_picking_nothing_or_cancelling_writes_nothing(
+    home, monkeypatch, capsys, keys, typed, message
+):
     """No at the end, an empty pick, or end of input: exit 0 and no file anywhere."""
-    code, out = _answer(monkeypatch, capsys, typed)
+    code, out = _answer(monkeypatch, capsys, keys, typed)
     assert code == 0 and message in out
     assert not [p for p in home.parent.rglob("*") if p.is_file()]
 
 
-def test_any_flag_skips_the_questions(home, monkeypatch, capsys):
+def test_any_flag_skips_the_questions(home, monkeypatch, capsys, keys):
     """A flag means a script or a decision already made: nothing is read from the terminal."""
-    code, out = _answer(monkeypatch, capsys, "", "--target", "cursor")
-    assert code == 0 and "Which agents" not in out
+    code, _ = _answer(monkeypatch, capsys, keys, "", "install", "--target", "cursor")
+    assert code == 0
     assert (home.parent / "project" / ".cursor" / "mcp.json").exists()
 
 
-@pytest.mark.parametrize(("typed", "kept"), [("n\n", True), ("\n", False)])
-def test_uninstall_with_no_flags_asks_before_removing(home, monkeypatch, capsys, typed, kept):
+@pytest.mark.parametrize(("typed", "kept"), [("n", True), (ENTER, False)])
+def test_uninstall_with_no_flags_asks_before_removing(home, monkeypatch, capsys, keys, typed, kept):
     """In a terminal, "n" leaves the files alone and Enter removes ci-doctor."""
     TARGETS["claude"].install("local", permissions=True)
-    monkeypatch.setattr("ci_doctor.cli.agent.uninstall.interactive", lambda: True)
-    monkeypatch.setattr(sys, "stdin", io.StringIO(typed))
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--no-color", "agent", "uninstall"])
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
+    code, out = _answer(monkeypatch, capsys, keys, typed, "uninstall")
     config = home.parent / "project" / ".mcp.json"
-    assert exc.value.code == 0 and "Go ahead?" in capsys.readouterr().out
+    assert code == 0 and "This will remove ci-doctor from" in out
     assert (SERVER in json.loads(config.read_text()).get("mcpServers", {})) is kept

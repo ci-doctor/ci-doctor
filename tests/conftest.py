@@ -6,10 +6,12 @@ that would surface only in the one environment where it can't be debugged).
 """
 
 import socket
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Never
 
 import pytest
+from prompt_toolkit.input import PipeInput
 
 from tests import support
 
@@ -87,3 +89,20 @@ def _test_signing_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "ci_doctor.registry.signing.OFFICIAL_KEYS", {support.TEST_KEY_ID: support.TEST_PUBLIC_KEY}
     )
+
+
+@pytest.fixture
+def keys() -> Iterator[PipeInput]:
+    """The terminal the prompts read: `keys.send_text(DOWN + SPACE + ENTER)` types those keys.
+
+    `keys.close()` is end of input: a question still waiting raises `Cancelled`.
+
+    Yields:
+        The pipe the prompts read keystrokes from.
+    """
+    from prompt_toolkit.application import create_app_session
+    from prompt_toolkit.input import create_pipe_input
+    from prompt_toolkit.output import DummyOutput
+
+    with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOutput()):
+        yield pipe

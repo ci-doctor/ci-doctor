@@ -106,12 +106,13 @@ cli/
   table row is a frozen dataclass subclassing `Row`, its fields the columns.
 - **Config edits** go to the user config unless `--write-to` names another file.
 - **Asking the user** goes through `_console/tui/` (`from ci_doctor.cli._console.tui import ...`):
-  `pick_many`, `pick_one` and `yes_no` over a `Prompter`, plain `rich` prompts with no new
-  dependency. A command asks only when
+  `pick_many`, `pick_one` and `yes_no`, inline `questionary` prompts (arrows, space, Enter)
+  that never take over the screen. questionary is imported on first use. A command asks only when
   `interactive()` (a terminal on both ends, not `--plain`) and it was given no flags; any
   flag means a script or a decision already made. Ctrl-C or end of input raises
-  `Cancelled`, which an editing command turns into "nothing written", exit 0. Tests script
-  the answers with a fake `Prompter`, or type them into the real one through stdin.
+  `Cancelled`, which an editing command turns into "nothing written", exit 0. Tests type
+  real keystrokes through the `keys` fixture (`tests/conftest.py`); `keys.close()` is end
+  of input.
   `tui/` holds no command's flow: a command's questions are its own private members
   (see `agent install`), like its other helpers.
 
