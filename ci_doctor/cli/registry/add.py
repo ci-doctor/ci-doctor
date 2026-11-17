@@ -6,9 +6,9 @@ from typing import Annotated
 import typer
 from typing_extensions import override
 
+from ci_doctor.cli._console.output.message import done
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import edit, editable
-from ci_doctor.cli._lib.outputs.message import done
 from ci_doctor.config.loader import anchor_registry
 from ci_doctor.errors import SetupError
 from ci_doctor.registry.resolve import fetch_index, redact, registry_dir, session

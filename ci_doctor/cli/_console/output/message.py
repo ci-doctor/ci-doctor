@@ -3,7 +3,7 @@
 import typer
 from rich.text import Text
 
-from ci_doctor.cli._lib.terminal import console, plain
+from ci_doctor.cli._console.terminal import console, plain
 
 
 def say(text: str, style: str = "") -> None:

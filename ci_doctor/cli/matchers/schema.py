@@ -5,9 +5,9 @@ from pathlib import Path
 import typer
 from typing_extensions import override
 
+from ci_doctor.cli._console.output.message import done
+from ci_doctor.cli._console.output.pager import page
 from ci_doctor.cli._lib.command import Command
-from ci_doctor.cli._lib.outputs.message import done
-from ci_doctor.cli._lib.outputs.pager import page
 from ci_doctor.engine import SCHEMAS
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.schema import matcher_schema, write_schemas

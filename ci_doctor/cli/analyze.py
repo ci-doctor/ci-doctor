@@ -9,9 +9,9 @@ from pathlib import Path
 import typer
 from typing_extensions import override
 
+from ci_doctor.cli._console.terminal import no_color
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import config_files
-from ci_doctor.cli._lib.terminal import no_color
 from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import Run
 from ci_doctor.errors import SetupError

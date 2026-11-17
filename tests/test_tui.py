@@ -4,7 +4,7 @@ import io
 
 import pytest
 
-from ci_doctor.cli._lib.tui import Cancelled, Option, components, pick_many, pick_one, toggle, yes_no
+from ci_doctor.cli._console.tui import Cancelled, Option, components, pick_many, pick_one, toggle, yes_no
 
 OPTIONS = [Option("a", "Alpha"), Option("b", "Beta", "detected"), Option("c", "Gamma")]
 

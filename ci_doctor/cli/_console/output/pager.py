@@ -10,7 +10,7 @@ import typer
 from rich.pager import Pager
 from rich.syntax import Syntax
 
-from ci_doctor.cli._lib.terminal import console, no_color, plain
+from ci_doctor.cli._console.terminal import console, no_color, plain
 
 
 def page(text: str, lexer: str, *, force: bool = False) -> None:

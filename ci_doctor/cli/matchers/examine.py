@@ -5,9 +5,9 @@ from pathlib import Path
 import typer
 from typing_extensions import override
 
+from ci_doctor.cli._console.output.message import say
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
-from ci_doctor.cli._lib.outputs.message import say
 from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.examine import examine

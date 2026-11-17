@@ -67,7 +67,7 @@ def test_each_config_key_has_its_own_schema_module():
 
 
 def test_each_command_module_holds_one_command():
-    """`cli/<group…>/<name>.py` is one `Command` subclass named `name`; shared code lives in `_lib/`."""
+    """`cli/<group…>/<name>.py` is one `Command` subclass named `name`; shared code lives in `_lib/` and `_console/`."""
     import importlib
     import inspect
 
@@ -76,7 +76,7 @@ def test_each_command_module_holds_one_command():
     cli = PACKAGE / "cli"
     found = {}
     for path in cli.rglob("*.py"):
-        if "_lib" in path.parts or path.name.startswith("__"):
+        if any(part.startswith("_") for part in path.relative_to(cli).parts):
             continue
         module = importlib.import_module(
             "ci_doctor." + ".".join(path.relative_to(PACKAGE).with_suffix("").parts)

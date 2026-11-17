@@ -9,7 +9,8 @@ from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
 
 from ci_doctor import __version__
-from ci_doctor.cli._lib import context, terminal
+from ci_doctor.cli._console import terminal
+from ci_doctor.cli._lib import context
 from ci_doctor.cli._lib.command import Command, register
 from ci_doctor.cli.agent import app as agent_app
 from ci_doctor.cli.analyze import AnalyzeCommand

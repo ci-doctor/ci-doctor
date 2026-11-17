@@ -83,9 +83,10 @@ examples/           .gitlab-ci.yml + GitHub Actions workflows
 cli/
   __init__.py       the root app, global options, main()
   _lib/             what commands share: command.py (the base), context.py (config read
-                    and written), terminal.py (--plain, --no-color), outputs/ (message,
-                    table, pager, json_output, changes), tui/ (asking the user;
-                    generic pieces only)
+                    and written)
+  _console/         the terminal: terminal.py (--plain, --no-color), output/ (prints,
+                    never asks: message, table, pager, json_output, changes), tui/
+                    (asks the user; generic pieces only)
   analyze.py …      one module per command (mcp.py is `ci-doctor mcp`)
   matchers/ …       one package per group: matchers/, registry/, cache/, agent/
 ```
@@ -96,15 +97,15 @@ cli/
   COMMANDS)`: explicit, so a typo is an import error, not a missing command.
 - **Examples and `--json`.** A command sets `examples`, shown at the end of its `--help`;
   `test_every_command_has_examples_that_name_it` keeps them in step with its name. A
-  command that lists things takes `--json` (`_lib.outputs.json_output`): the same data as one
+  command that lists things takes `--json` (`_console.output.json_output`): the same data as one
   JSON document, built from the data and not from the table's text.
 - **No logic in `cli/`.** A command parses, calls `service/` (or the owning package) and
   prints. `service/` imports no typer or click; `tests/test_layout.py` pins both.
 - **Global options** (`-f`, `--write-to`, `--plain`, `--no-color`) are read through
-  `_lib.context` and `_lib.terminal`. Print through `_lib.outputs` so `--plain` works; a
+  `_lib.context` and `_console.terminal`. Print through `_console.output` so `--plain` works; a
   table row is a frozen dataclass subclassing `Row`, its fields the columns.
 - **Config edits** go to the user config unless `--write-to` names another file.
-- **Asking the user** goes through `_lib/tui/` (`from ci_doctor.cli._lib.tui import ...`):
+- **Asking the user** goes through `_console/tui/` (`from ci_doctor.cli._console.tui import ...`):
   `pick_many`, `pick_one` and `yes_no` over a `Prompter`, plain `rich` prompts with no new
   dependency. A command asks only when
   `interactive()` (a terminal on both ends, not `--plain`) and it was given no flags; any

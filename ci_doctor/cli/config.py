@@ -3,9 +3,9 @@
 import typer
 from typing_extensions import override
 
+from ci_doctor.cli._console.output.pager import page
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import config_files
-from ci_doctor.cli._lib.outputs.pager import page
 from ci_doctor.config.dump import as_yaml, diff_lines, schema_json
 from ci_doctor.config.loader import default_config, load_config
 from ci_doctor.service.setup import validate as validate_setup

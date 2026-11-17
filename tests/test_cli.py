@@ -7,8 +7,8 @@ import pytest
 from rich.color import ColorSystem
 
 from ci_doctor import cli
-from ci_doctor.cli._lib import terminal
-from ci_doctor.cli._lib.outputs import pager
+from ci_doctor.cli._console import terminal
+from ci_doctor.cli._console.output import pager
 from ci_doctor.cli.analyze import AnalyzeCommand
 from tests import support
 

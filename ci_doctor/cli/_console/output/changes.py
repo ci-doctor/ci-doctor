@@ -1,30 +1,20 @@
 """Showing what `agent install` and `agent uninstall` will do, and what they did."""
 
-import sys
 from pathlib import Path
 
-import typer
-
-from ci_doctor.cli._lib.outputs.message import done, say, skipped
+from ci_doctor.cli._console.output.message import done, say, skipped
 from ci_doctor.errors import SetupError
 from ci_doctor.harness.install import Outcome
 from ci_doctor.harness.targets.base import Location, Target
 
 
-def confirm(agents: list[Target], location: Location, yes: bool, verb: str) -> bool:
-    """List the files about to change and ask, unless `--yes`.
+def plan(agents: list[Target], location: Location, verb: str) -> None:
+    """List the files about to change; the command decides whether to ask first.
 
     Args:
         agents: The agents.
         location: `local` or `global`.
-        yes: Skip the question.
         verb: What will happen, e.g. "add ci-doctor to".
-
-    Returns:
-        Whether to go ahead.
-
-    Raises:
-        SetupError: If asking is impossible (no terminal) and `--yes` was not given.
     """
     say(f"This will {verb} ({location}):", "bold")
     for agent in agents:
@@ -32,11 +22,6 @@ def confirm(agents: list[Target], location: Location, yes: bool, verb: str) -> b
             say(f"  {agent.name}: {', '.join(_short(p) for p in agent.paths(location))}")
         else:
             say(f"  {agent.name}: skipped, no {location} config", "dim")
-    if yes:
-        return True
-    if not sys.stdin.isatty():
-        raise SetupError("not a terminal to ask in; pass --yes")
-    return typer.confirm("Go ahead?", default=True)
 
 
 def preview(agents: list[Target], location: Location) -> None:

@@ -10,7 +10,7 @@ from rich import box
 from rich.table import Table
 from rich.text import Text
 
-from ci_doctor.cli._lib.terminal import console, plain
+from ci_doctor.cli._console.terminal import console, plain
 
 Cell = str | Text
 

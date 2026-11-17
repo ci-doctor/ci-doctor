@@ -4,10 +4,10 @@ from dataclasses import dataclass
 
 from typing_extensions import override
 
+from ci_doctor.cli._console.output.message import say
+from ci_doctor.cli._console.output.table import Row, table
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import config_files
-from ci_doctor.cli._lib.outputs.message import say
-from ci_doctor.cli._lib.outputs.table import Row, table
 from ci_doctor.service.report import build
 
 

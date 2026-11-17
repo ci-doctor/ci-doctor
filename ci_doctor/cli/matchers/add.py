@@ -5,9 +5,9 @@ from typing import Annotated
 import typer
 from typing_extensions import override
 
+from ci_doctor.cli._console.output.message import done, skipped
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import files
-from ci_doctor.cli._lib.outputs.message import done, skipped
 from ci_doctor.service.matchers import add
 
 

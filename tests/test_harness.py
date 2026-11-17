@@ -251,7 +251,7 @@ def test_install_writes_the_project_config_and_says_what_it_did(home, monkeypatc
     ]
     assert "created ./.mcp.json" in out and "Restart your agents" in out
 
-    code, out, _ = _run(monkeypatch, capsys, "uninstall", "--target", "claude", "--yes")
+    code, out, _ = _run(monkeypatch, capsys, "uninstall", "--target", "claude")
     assert code == 0 and "removed ./.mcp.json" in out
 
 
@@ -350,11 +350,11 @@ def test_a_clean_machine_keeps_nothing_of_ci_doctor_after_uninstall(home, agent,
 
 def test_uninstall_lists_only_the_agents_that_have_ci_doctor(home, monkeypatch, capsys):
     """With nothing installed it says so; after one install it names only that agent."""
-    code, out, _ = _run(monkeypatch, capsys, "uninstall", "--yes")
+    code, out, _ = _run(monkeypatch, capsys, "uninstall")
     assert code == 0 and "nothing to remove" in out
 
     _run(monkeypatch, capsys, "install", "--target", "gemini")
-    code, out, _ = _run(monkeypatch, capsys, "uninstall", "--yes")
+    code, out, _ = _run(monkeypatch, capsys, "uninstall")
     assert code == 0 and "Gemini CLI" in out and "Claude Code" not in out and "Cursor" not in out
 
 
@@ -441,7 +441,7 @@ def test_antigravity_uninstall_finds_an_entry_left_in_its_old_config(home, monke
     (home / ".gemini" / "config" / ".migrated").touch()
     assert TARGETS["antigravity"].present("global")
 
-    code, out, _ = _run(monkeypatch, capsys, "uninstall", "--location", "global", "--yes")
+    code, out, _ = _run(monkeypatch, capsys, "uninstall", "--location", "global")
     assert code == 0 and "Antigravity" in out
     assert not TARGETS["antigravity"].present("global")
 
@@ -517,3 +517,17 @@ def test_any_flag_skips_the_questions(home, monkeypatch, capsys):
     code, out = _answer(monkeypatch, capsys, "", "--target", "cursor")
     assert code == 0 and "Which agents" not in out
     assert (home.parent / "project" / ".cursor" / "mcp.json").exists()
+
+
+@pytest.mark.parametrize(("typed", "kept"), [("n\n", True), ("\n", False)])
+def test_uninstall_with_no_flags_asks_before_removing(home, monkeypatch, capsys, typed, kept):
+    """In a terminal, "n" leaves the files alone and Enter removes ci-doctor."""
+    TARGETS["claude"].install("local", permissions=True)
+    monkeypatch.setattr("ci_doctor.cli.agent.uninstall.interactive", lambda: True)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(typed))
+    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--no-color", "agent", "uninstall"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    config = home.parent / "project" / ".mcp.json"
+    assert exc.value.code == 0 and "Go ahead?" in capsys.readouterr().out
+    assert (SERVER in json.loads(config.read_text()).get("mcpServers", {})) is kept

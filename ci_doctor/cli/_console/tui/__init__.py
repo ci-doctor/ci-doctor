@@ -4,7 +4,7 @@ Generic only: no command's flow lives here. A command builds its questions from 
 pieces in its own private members (`agent install` is the example).
 """
 
-from ci_doctor.cli._lib.tui.components import (
+from ci_doctor.cli._console.tui.components import (
     Cancelled,
     Option,
     Prompter,

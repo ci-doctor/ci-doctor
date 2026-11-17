@@ -4,10 +4,9 @@ import typer
 from typing_extensions import override
 
 from ci_doctor import __version__
-from ci_doctor.cli._lib.command import Command
-from ci_doctor.cli._lib.outputs.changes import confirm, preview, show
-from ci_doctor.cli._lib.outputs.message import say
-from ci_doctor.cli._lib.tui import (
+from ci_doctor.cli._console.output.changes import plan, preview, show
+from ci_doctor.cli._console.output.message import say
+from ci_doctor.cli._console.tui import (
     Cancelled,
     Option,
     Prompter,
@@ -17,6 +16,7 @@ from ci_doctor.cli._lib.tui import (
     pick_one,
     yes_no,
 )
+from ci_doctor.cli._lib.command import Command
 from ci_doctor.harness.entry import on_path
 from ci_doctor.harness.install import install
 from ci_doctor.harness.registry import TARGETS, found, select
@@ -71,7 +71,7 @@ class InstallCommand(Command):
             preview(agents, location)
             return
         # Flags, or a script: the decision is made, so list the files and write them.
-        confirm(agents, location, True, "add ci-doctor to")
+        plan(agents, location, "add ci-doctor to")
         self._install(agents, location, permissions=permissions is not False)
 
     def _ask(self) -> None:
@@ -86,7 +86,7 @@ class InstallCommand(Command):
             location = self._location(prompter, agents)
             permissions = self._permissions(prompter, agents)
             prompter.show("")
-            confirm(agents, location, True, "add ci-doctor to")  # lists the files
+            plan(agents, location, "add ci-doctor to")
             if not yes_no(prompter, "Go ahead?"):
                 say("Nothing written.")
                 return

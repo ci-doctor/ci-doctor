@@ -1,1 +1,1 @@
-"""What every command shares: the `Command` base, the config context, the terminal, `outputs/`."""
+"""What every command shares: the `Command` base and the config context."""

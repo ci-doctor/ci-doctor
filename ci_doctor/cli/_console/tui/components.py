@@ -13,7 +13,7 @@ from typing import Generic, Protocol, TypeVar
 from rich.prompt import Prompt
 from rich.text import Text
 
-from ci_doctor.cli._lib.terminal import console, plain
+from ci_doctor.cli._console.terminal import console, plain
 
 T = TypeVar("T")
 

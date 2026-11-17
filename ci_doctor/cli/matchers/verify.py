@@ -5,8 +5,8 @@ from pathlib import Path
 import typer
 from typing_extensions import override
 
+from ci_doctor.cli._console.output.message import done
 from ci_doctor.cli._lib.command import Command
-from ci_doctor.cli._lib.outputs.message import done
 from ci_doctor.matchers.verify import Policy, verify
 
 _DEFAULT = Policy()
