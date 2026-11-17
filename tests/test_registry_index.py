@@ -118,13 +118,3 @@ def test_an_ecosystem_folder_with_an_invalid_name_is_a_problem_not_a_crash(regis
     shutil.move(registry / "matchers/python", registry / "matchers/py-thon")
     with pytest.raises(SetupError, match="matchers/py-thon/: an ecosystem folder name must match"):
         build_index(registry)
-
-
-def test_a_bundle_generated_under_the_old_command_name_still_counts_as_generated(tmp_path):
-    """Registries indexed before `matchers index` became `registry index` keep their generated bundles."""
-    from ci_doctor.matchers.models import LEGACY_GENERATED_PREFIX
-    from ci_doctor.registry.index import _is_generated
-
-    bundle = tmp_path / "python.yaml"
-    bundle.write_text(f"{LEGACY_GENERATED_PREFIX} from matchers/python/. Do not edit.\nid: python\n")
-    assert _is_generated(bundle)

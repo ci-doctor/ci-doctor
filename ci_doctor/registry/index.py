@@ -24,7 +24,6 @@ from ci_doctor.matchers.models import (
     GENERATED,
     GENERATED_PREFIX,
     INDEX,
-    LEGACY_GENERATED_PREFIX,
     MAX_BUNDLE_DEPTH,
     Bundle,
     Index,
@@ -148,7 +147,7 @@ def _nesting_problems(bundles: dict[str, Bundle]) -> list[str]:
 
 def _is_generated(path: Path) -> bool:
     """Whether `registry index` wrote this bundle file."""
-    return path.read_text(encoding="utf-8").startswith((GENERATED_PREFIX, LEGACY_GENERATED_PREFIX))
+    return path.read_text(encoding="utf-8").startswith(GENERATED_PREFIX)
 
 
 def _load_matchers(root: Path, problems: list[str]) -> tuple[dict[str, dict], dict[str, list[str]]]:
