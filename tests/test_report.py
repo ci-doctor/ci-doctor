@@ -16,7 +16,7 @@ from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.engine import MatcherV1, Output, Role, compile_plan
 from ci_doctor.llm import report as report_module
-from ci_doctor.llm.report import produce_report
+from ci_doctor.llm.report import _capped, produce_report
 from ci_doctor.service.brief import FiredMatcher, build_brief
 from tests import support
 
@@ -282,9 +282,10 @@ def test_the_prompt_names_each_pack_behind_the_excerpt_with_its_role(provider, f
 
 
 def test_a_pack_whose_lines_fit_cut_is_not_named():
-    """`fit` trims the head of an oversized window; a pack it emptied is not context."""
-    lines = [f"src/a{i}.ts:1:1 - error TS2345: bad argument" for i in range(5)]
-    lines += [f"npm ERR! code ELIFECYCLE {i}" for i in range(400)]
+    """`fit` drops the middle of an oversized window; a pack it emptied is not context."""
+    lines = [f"npm ERR! code ELIFECYCLE {i}" for i in range(200)]
+    lines += [f"src/a{i}.ts:1:1 - error TS2345: bad argument" for i in range(5)]
+    lines += [f"npm ERR! code ELIFECYCLE {i}" for i in range(200, 400)]
     log = (
         "section_start:1:step_script\n"
         + "\n".join(lines)
@@ -378,3 +379,11 @@ def test_every_text_field_of_a_brief_is_redacted():
     brief = build_brief(job, attr, bundle, cfg, environ={})
     assert secret not in brief.model_dump_json()
     assert secret not in render_prompt(brief)
+
+
+def test_the_report_excerpt_keeps_its_head_and_its_tail():
+    """Like `fit`: the head holds the first error, the tail how the run ended; the cut is announced."""
+    out = _capped("FIRST ERROR\n" + "x" * 5000 + "\nLAST LINE", limit=2000)
+    assert out.startswith("FIRST ERROR") and out.endswith("LAST LINE")
+    assert "characters elided" in out
+    assert len(out) < 2100

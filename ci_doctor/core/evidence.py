@@ -51,11 +51,14 @@ def _blamed_section(sections: list[Section], phase: Phase) -> Section | None:
         phase: The phase attribution blamed.
 
     Returns:
-        The *last* real section carrying that phase — later output is closer to
-        the failure — or None when no section matches.
+        The last real section carrying that phase that the runner reported failed,
+        else the last one at all (later output is closer to the failure), or None
+        when no section matches. A step after the failure (`if: always()`) is in the
+        same phase and later, so "last" alone would pick it.
     """
     match = [s for s in walk_sections(sections) if s.name not in SYNTHETIC_SECTIONS and s.phase == phase]
-    return match[-1] if match else None
+    failed = [s for s in match if s.failed]
+    return (failed or match or [None])[-1]
 
 
 def evidence_lines(sections: list[Section], phase: Phase) -> list[str]:
