@@ -4,12 +4,13 @@ import ast
 from pathlib import Path
 
 import ci_doctor
+from ci_doctor.lib.files import ENCODING
 
 PACKAGE = Path(ci_doctor.__file__).parent
 
 
 def _imports(path):
-    for node in ast.walk(ast.parse(path.read_text())):
+    for node in ast.walk(ast.parse(path.read_text(encoding=ENCODING))):
         if isinstance(node, ast.Import):
             yield from (a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:

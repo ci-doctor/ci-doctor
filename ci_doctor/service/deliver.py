@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ci_doctor.config.schemas import Config
 from ci_doctor.core.models import Run
+from ci_doctor.lib.files import ENCODING
 from ci_doctor.providers.registry import make_scm_provider
 from ci_doctor.service.analyze import JobResult
 
@@ -48,8 +49,8 @@ def write_artifacts(results: list[JobResult], cfg: Config, run: Run | None) -> N
         cfg: The effective config, supplying the output paths.
         run: The analyzed run, or None for offline replay.
     """
-    Path(cfg.output.markdown_path).write_text(pipeline_markdown(run, results))
-    Path(cfg.output.json_path).write_text(json.dumps(payload(results), indent=2))
+    Path(cfg.output.markdown_path).write_text(pipeline_markdown(run, results), encoding=ENCODING)
+    Path(cfg.output.json_path).write_text(json.dumps(payload(results), indent=2), encoding=ENCODING)
 
 
 def post_note(ci_provider: object, run: Run | None, results: list[JobResult], cfg: Config) -> str | None:

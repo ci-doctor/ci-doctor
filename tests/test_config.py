@@ -104,9 +104,10 @@ def _write(tmp_path, body):
 
 def test_registries_merge_and_include_replaces(tmp_path):
     """A repo adds a registry without losing `official`, and its include is the whole selection."""
-    body = "matchers:\n  registries:\n    acme: /mnt/matchers\n  include: [acme/deploy, official/python]\n"
+    acme = (tmp_path / "matchers").as_posix()  # absolute on every OS, so it isn't anchored
+    body = f"matchers:\n  registries:\n    acme: {acme}\n  include: [acme/deploy, official/python]\n"
     cfg = load_config(repo_config=_write(tmp_path, body), environ={})
-    assert cfg.matchers.registries == {"official": "https://matchers.cidoc.dev/", "acme": "/mnt/matchers"}
+    assert cfg.matchers.registries == {"official": "https://matchers.cidoc.dev/", "acme": acme}
     assert cfg.matchers.include == ["acme/deploy", "official/python"]
 
 

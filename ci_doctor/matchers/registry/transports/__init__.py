@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from ci_doctor.errors import SetupError
+from ci_doctor.lib.files import ENCODING
 
 #: Transport name -> its class.
 TRANSPORTS: dict[str, str] = {
@@ -142,7 +143,7 @@ def decode(rel: str, body: bytes) -> str:
         SetupError: If the bytes are not UTF-8.
     """
     try:
-        return body.decode("utf-8")
+        return body.decode(ENCODING)
     except UnicodeDecodeError:
         raise SetupError(f"{rel} is not UTF-8 text") from None
 

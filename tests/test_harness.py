@@ -31,6 +31,7 @@ def home(tmp_path, monkeypatch):
     home.mkdir()
     project.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))  # Path.home() on Windows
     monkeypatch.setenv("PATH", "")
     for var in ("XDG_CONFIG_HOME", "HERMES_HOME", "CODEX_HOME", "PI_CODING_AGENT_DIR"):
         monkeypatch.delenv(var, raising=False)
@@ -425,8 +426,9 @@ def test_install_warns_when_agents_cannot_find_ci_doctor(home, monkeypatch, caps
 
     bin_dir = home / "bin"
     bin_dir.mkdir()
-    (bin_dir / "ci-doctor").write_text("#!/bin/sh\n")
-    (bin_dir / "ci-doctor").chmod(0o755)
+    binary = bin_dir / ("ci-doctor.exe" if sys.platform == "win32" else "ci-doctor")
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
     monkeypatch.setenv("PATH", str(bin_dir))
     code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude")
     assert code == 0 and "not on your PATH" not in out

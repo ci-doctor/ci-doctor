@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from ci_doctor.config.schemas.matchers import BARE_ID
 from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
-from ci_doctor.lib.files import atomic_write
+from ci_doctor.lib.files import ENCODING, atomic_write
 from ci_doctor.matchers.models import (
     BUNDLE_GLOB,
     GENERATED,
@@ -147,7 +147,7 @@ def _nesting_problems(bundles: dict[str, Bundle]) -> list[str]:
 
 def _is_generated(path: Path) -> bool:
     """Whether `registry index` wrote this bundle file."""
-    return path.read_text(encoding="utf-8").startswith(GENERATED_PREFIX)
+    return path.read_text(encoding=ENCODING).startswith(GENERATED_PREFIX)
 
 
 def _load_matchers(root: Path, problems: list[str]) -> tuple[dict[str, dict], dict[str, list[str]]]:
@@ -304,10 +304,10 @@ def write_index(root: Path, *, check: bool = False) -> int:
     stale = _stale_generated(root, generated)
     if check:
         out_of_date = [
-            p for p, body in files.items() if not p.is_file() or p.read_text(encoding="utf-8") != body
+            p for p, body in files.items() if not p.is_file() or p.read_text(encoding=ENCODING) != body
         ]
         if out_of_date or stale:
-            names = ", ".join(str(p.relative_to(root)) for p in [*out_of_date, *stale])
+            names = ", ".join(p.relative_to(root).as_posix() for p in [*out_of_date, *stale])
             raise SetupError(f"out of date: {names}. Run `ci-doctor registry index {root}`")
     else:
         (root / "bundles").mkdir(exist_ok=True)

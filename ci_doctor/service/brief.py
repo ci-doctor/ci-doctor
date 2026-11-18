@@ -16,6 +16,7 @@ from ci_doctor.core.attribution import Attribution
 from ci_doctor.core.evidence import EvidenceBundle
 from ci_doctor.core.models import Confidence, FailureReason, Job, Phase
 from ci_doctor.core.redact import redact_text
+from ci_doctor.lib.files import ENCODING
 
 
 class FiredMatcher(BaseModel):
@@ -126,4 +127,4 @@ def _load(name: str) -> str:
     Returns:
         The template text.
     """
-    return resources.files("ci_doctor.llm.prompts").joinpath(name).read_text()
+    return resources.files("ci_doctor.llm.prompts").joinpath(name).read_text(encoding=ENCODING)

@@ -7,6 +7,7 @@ shared `fx_registry`, and `http(s)://` goes through `httpx.MockTransport`.
 import contextlib
 import hashlib
 import logging
+import sys
 
 import httpx
 import pytest
@@ -94,7 +95,9 @@ def _http(files, base="https://reg.test/m/", **headers_by_path):
 
 def _files(root):
     """A registry directory as `{relative path: text}`, for an HTTP mock."""
-    return {p.relative_to(root).as_posix(): p.read_text() for p in root.rglob("*.yaml")}
+    return {
+        p.relative_to(root).as_posix(): p.read_bytes().decode() for p in root.rglob("*.yaml")
+    }  # as hashed
 
 
 # --- resolution ------------------------------------------------------------------
@@ -159,10 +162,10 @@ def test_an_unknown_name_suggests_the_closest(tmp_path, fx_registry):
 # --- locations and transports ----------------------------------------------------
 
 
-@pytest.mark.parametrize("form", ["{p}", "{p}/", "file://{p}", "file://{p}/"])
+@pytest.mark.parametrize("form", ["{p}", "{p}/", "{uri}", "{uri}/"])
 def test_a_local_registry_by_path_or_file_url(form, fx_registry):
     """Bare paths and `file://`, with or without the trailing slash, need no network."""
-    location = form.format(p=fx_registry)
+    location = form.format(p=fx_registry, uri=fx_registry.as_uri())
     assert len(load(_cfg(["fx/all"], fx=location))) == 2
 
 
@@ -185,6 +188,14 @@ def test_an_https_registry_loads_through_the_shared_client(fx_registry):
     """The trailing slash is added, so `index.yaml` joins under the folder."""
     matchers = load(_cfg(["fx/all"], fx="https://reg.test/m"), client=_http(_files(fx_registry)))
     assert [m.id for m in matchers] == ["fx/pytest", "fx/python_traceback"]
+
+
+@pytest.mark.parametrize("served", [False, True])
+def test_official_can_be_any_copy_of_the_registry(served, fx_registry):
+    """A plain clone or a server of one stands in for `official`: no signature is asked for."""
+    location = "https://reg.test/m/" if served else str(fx_registry)
+    client = _http(_files(fx_registry)) if served else None
+    assert len(load(_cfg(["official/all"], official=location), client=client)) == 2
 
 
 def test_a_plain_http_registry_loads_and_warns(caplog, fx_registry):
@@ -333,6 +344,9 @@ def test_an_index_path_cannot_leave_the_registry(tmp_path, path):
         load(_cfg(["r/x"], r=_registry(tmp_path, index=doc)))
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="creating a symlink on Windows needs a privilege CI runners lack"
+)
 def test_a_symlink_cannot_leave_a_local_registry(tmp_path):
     """The path text passes; the real path does not."""
     (tmp_path / "secret.yaml").write_text(yaml.safe_dump({"id": "x", **_MATCHER}))
@@ -411,6 +425,7 @@ def test_the_fetch_settings_come_from_the_config(monkeypatch):
     assert seen["limits"].max_connections == 16
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no FIFOs")
 def test_a_local_registry_file_that_is_not_regular_is_refused(tmp_path):
     """A FIFO at a matcher path would block the read forever; the cap check alone can't see it."""
     import os

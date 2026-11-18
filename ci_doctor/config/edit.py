@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from ci_doctor.config.schemas import Config
 from ci_doctor.errors import SetupError
 from ci_doctor.lib.edit.yaml import set_key
-from ci_doctor.lib.files import atomic_write
+from ci_doctor.lib.files import ENCODING, atomic_write
 
 
 def _read(path: Path) -> tuple[str, dict]:
@@ -33,7 +33,7 @@ def _read(path: Path) -> tuple[str, dict]:
     if not path.exists():
         return "", {}
     try:
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding=ENCODING)
         data = yaml.safe_load(text) or {}
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as err:
         raise SetupError(f"{path}: cannot read config: {err}") from None

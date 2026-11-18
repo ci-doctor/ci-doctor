@@ -12,6 +12,10 @@ explains **why**. Read-only, air-gap friendly — no LLM, no problem.
 - `latest` — the newest published alpha.
 - `0.0.1aN` — a specific alpha; pin this in CI.
 
+Every tag is built for `linux/amd64` and `linux/arm64`, so it runs natively on Arm64
+CI runners and Apple Silicon. There is no Windows image: Docker Desktop on Windows runs
+this Linux one, and on Windows without Docker, `pip install ci-doctorr`.
+
 ## Usage
 
 Replay a captured log — no CI, no LLM. Matchers come from registries, so select some

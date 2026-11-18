@@ -9,8 +9,8 @@ uv tool install ci-doctorr
 # pip
 pip install ci-doctorr
 
-# or the self-contained image, for air-gapped runners
-docker run --rm ci-doctor:latest --version`;
+# or the self-contained image (linux/amd64 and linux/arm64)
+docker run --rm docker.io/fennet/ci-doctor:latest --version`;
 
 const action = `# GitHub Actions — nothing to install at all
 - uses: ci-doctor/ci-doctor@master`;

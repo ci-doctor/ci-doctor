@@ -34,7 +34,19 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
         """
         raise RuntimeError("network access is not allowed in tests (air-gap guarantee)")
 
-    monkeypatch.setattr(socket.socket, "connect", guard)
+    real_connect = socket.socket.connect
+
+    def connect(sock: socket.socket, address: object) -> None:
+        """Loopback only: Windows builds asyncio's socketpair by connecting to itself.
+
+        Raises:
+            RuntimeError: For any other address.
+        """
+        if isinstance(address, tuple) and address[0] in ("127.0.0.1", "::1"):
+            return real_connect(sock, address)
+        guard()
+
+    monkeypatch.setattr(socket.socket, "connect", connect)
     monkeypatch.setattr(socket, "create_connection", guard)
 
 
@@ -64,7 +76,7 @@ def fx_registry(tmp_path_factory: pytest.TempPathFactory) -> Path:
     Returns:
         The registry directory. Tests that edit a registry write their own.
     """
-    return support.sign_registry(support.py_registry(tmp_path_factory.mktemp("registry")))
+    return support.py_registry(tmp_path_factory.mktemp("registry"))
 
 
 @pytest.fixture(autouse=True)
@@ -80,15 +92,15 @@ def _private_cache(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest
 
 
 @pytest.fixture(autouse=True)
-def _test_signing_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The official registry's index is checked against the test key, and only it.
+def _wide_log_console(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Log lines never wrap in tests: a long temp path (macOS, Windows) must not split a match.
 
     Args:
-        monkeypatch: pytest fixture to swap the trusted keys.
+        monkeypatch: pytest fixture to widen the console.
     """
-    monkeypatch.setattr(
-        "ci_doctor.matchers.registry.signing.OFFICIAL_KEYS", {support.TEST_KEY_ID: support.TEST_PUBLIC_KEY}
-    )
+    from ci_doctor.cli._console.terminal import LOG_CONSOLE
+
+    monkeypatch.setattr(LOG_CONSOLE, "width", 10_000)
 
 
 @pytest.fixture

@@ -20,7 +20,6 @@ import time
 from collections.abc import Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -30,9 +29,7 @@ from ci_doctor.config.schemas.matchers import MatchersConfig, unqualified
 from ci_doctor.engine import SCHEMAS, Output, Spec
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.models import INDEX, MAX_BUNDLE_DEPTH, Bundle, Index, Ref
-from ci_doctor.matchers.registry import signing
 from ci_doctor.matchers.registry.cache import Cache, ago
-from ci_doctor.matchers.registry.signing import SIGNATURE, SIGNATURE_CAP
 from ci_doctor.matchers.registry.transports import Unreachable, decode, redact, transport_for
 from ci_doctor.matchers.validate import bundle_from, matcher_from, parse_yaml
 
@@ -133,21 +130,19 @@ def _conditional_body(
     cap: int,
     client: httpx.Client,
     cache: Cache | None,
-    use_fresh: bool = True,
-) -> tuple[bytes, bool]:
+) -> bytes:
     """A registry file fetched by path: cached while fresh, revalidated after, fetched when changed.
 
     Args:
         alias: The registry's alias.
         location: Its directory.
-        rel: The file (`index.yaml`, `index.yaml.sig`).
+        rel: The file, e.g. `index.yaml`.
         cap: The most bytes accepted.
         client: The run's shared HTTP client.
         cache: The run's cache, or None.
-        use_fresh: Whether a cached copy still within its `max-age` is used without asking.
 
     Returns:
-        The file's bytes, and whether they came from the cache without the server's word.
+        The file's bytes.
 
     Raises:
         SetupError: If it can't be fetched, and an outage has no cached copy to fall back on.
@@ -155,8 +150,9 @@ def _conditional_body(
     transport = transport_for(location)
     store = cache if transport.cacheable else None
     cached = store.file(location, rel) if store is not None else None
-    if use_fresh and cached is not None and time.time() < cached.fresh_until:
-        return cached.body, True
+    if cached is not None and time.time() < cached.fresh_until:
+        log.debug(f"registry {alias!r}: {rel} from the cache, still fresh")
+        return cached.body
     since = cached.validators if cached is not None else None
     try:
         fetched = transport.read(alias, location, rel, cap=cap, client=client, since=since)
@@ -167,74 +163,37 @@ def _conditional_body(
         log.warning(
             f"registry {alias!r} is unreachable ({err}); using its {what} cached {ago(time.time() - cached.fetched_at)} ago"
         )
-        return cached.body, True
+        return cached.body
     if fetched.body is None and cached is not None and store is not None:
         store.revalidated(location, rel, fetched.validators, fetched.max_age)
-        return cached.body, False
+        log.debug(f"registry {alias!r}: {rel} unchanged (304), from the cache")
+        return cached.body
     body = fetched.body or b""
+    log.debug(f"registry {alias!r}: {rel} fetched, {len(body)} bytes")
     if store is not None:
         store.put_file(location, rel, body, fetched.validators, fetched.max_age)
-    return body, False
+    return body
 
 
-def _verified_signature(
-    alias: str, location: str, index: bytes, client: httpx.Client, cache: Cache | None, *, use_fresh: bool
-) -> bytes:
-    """The official registry's `index.yaml.sig`, checked against `index`, and newer than any seen.
+def index_text(alias: str, location: str, client: httpx.Client, cache: Cache | None = None) -> str:
+    """A registry's `index.yaml` as published, through the cache.
 
     Args:
         alias: The registry's alias.
-        location: Its directory.
-        index: The index's bytes, as fetched.
-        client: The run's shared HTTP client.
-        cache: The run's cache, which also holds the last version seen; None skips the rollback check.
-        use_fresh: Whether a fresh cached signature may be used: only when the index itself was.
-
-    Returns:
-        The signature's bytes.
-
-    Raises:
-        SetupError: If it is missing, doesn't verify, has expired, or is older than one already seen.
-    """
-    sig, _ = _conditional_body(
-        alias, location, SIGNATURE, cap=SIGNATURE_CAP, client=client, cache=cache, use_fresh=use_fresh
-    )
-    signed = signing.verify(index, sig, signing.OFFICIAL_KEYS, datetime.now(UTC))
-    last = cache.signed_version(location) if cache is not None else None
-    if last is not None and signed.version < last:
-        raise SetupError(
-            f"the signed index is version {signed.version}, older than version {last} already seen: refused as a rollback"
-        )
-    if cache is not None and (last is None or signed.version > last):
-        cache.record_signed_version(location, signed.version)
-    return sig
-
-
-def index_text(
-    alias: str, location: str, client: httpx.Client, cache: Cache | None = None
-) -> tuple[str, bytes | None]:
-    """A registry's `index.yaml` as published, through the cache; the official one signature-checked.
-
-    Args:
-        alias: The registry's alias; `official` must carry a valid signature.
         location: Its directory, from :func:`registry_dir`.
         client: The run's shared HTTP client.
         cache: The run's cache, or None to always fetch.
 
     Returns:
-        The index's text, unparsed, and for `official` its verified `index.yaml.sig` (else None).
+        The index's text, unparsed.
 
     Raises:
-        SetupError: If it can't be fetched, isn't UTF-8, or (for `official`) its signature fails.
+        SetupError: If it can't be fetched or isn't UTF-8.
     """
     try:
-        body, fresh = _conditional_body(alias, location, INDEX, cap=INDEX_CAP, client=client, cache=cache)
-        sig = (
-            _verified_signature(alias, location, body, client, cache, use_fresh=fresh)
-            if alias == signing.OFFICIAL
-            else None
+        return decode(
+            INDEX, _conditional_body(alias, location, INDEX, cap=INDEX_CAP, client=client, cache=cache)
         )
-        return decode(INDEX, body), sig
     except SetupError as err:
         raise _fail(alias, location, err) from None
 
@@ -275,7 +234,7 @@ def fetch_index(alias: str, location: str, client: httpx.Client, cache: Cache | 
     Raises:
         SetupError: If it can't be fetched, parsed or validated.
     """
-    return parse_index(alias, location, index_text(alias, location, client, cache)[0])
+    return parse_index(alias, location, index_text(alias, location, client, cache))
 
 
 @contextlib.contextmanager
@@ -641,8 +600,9 @@ def load(cfg: MatchersConfig, client: httpx.Client | None = None) -> list[Spec]:
         # map() keeps include order, and re-raises the first failure in that order.
         with ThreadPoolExecutor(max_workers=cfg.fetch_workers, thread_name_prefix="ci-doctor-fetch") as pool:
             fetched = list(pool.map(lambda key: fetch_matcher(Ref.parse(key), resolved, http), keys))
-    log.debug(
-        f"loaded {len(keys)} matchers from {len(resolved.indexes)} registries in {time.perf_counter() - start:.1f}s"
+    log.info(
+        f"matchers: {len(keys)} loaded from {', '.join(resolved.indexes) or 'no registry'}"
+        f" in {time.perf_counter() - start:.1f}s"
     )
     # `alias/id` keeps the same bare id from two registries apart.
     specs = [m.model_copy(update={"id": key}) for key, m in zip(keys, fetched, strict=True)]

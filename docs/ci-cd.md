@@ -109,9 +109,9 @@ the last tag. Docs and chores ride along in the next alpha rather than cutting o
 of their own.
 
 In order, so that a failure before the push leaves nothing public: bump to the next alpha
-in the working tree → build sdist and wheel → log in to Docker Hub → build the image
-(loaded, not pushed) and save it as a gzipped tar → generate the config schema → generate
-the SBOM → **commit the bump and push it with an annotated tag** (`--atomic`) → attest the
+in the working tree → build sdist and wheel → log in to Docker Hub → build the image for
+linux/amd64 and linux/arm64 (arm64 under QEMU; built, not pushed) → load and run each
+platform's image (`--version`) → generate the config schema → generate the SBOM → **commit the bump and push it with an annotated tag** (`--atomic`) → attest the
 distributions → create the GitHub Release with all assets → publish to PyPI via Trusted
 Publishing → push the image to Docker Hub and attest it. Docker Hub is last because it is
 optional: an outage there must not hold up PyPI.
@@ -128,7 +128,8 @@ that expires within the hour. The bump commit ends in `[skip ci]`, which stops i
 re-triggering the pipeline.
 
 **Docker Hub.** Images go to [`fennet/ci-doctor`](https://hub.docker.com/r/fennet/ci-doctor)
-as `:<version>` and `:latest`. Note the name differs from the PyPI distribution,
+as `:<version>` and `:latest`, one multi-platform image for linux/amd64 and linux/arm64;
+the attestation covers its index digest. Note the name differs from the PyPI distribution,
 which is `ci-doctorr` — the `ci-doctor` name was already taken on PyPI. The import
 package and the command are `ci_doctor` / `ci-doctor` everywhere.
 

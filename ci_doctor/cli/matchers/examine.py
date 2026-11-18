@@ -10,6 +10,7 @@ from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
 from ci_doctor.engine import Spec
 from ci_doctor.errors import SetupError
+from ci_doctor.lib.files import ENCODING
 from ci_doctor.matchers.examine import examine
 from ci_doctor.matchers.logs import Framing, framing_of
 from ci_doctor.matchers.registry.cache import Cache
@@ -38,7 +39,7 @@ class ExamineCommand(Command):
         ),
     ) -> None:
         try:
-            raw = log.read_text(encoding="utf-8", errors="replace")
+            raw = log.read_text(encoding=ENCODING, errors="replace")
         except OSError as err:
             raise SetupError(f"{log}: {err}") from None
         results = examine(self._load(matcher), raw, framing or framing_of(log))

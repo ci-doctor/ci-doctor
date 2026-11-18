@@ -19,6 +19,7 @@ import yaml
 
 from ci_doctor.config.schemas import Config
 from ci_doctor.errors import SetupError
+from ci_doctor.lib.files import ENCODING
 
 log = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def _shipped_defaults() -> dict:
     Returns:
         The baseline config layer, before any user input.
     """
-    text = resources.files("ci_doctor.config").joinpath("defaults.yml").read_text()
+    text = resources.files("ci_doctor.config").joinpath("defaults.yml").read_text(encoding=ENCODING)
     return _load_yaml(text)
 
 
@@ -190,7 +191,7 @@ def _file_layer(path: Path) -> dict:
     Returns:
         The file's layer, not yet validated.
     """
-    layer = _load_yaml(path.read_text())
+    layer = _load_yaml(path.read_text(encoding=ENCODING))
     registries = (layer.get("matchers") or {}).get("registries")
     if isinstance(registries, dict):  # anything else fails validation later
         for alias, value in registries.items():
@@ -222,8 +223,9 @@ def load_config(
     """
     layers = [_shipped_defaults()]
     try:
-        user = [p for p in [user_config()] if p.is_file()]
-        layers += [_file_layer(path) for path in [*user, *_repo_paths(repo_config)]]
+        files = [*(p for p in [user_config()] if p.is_file()), *_repo_paths(repo_config)]
+        log.debug(f"config files: {', '.join(map(str, files)) or 'none'}")
+        layers += [_file_layer(path) for path in files]
         layers.append(_env_overlay(os.environ if environ is None else environ))
         layers.append(overrides or {})
         merged: dict = {}

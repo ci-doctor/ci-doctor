@@ -20,6 +20,8 @@ from typing import Annotated
 import re2
 from pydantic import AfterValidator, StringConstraints, ValidationInfo
 
+from ci_doctor.lib.files import ENCODING
+
 #: The compiled-pattern type `compile_user` returns.
 Regex = re2._Regexp
 
@@ -96,7 +98,7 @@ def pattern_set(patterns: Sequence[str]) -> Callable[[str], list[int]]:
         except UnicodeEncodeError:
             # A lone surrogate has no UTF-8 form and RE2 matches bytes; shipped log
             # sources decode with "replace", so this only guards a future one.
-            return rset.Match(line.encode("utf-8", "replace")) or []
+            return rset.Match(line.encode(ENCODING, "replace")) or []
 
     # ponytail: Set.Match reports *no* hits if RE2 exhausts its DFA memory (8 MiB
     # default). Measured fine at 1,640 patterns; raise `_OPTS.max_mem` if a rules

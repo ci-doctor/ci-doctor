@@ -18,6 +18,7 @@ from ci_doctor.lib.edit.yaml import (
     remove_item,
     set_child,
 )
+from ci_doctor.lib.files import ENCODING
 
 #: Hermes names a server's tools `mcp-<server>`; a CLI profile may list the ones it allows.
 _TOOLSET = f"mcp-{SERVER}"
@@ -42,7 +43,7 @@ class Hermes(Target):
 
     def configured(self, location: Location) -> bool:  # noqa: D102 - documented on Target
         try:
-            config = yaml.safe_load(self._config().read_text(encoding="utf-8")) or {}
+            config = yaml.safe_load(self._config().read_text(encoding=ENCODING)) or {}
         except (OSError, yaml.YAMLError):
             return False
         return isinstance(config, dict) and SERVER in (config.get("mcp_servers") or {})

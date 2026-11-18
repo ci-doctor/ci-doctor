@@ -23,6 +23,7 @@ from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
 from ci_doctor.engine import Plan, Spec, compile_plan
 from ci_doctor.errors import LogUnavailable
+from ci_doctor.lib.files import ENCODING
 from ci_doctor.llm.schema import Report
 from ci_doctor.providers.registry import make_ci_provider, make_segmenter, segmenter_for_log
 from ci_doctor.service.brief import Brief, build_brief
@@ -87,8 +88,9 @@ def diagnose_job(job: Job, cfg: Config, plan: Plan, segmenter: LogSegmenter | No
     log.debug(f"job {job.name}: {len(job.sections)} top-level sections")
     assign_phases(job.sections, cfg.phases)
     attr = attribute(job, job.sections)
-    log.debug(
-        f"job {job.name}: attribution phase={attr.phase} reason={attr.reason} rule={attr.rule_id} confidence={attr.confidence}",
+    log.info(
+        f"job {job.name}: blamed the {attr.phase} phase"
+        f" (reason {attr.reason}, rule {attr.rule_id}, confidence {attr.confidence})"
     )
     bundle = build_bundle(job, attr, job.sections, cfg, plan)
     return Diagnosis(job, attr, bundle, build_brief(job, attr, bundle, cfg))
@@ -179,10 +181,8 @@ def _fetch(run_id: str, cfg: Config, job_id: str | None) -> tuple[Run, CIProvide
     jobs = select_failed_jobs(run.jobs, cfg.analysis.include_allowed_failures)
     if job_id is not None:
         jobs = [j for j in jobs if j.id == job_id]
-    log.debug(f"run {run_id}: {len(run.jobs)} jobs, {len(jobs)} failed and selected")
-
     selected = _ordered(jobs)[: cfg.analysis.max_jobs_analyzed]
-    log.info(f"analyzing {len(selected)} failed job(s) from run {run_id}")
+    log.info(f"run {run_id}: {len(run.jobs)} jobs, {len(jobs)} failed; analyzing {len(selected)}")
     # ponytail: one log at a time, to stay well under rate limits. The client is
     # thread-safe, so these fetches can run in parallel if this gets slow.
     for job in selected:
@@ -323,6 +323,6 @@ def run_from_file(path: Path) -> Run:
     """
     # "replace": one non-UTF-8 byte from a tool must not cost the whole analysis, and it
     # keeps lone surrogates (which RE2 cannot encode) out of the pipeline entirely.
-    raw = path.read_text(errors="replace")
+    raw = path.read_text(encoding=ENCODING, errors="replace")
     job = Job(id="local", name=path.stem, status="failed", failure_reason=FailureReason.UNKNOWN, log=raw)
     return Run(id="local", jobs=[job])

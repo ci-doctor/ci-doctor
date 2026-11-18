@@ -11,6 +11,7 @@ from ci_doctor.agent.harness.entry import SERVER, instructions, server_entry
 from ci_doctor.lib.edit import Change, safely
 from ci_doctor.lib.edit.json import set_json, unset_json
 from ci_doctor.lib.edit.markdown import START, set_block, unset_block
+from ci_doctor.lib.files import ENCODING
 
 
 class Location(StrEnum):
@@ -86,7 +87,7 @@ class Target(ABC):
         if self.configured(location):
             return True
         for path in self.paths(location):
-            text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+            text = path.read_text(encoding=ENCODING, errors="replace") if path.is_file() else ""
             if START in text or f"mcp__{SERVER}__" in text:
                 return True
         return False
@@ -127,7 +128,7 @@ class McpJsonTarget(Target):
     def _lists_server(self, path: Path) -> bool:
         """Whether this JSON file has ci-doctor under `key`."""
         try:
-            return SERVER in json.loads(path.read_text(encoding="utf-8")).get(self.key, {})
+            return SERVER in json.loads(path.read_text(encoding=ENCODING)).get(self.key, {})
         except (OSError, ValueError, AttributeError):
             return False
 

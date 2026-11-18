@@ -36,7 +36,7 @@ ci_doctor/
   engine/           the matching engine, pure (§2.3): spec/ (matcher files), compile/
                     (spec → Plan), run/ (Plan × lines → windows), select/ (evidence)
   lib/              shared low-level helpers, a leaf: regex.py (RE2 for every user-
-                    or matcher-supplied regex), files.py (atomic writes), edit/ (change
+                    or matcher-supplied regex), files.py (ENCODING, atomic writes), edit/ (change
                     one entry of a JSON, Markdown, TOML or YAML file, keep the rest)
   llm/              Report schema, prompt templates, backends
   render/           terminal (rich), markdown
@@ -496,6 +496,9 @@ Write them for a colleague reading the code for the first time.
 
 Real bugs, kept here so they don't recur:
 
+- **A file read or written without an encoding uses the locale's.** On Windows that
+  is not UTF-8, and the first Windows runs failed on it. Pass
+  `encoding=ENCODING` (`lib/files.py`) to every `read_text`, `write_text` and `open`.
 - **`rich` crops, it doesn't wrap, when `Console(soft_wrap=True)`.** Content inside a
   `Panel` gets cut at the border with no continuation. Pass `soft_wrap=False` on that
   specific `print` and build the `Text` with `overflow="fold"`.

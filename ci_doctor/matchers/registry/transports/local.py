@@ -1,7 +1,8 @@
 """A registry on disk: a path, or a `file://` URL."""
 
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 
 import httpx
 
@@ -23,7 +24,7 @@ class LocalTransport(Transport):
             The directory's path.
         """
         parts = urlsplit(value)
-        return unquote(parts.path) if parts.scheme == "file" else value
+        return url2pathname(parts.path) if parts.scheme == "file" else value  # file:///C:/x on Windows
 
     def read(
         self,

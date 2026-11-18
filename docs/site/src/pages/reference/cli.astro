@@ -10,7 +10,8 @@ Global options (before the command, for every command):
                          override earlier ones.
   --plain                Bare text for scripts: no tables, no colour, no pager.
   --no-color             Disable coloured output (also honours NO_COLOR).
-  -v, --verbose          Enable debug logging.
+  --log-level LEVEL      debug, info (the default), warning or error, on stderr.
+                         CI_DOCTOR_LOG_LEVEL sets it without the flag.
 
 Arguments:
   TARGET                 Pipeline/run id, or the path to a raw job log to replay
@@ -49,8 +50,8 @@ ci-doctor matchers examine MATCHER LOG [--framing github|gitlab|plain]  # what e
 # missing; ci-doctor --write-to FILE matchers ... writes FILE instead, and reads it too.
 # Output is a table by default; ci-doctor --plain matchers ... prints one bare line per row.`;
 
-const matchersAuthor = `ci-doctor matchers verify [ROOT] [--update] [--min-positive N] [--min-negative N]
-                          [--exempt FILE] [--cross-fire] [--json FILE]
+const matchersAuthor = `ci-doctor matchers verify [ROOT] [--only NAME[.OUTPUT]]... [--update]
+                          [--min-positive N] [--min-negative N] [--exempt FILE] [--cross-fire] [--json FILE]
 ci-doctor matchers schema [--version N | --out DIR]  # a matcher file's JSON Schema; --out writes every version`;
 
 const registryUse = `ci-doctor registry add NAME=LOCATION...  # add or override, after fetching its index.yaml
@@ -77,18 +78,19 @@ ci-doctor agent install [--target auto|all|claude,cursor,...] [--location local|
                         [--no-permissions] [--dry-run]
 ci-doctor agent uninstall [--target ...] [--location ...]`;
 
-const verbose = `ci-doctor -v analyze failing-job.log
+const logs = `ci-doctor analyze failing-job.log
 
-ci-doctor [DEBUG] ci=gitlab scm=gitlab target=failing-job.log ...
-ci-doctor [DEBUG] job failing-job: 6 top-level sections
-ci-doctor [DEBUG] job failing-job: attribution phase=script reason=script_failure rule=trailer_exit_code confidence=high
-ci-doctor [DEBUG] blamed phase script: denoise 812->190, extract ->140, fit ->140 lines (truncated=False)
-ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
+INFO     config: ci gitlab, git host gitlab
+INFO     matchers: 102 loaded from official in 0.2s
+INFO     analyzing 1 job(s) from failing-job.log
+INFO     job failing-job: blamed the script phase (reason script_failure, rule trailer_exit_code, confidence high)
+INFO     job failing-job: evidence kept 140 of 812 lines, 3 matcher output(s) fired
+INFO     job failing-job: deterministic report (no LLM configured)`;
 ---
 
 <Base
     title="CLI"
-    description="The ci-doctor command line: analyze, config, matchers, registry, cache and mcp, their flags, exit codes, and what --verbose prints."
+    description="The ci-doctor command line: analyze, config, matchers, registry, cache and mcp, their flags, exit codes, and what each log level prints."
 >
     <h1>CLI</h1>
     <p class="lead">
@@ -208,6 +210,11 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         <code>--cross-fire</code> also fails on an output firing on another
         matcher's fixture, and <code>--json</code> writes the whole report to a file.
         <code>--update</code> rewrites the <code>.expected</code> files for review.
+        <code>--only</code> checks just the matchers (<code>NAME</code>) or outputs
+        (<code>NAME.OUTPUT</code>) it names, with every rule, and with
+        <code>--update</code> rewrites only their files; an unknown name exits 1.
+        A mismatch prints a unified diff of the <code>.expected</code> file against
+        the actual selection, cut at 60 lines with the cut marked.
         Writing a registry is on <a href={url("/reference/registry/")}>Hosting a registry</a>.
     </p>
 
@@ -293,17 +300,23 @@ ci-doctor [DEBUG] LLM disabled/unconfigured -> deterministic report`;
         endpoints are named, not shown. Pass the same <code>-f</code> files you run with.
     </p>
 
-    <h2>Debugging with <code>--verbose</code></h2>
+    <h2>Logs: <code>--log-level</code></h2>
     <p>
-        Turn on debug logs across the whole pipeline (or set <code
-            >CI_DOCTOR_LOG_LEVEL=DEBUG</code
-        >):
+        Logs go to stderr, so the report on stdout stays clean to pipe. At the
+        default level, <code>info</code>, a run prints one line per stage: the
+        config, the matchers loaded, the blamed phase and the rule that settled it,
+        how much evidence was kept, and how the report was written. No line ever
+        contains log content, only names, counts and times.
     </p>
-    <Code code={verbose} lang="text" theme="github-dark" />
+    <Code code={logs} lang="text" theme="github-dark" />
     <p>
-        The <code>denoise → extract → fit</code> line is the one to read when the
-        evidence looks wrong: it shows how many lines each stage kept, and whether
-        the token budget had to truncate.
+        <code>--log-level debug</code> adds the rest: each registry file fetched or
+        taken from the cache, the section count, and a <code>denoise → extract → fit</code>
+        line, the one to read when the evidence looks wrong, with how many lines each
+        stage kept and whether the token budget had to truncate.
+        <code>CI_DOCTOR_LOG_LEVEL=debug</code> does the same without the flag, for a CI
+        job you'd rather not edit; the flag wins over it. <code>warning</code> keeps
+        only problems.
     </p>
 
     <div class="note">

@@ -81,7 +81,7 @@ def _short(path: Path) -> str:
     """A path relative to the project, or under `~`, for display."""
     for base, label in ((Path.cwd(), "."), (Path.home(), "~")):
         try:
-            return f"{label}/{path.relative_to(base)}"
+            return f"{label}/{path.relative_to(base).as_posix()}"
         except ValueError:
             continue
     return str(path)

@@ -98,6 +98,7 @@ def test_a_matcher_name_cannot_be_used_twice(registry):
         build_index(registry)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no POSIX file modes or umask")
 def test_rewriting_the_index_keeps_its_mode(registry):
     """The committed index is 0644, not the temp file's 0600."""
     index = registry / "index.yaml"
