@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from ci_doctor.engine import SCHEMAS
+from ci_doctor.lib.files import ENCODING
 
 #: Where each version's schema is published.
 SCHEMA_ID = "https://github.com/ci-doctor/ci-doctor/releases/latest/download/matcher-v{version}.schema.json"
@@ -47,5 +48,5 @@ def write_schemas(out: Path) -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
     paths = [out / f"matcher-v{v}.schema.json" for v in sorted(SCHEMAS)]
     for v, path in zip(sorted(SCHEMAS), paths, strict=True):
-        path.write_text(matcher_schema(v) + "\n", encoding="utf-8")
+        path.write_text(matcher_schema(v) + "\n", encoding=ENCODING)
     return paths

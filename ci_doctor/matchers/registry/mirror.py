@@ -12,7 +12,7 @@ import httpx
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.lib.files import atomic_write_bytes
+from ci_doctor.lib.files import ENCODING, atomic_write_bytes
 from ci_doctor.matchers.models import INDEX
 from ci_doctor.matchers.registry.cache import Cache
 from ci_doctor.matchers.registry.resolve import (
@@ -66,6 +66,6 @@ def mirror(cfg: MatchersConfig, alias: str, dest: Path, client: httpx.Client | N
     for entry, body in zip(entries, bodies, strict=True):
         path = contained(dest, entry.path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_bytes(path, body.encode("utf-8"))
-    atomic_write_bytes(dest / INDEX, text.encode("utf-8"))  # last: an index never lists a missing file
+        atomic_write_bytes(path, body.encode(ENCODING))
+    atomic_write_bytes(dest / INDEX, text.encode(ENCODING))  # last: an index never lists a missing file
     return len(entries)

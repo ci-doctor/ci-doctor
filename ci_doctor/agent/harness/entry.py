@@ -4,6 +4,8 @@ import shutil
 from importlib import resources
 from typing import Any
 
+from ci_doctor.lib.files import ENCODING
+
 #: The server's name in every agent config, and the `mcp__ci-doctor__*` tool prefix.
 SERVER = "ci-doctor"
 #: The command an agent runs to start the server.
@@ -22,7 +24,7 @@ def instructions() -> str:
     return (
         resources.files("ci_doctor.llm.prompts")
         .joinpath("harness.instructions.md")
-        .read_text(encoding="utf-8")
+        .read_text(encoding=ENCODING)
         .strip()
     )
 

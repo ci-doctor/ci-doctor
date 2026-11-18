@@ -24,7 +24,7 @@ from pathlib import Path
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.errors import SetupError
-from ci_doctor.lib.files import atomic_write_bytes
+from ci_doctor.lib.files import ENCODING, atomic_write_bytes
 from ci_doctor.matchers.models import INDEX
 from ci_doctor.matchers.registry.transports import Validators, redact
 from ci_doctor.matchers.validate import parse_yaml
@@ -291,7 +291,7 @@ def _read_file(folder: Path, rel: str) -> CachedFile | None:
         The cached file, or None.
     """
     try:
-        meta = json.loads((folder / f"{rel}.meta.json").read_text(encoding="utf-8"))
+        meta = json.loads((folder / f"{rel}.meta.json").read_text(encoding=ENCODING))
         body = (folder / rel).read_bytes()
         validators = Validators(etag=meta.get("etag"), last_modified=meta.get("last_modified"))
         return CachedFile(
@@ -315,7 +315,7 @@ def _hashes(index_body: bytes) -> set[str]:
         The hashes; none for an index that doesn't parse.
     """
     try:
-        doc = parse_yaml(index_body.decode("utf-8"), INDEX)
+        doc = parse_yaml(index_body.decode(ENCODING), INDEX)
     except (SetupError, UnicodeDecodeError):
         return set()
     if not isinstance(doc, dict):

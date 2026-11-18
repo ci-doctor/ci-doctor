@@ -11,6 +11,7 @@ from ci_doctor.agent.harness.targets.base import GLOBAL_ONLY, Location, Target
 from ci_doctor.lib.edit import Change, safely
 from ci_doctor.lib.edit.markdown import set_block, unset_block
 from ci_doctor.lib.edit.toml import set_toml_table, unset_toml_table
+from ci_doctor.lib.files import ENCODING
 
 _TABLE = f"mcp_servers.{SERVER}"
 _BODY = [f'command = "{COMMAND}"', 'args = ["mcp"]']
@@ -28,7 +29,7 @@ class Codex(Target):
 
     def configured(self, location: Location) -> bool:  # noqa: D102 - documented on Target
         try:
-            config = tomllib.loads(self._config().read_text(encoding="utf-8"))
+            config = tomllib.loads(self._config().read_text(encoding=ENCODING))
         except (OSError, tomllib.TOMLDecodeError):
             return False
         return SERVER in config.get("mcp_servers", {})

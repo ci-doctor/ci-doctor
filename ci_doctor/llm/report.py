@@ -25,6 +25,7 @@ from ci_doctor.core.evidence import EvidenceBundle
 from ci_doctor.core.models import FailureReason, Job, Phase
 from ci_doctor.core.ports import LLMClient
 from ci_doctor.core.redact import redact_report
+from ci_doctor.lib.files import ENCODING
 from ci_doctor.llm.schema import Category, Evidence, RemediationStep, Report
 
 if TYPE_CHECKING:
@@ -354,4 +355,4 @@ def _load(name: str) -> str:
     Returns:
         The template text.
     """
-    return resources.files("ci_doctor.llm.prompts").joinpath(name).read_text(encoding="utf-8")
+    return resources.files("ci_doctor.llm.prompts").joinpath(name).read_text(encoding=ENCODING)

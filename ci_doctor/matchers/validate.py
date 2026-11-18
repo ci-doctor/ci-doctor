@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from ci_doctor.config.schemas.matchers import BARE_ID
 from ci_doctor.engine import CompileError, Spec, UnknownSchema, compile_plan, load
 from ci_doctor.errors import SetupError
+from ci_doctor.lib.files import ENCODING
 from ci_doctor.matchers.models import MATCHER_GLOB, Bundle
 
 
@@ -80,7 +81,7 @@ def load_yaml(path: Path) -> Any:  # noqa: ANN401 - YAML is genuinely any shape 
         SetupError: If the file can't be read or isn't valid YAML.
     """
     try:
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding=ENCODING)
     except (OSError, UnicodeDecodeError) as err:
         raise SetupError(f"{path}: {err}") from None
     return parse_yaml(text, str(path))

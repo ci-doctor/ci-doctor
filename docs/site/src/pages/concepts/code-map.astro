@@ -22,7 +22,7 @@ const packages = [
             {
                 path: "lib/",
                 entry: "pattern_set()",
-                role: "Shared low-level helpers. `regex.py`: RE2 for every regex a user or a matcher supplies, linear time by construction, so no pattern can hang a job; `pattern_set` matches a whole list in one pass per line. `files.py`: atomic writes. `edit/`: change one entry of a JSON, Markdown, TOML or YAML file and keep the rest, comments included.",
+                role: "Shared low-level helpers. `regex.py`: RE2 for every regex a user or a matcher supplies, linear time by construction, so no pattern can hang a job; `pattern_set` matches a whole list in one pass per line. `files.py`: `ENCODING` (UTF-8, how every text file is read and written) and atomic writes. `edit/`: change one entry of a JSON, Markdown, TOML or YAML file and keep the rest, comments included.",
             },
             {
                 path: "agent/",

@@ -17,6 +17,7 @@ from ci_doctor.core.denoise import denoise
 from ci_doctor.core.evidence import evidence_lines
 from ci_doctor.core.models import FailureReason, Job
 from ci_doctor.core.phases import assign_phases
+from ci_doctor.lib.files import ENCODING
 from ci_doctor.providers.registry import segmenter_for
 
 Framing = Literal["github", "gitlab", "plain"]
@@ -74,4 +75,4 @@ def read_fixture(path: Path) -> list[str]:
     Returns:
         Its lines, as the engine sees them.
     """
-    return read_log(path.read_text(encoding="utf-8", errors="replace"), framing_of(path))
+    return read_log(path.read_text(encoding=ENCODING, errors="replace"), framing_of(path))

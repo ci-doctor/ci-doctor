@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from ci_doctor.lib.files import atomic_write
+from ci_doctor.lib.files import ENCODING, atomic_write
 
 Action = Literal["created", "updated", "unchanged", "removed", "absent", "skipped"]
 
@@ -83,4 +83,4 @@ def write(path: Path, before: str | None, text: str, *, removing: bool = False) 
 
 def read(path: Path) -> str | None:
     """A file's text, or None if it does not exist."""
-    return path.read_text(encoding="utf-8") if path.exists() else None
+    return path.read_text(encoding=ENCODING) if path.exists() else None

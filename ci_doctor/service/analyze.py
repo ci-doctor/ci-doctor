@@ -23,6 +23,7 @@ from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import CIProvider, LLMClient, LogSegmenter
 from ci_doctor.engine import Plan, Spec, compile_plan
 from ci_doctor.errors import LogUnavailable
+from ci_doctor.lib.files import ENCODING
 from ci_doctor.llm.schema import Report
 from ci_doctor.providers.registry import make_ci_provider, make_segmenter, segmenter_for_log
 from ci_doctor.service.brief import Brief, build_brief
@@ -322,6 +323,6 @@ def run_from_file(path: Path) -> Run:
     """
     # "replace": one non-UTF-8 byte from a tool must not cost the whole analysis, and it
     # keeps lone surrogates (which RE2 cannot encode) out of the pipeline entirely.
-    raw = path.read_text(encoding="utf-8", errors="replace")
+    raw = path.read_text(encoding=ENCODING, errors="replace")
     job = Job(id="local", name=path.stem, status="failed", failure_reason=FailureReason.UNKNOWN, log=raw)
     return Run(id="local", jobs=[job])

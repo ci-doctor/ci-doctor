@@ -21,6 +21,7 @@ from pathlib import Path
 
 from ci_doctor.engine import Plan, Spec, Window, compile_plan, run, select
 from ci_doctor.errors import SetupError
+from ci_doctor.lib.files import ENCODING
 from ci_doctor.matchers.logs import read_fixture
 from ci_doctor.matchers.validate import load_matcher, matcher_files
 
@@ -147,7 +148,7 @@ def _exempt(root: Path, policy: Policy) -> set[str]:
     path = root / policy.exempt
     if not path.is_file():
         return set()
-    lines = (line.strip() for line in path.read_text(encoding="utf-8").splitlines())
+    lines = (line.strip() for line in path.read_text(encoding=ENCODING).splitlines())
     return {line for line in lines if line and not line.startswith("#")}
 
 
@@ -230,10 +231,10 @@ def _compare(
         What is wrong, or None.
     """
     if update:
-        path.write_text(got, encoding="utf-8")
+        path.write_text(got, encoding=ENCODING)
     elif not path.is_file():
         return f"no {path.name}; run `ci-doctor matchers verify --update`"
-    want = path.read_text(encoding="utf-8")
+    want = path.read_text(encoding=ENCODING)
     if want:
         stats.positive += 1
     else:
@@ -451,7 +452,7 @@ def verify(
     """
     n, report = check(root, update=update, policy=policy, only=only)
     if json_out is not None:
-        json_out.write_text(report.to_json(), encoding="utf-8")
+        json_out.write_text(report.to_json(), encoding=ENCODING)
     if report.problems:
         raise SetupError(f"verify failed ({len(report.problems)}):\n" + "\n".join(report.problems))
     return n

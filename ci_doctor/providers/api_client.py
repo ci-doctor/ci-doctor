@@ -22,6 +22,7 @@ import httpx
 
 from ci_doctor import __version__
 from ci_doctor.config.schemas._api import ApiLimits
+from ci_doctor.lib.files import ENCODING
 
 log = logging.getLogger("ci_doctor.providers")
 
@@ -181,7 +182,7 @@ class ApiClient:
         Raises:
             ApiError: As for :meth:`get_json`.
         """
-        return self.request("GET", path).content.decode("utf-8", "replace")
+        return self.request("GET", path).content.decode(ENCODING, "replace")
 
     def paginate(self, path: str, *, key: str | None = None, **params: str | int) -> Iterator[dict[str, Any]]:
         """Every item of a paged list, following `Link: rel="next"` or `x-next-page`.

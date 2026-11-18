@@ -19,6 +19,7 @@ import yaml
 
 from ci_doctor.config.schemas import Config
 from ci_doctor.errors import SetupError
+from ci_doctor.lib.files import ENCODING
 
 log = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def _shipped_defaults() -> dict:
     Returns:
         The baseline config layer, before any user input.
     """
-    text = resources.files("ci_doctor.config").joinpath("defaults.yml").read_text(encoding="utf-8")
+    text = resources.files("ci_doctor.config").joinpath("defaults.yml").read_text(encoding=ENCODING)
     return _load_yaml(text)
 
 
@@ -190,7 +191,7 @@ def _file_layer(path: Path) -> dict:
     Returns:
         The file's layer, not yet validated.
     """
-    layer = _load_yaml(path.read_text(encoding="utf-8"))
+    layer = _load_yaml(path.read_text(encoding=ENCODING))
     registries = (layer.get("matchers") or {}).get("registries")
     if isinstance(registries, dict):  # anything else fails validation later
         for alias, value in registries.items():

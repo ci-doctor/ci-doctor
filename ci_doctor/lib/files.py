@@ -7,6 +7,10 @@ from pathlib import Path
 
 from ci_doctor.errors import SetupError
 
+#: How ci-doctor reads and writes every text file and decodes every body: never the
+#: locale's encoding, which differs on Windows.
+ENCODING = "utf-8"
+
 
 def atomic_write(path: Path, text: str) -> None:
     """Replace a file's contents with text, in one rename (see :func:`atomic_write_bytes`).
@@ -18,7 +22,7 @@ def atomic_write(path: Path, text: str) -> None:
     Raises:
         SetupError: If the file can't be written, e.g. its directory is missing.
     """
-    atomic_write_bytes(path, text.encode("utf-8"))
+    atomic_write_bytes(path, text.encode(ENCODING))
 
 
 def atomic_write_bytes(path: Path, body: bytes) -> None:
