@@ -1,5 +1,7 @@
 """`ci-doctor config`."""
 
+from typing import Annotated
+
 import typer
 from typing_extensions import override
 
@@ -24,16 +26,20 @@ class ConfigCommand(Command):
     @override
     def run(
         self,
-        diff: bool = typer.Option(
-            False, "--diff", help="Show only what your config changes against the shipped defaults."
-        ),
-        schema: bool = typer.Option(
-            False, "--schema", help="Print the JSON Schema for .ci-doctor.yml and exit."
-        ),
-        validate: bool = typer.Option(
-            False, "--validate", help="Load and validate the merged config, then report what failed."
-        ),
-        less: bool = typer.Option(False, "--less", help="Force the scrollable pager, even when piped."),
+        diff: Annotated[
+            bool,
+            typer.Option("--diff", help="Show only what your config changes against the shipped defaults."),
+        ] = False,
+        schema: Annotated[
+            bool, typer.Option("--schema", help="Print the JSON Schema for .ci-doctor.yml and exit.")
+        ] = False,
+        validate: Annotated[
+            bool,
+            typer.Option("--validate", help="Load and validate the merged config, then report what failed."),
+        ] = False,
+        less: Annotated[
+            bool, typer.Option("--less", help="Force the scrollable pager, even when piped.")
+        ] = False,
     ) -> None:
         if validate:
             typer.echo(validate_setup(config_files()))

@@ -39,8 +39,8 @@ the classifier is wrong, that's a bug with a failing test — not a prompt to tu
 - **Useful with no LLM** — ships a deterministic report out of the box: phase, reason,
   terminal command, evidence excerpt, and templated remediation.
 - **Bring-your-own model** — optional LLM step via `openai` (any OpenAI-compatible endpoint,
-  self-hosted or hosted), `anthropic`, `azure`, `bedrock`, `google`, `groq`, `mistral`, `cohere`,
-  `xai` and `huggingface`, all through Pydantic AI's own providers, selected by config.
+  self-hosted or hosted), `anthropic`, `azure`, `bedrock`, `google`, `groq`, `mistral`, `cohere`
+  and `xai`, all through Pydantic AI's own providers, selected by config.
 - **GitLab & GitHub** — one provider-neutral core; the GitHub adapter was added with *zero*
   changes to core.
 - **Air-gap friendly** — no telemetry, no update checks; ship as a self-contained Docker
@@ -83,7 +83,7 @@ uv sync                       # or: pip install .
 uv sync --extra openai        # or: pip install '.[openai]'      — Ollama/vLLM/OpenAI-compatible
 uv sync --extra anthropic     # or: pip install '.[anthropic]'   — Anthropic direct
 uv sync --extra bedrock       # or: pip install '.[bedrock]'     — Amazon Bedrock, AWS IAM auth
-uv sync --extra google        # or: pip install '.[google]'      — Gemini / Vertex AI (also: groq, mistral, cohere, xai, huggingface)
+uv sync --extra google        # or: pip install '.[google]'      — Gemini / Vertex AI (also: groq, mistral, cohere, xai)
 ```
 
 Or build the self-contained image. It has no LLM SDK; bake some in with

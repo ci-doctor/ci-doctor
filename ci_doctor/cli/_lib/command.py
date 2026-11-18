@@ -1,11 +1,17 @@
 """The base every command derives from, and how a group registers them."""
 
+import functools
 import inspect
+import logging
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, ClassVar
 
 import typer
+
+from ci_doctor.errors import SetupError
+
+log = logging.getLogger("ci_doctor.cli")
 
 
 class Command(ABC):
@@ -29,8 +35,25 @@ def register(app: typer.Typer, commands: Sequence[Command]) -> None:
     """
     for command in commands:
         app.command(command.name, help=inspect.getdoc(command), epilog=_examples(command.examples))(
-            command.run
+            _exit_one_on_failure(command.run)
         )
+
+
+def _exit_one_on_failure(run: Callable[..., None]) -> Callable[..., None]:
+    """Any failure is one log line and exit 1, not a traceback; `analyze` keeps invariant #3 itself."""
+
+    @functools.wraps(run)
+    def guarded(*args: Any, **kwargs: Any) -> None:  # noqa: ANN401 - the command's own parameters
+        try:
+            run(*args, **kwargs)
+        except SetupError as exc:
+            log.error(exc)
+            raise typer.Exit(1) from None
+        except Exception as exc:  # noqa: BLE001 - a crash is reported, not raised
+            log.error(f"internal error: {type(exc).__name__}: {exc}")
+            raise typer.Exit(1) from None
+
+    return guarded
 
 
 def _examples(lines: Sequence[str]) -> str | None:

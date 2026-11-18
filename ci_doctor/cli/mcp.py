@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from typing_extensions import override
@@ -31,7 +32,9 @@ class McpCommand(Command):
     )
 
     @override
-    def run(self, project: Path | None = typer.Option(None, "--project", help=PROJECT_HELP)) -> None:
+    def run(
+        self, project: Annotated[Path | None, typer.Option("--project", help=PROJECT_HELP)] = None
+    ) -> None:
         from ci_doctor.agent.server import build  # the SDK is only worth importing for this command
 
         given = files()

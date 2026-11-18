@@ -7,18 +7,17 @@ through `httpx.MockTransport`.
 
 import json
 import shutil
-import sys
 from pathlib import Path
 
 import httpx
 import pytest
 import yaml
 
-from ci_doctor import cli
 from ci_doctor.cli.registry import index
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.matchers.registry.resolve import load
 from tests import support
+from tests.support import invoke
 
 
 @pytest.fixture(autouse=True)
@@ -54,14 +53,11 @@ def _write(path, text):
     return path
 
 
-def _run(monkeypatch, capsys, *argv, config=None, plain=True):
+def _run(*argv, config=None, plain=True):
     """Run `ci-doctor [--write-to config] [--plain] argv`; returns (exit code, stdout, stderr)."""
-    pre = ["--write-to", str(config)] if config else []
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", *pre, *(["--plain"] if plain else []), *argv])
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    out = capsys.readouterr()
-    return exc.value.code, out.out, out.err
+    pre = ["--write-to", config] if config else []
+    result = invoke(*pre, *(["--plain"] if plain else []), *argv)
+    return result.exit_code, result.stdout, result.stderr
 
 
 def _block(path):
@@ -71,115 +67,113 @@ def _block(path):
 # --- add / remove --------------------------------------------------------------------
 
 
-def test_add_creates_the_config_and_appends(cfg, monkeypatch, capsys):
+def test_add_creates_the_config_and_appends(cfg):
     """Add creates the config and appends."""
-    code, out, _ = _run(
-        monkeypatch, capsys, "matchers", "add", "official/pytest", "official/python_traceback"
-    )
+    code, out, _ = _run("matchers", "add", "official/pytest", "official/python_traceback")
     assert code == 0
     assert "added official/pytest" in out
     assert _block(cfg) == {"include": ["official/pytest", "official/python_traceback"]}
 
 
-def test_add_skips_duplicates(cfg, monkeypatch, capsys):
+def test_add_skips_duplicates(cfg):
     """Add skips duplicates."""
     _write(cfg, "matchers:\n  include: [official/pytest]\n")
-    code, out, _ = _run(monkeypatch, capsys, "matchers", "add", "official/pytest")
+    code, out, _ = _run("matchers", "add", "official/pytest")
     assert code == 0
     assert "already in include" in out
     assert _block(cfg)["include"] == ["official/pytest"]
 
 
-def test_add_skips_a_matcher_a_bundle_already_brings(cfg, monkeypatch, capsys):
+def test_add_skips_a_matcher_a_bundle_already_brings(cfg):
     """Add skips a matcher a bundle already brings."""
     _write(cfg, "matchers:\n  include: [official/python]\n")
-    code, out, _ = _run(monkeypatch, capsys, "matchers", "add", "official/pytest")
+    code, out, _ = _run("matchers", "add", "official/pytest")
     assert code == 0
     assert "already included via official/python" in out
     assert _block(cfg)["include"] == ["official/python"]
 
 
-def test_add_unknown_name_exits_1_with_a_hint_and_writes_nothing(cfg, monkeypatch, capsys):
+def test_add_unknown_name_exits_1_with_a_hint_and_writes_nothing(cfg):
     """Add unknown name exits 1 with a hint and writes nothing."""
-    code, _, err = _run(monkeypatch, capsys, "matchers", "add", "official/pytset")
+    code, _, err = _run("matchers", "add", "official/pytset")
     assert code == 1
     assert "did you mean official/pytest?" in " ".join(err.split())  # rich wraps the log line
     assert not cfg.exists()
 
 
-def test_add_unknown_alias_and_unqualified_names_exit_1(cfg, monkeypatch, capsys):
+def test_add_unknown_alias_and_unqualified_names_exit_1(cfg):
     """Add unknown alias and unqualified names exit 1."""
-    assert _run(monkeypatch, capsys, "matchers", "add", "nope/pytest")[0] == 1
-    code, _, err = _run(monkeypatch, capsys, "matchers", "add", "pytest")
+    assert _run("matchers", "add", "nope/pytest")[0] == 1
+    code, _, err = _run("matchers", "add", "pytest")
     assert code == 1
     assert "official/pytest" in err
 
 
-def test_remove_drops_a_direct_ref(cfg, monkeypatch, capsys):
+def test_remove_drops_a_direct_ref(cfg):
     """Remove drops a direct ref."""
     _write(cfg, "matchers:\n  include: [official/pytest, official/python_traceback]\n")
-    code, out, _ = _run(monkeypatch, capsys, "matchers", "remove", "official/pytest")
+    code, out, _ = _run("matchers", "remove", "official/pytest")
     assert code == 0
     assert "removed official/pytest" in out
     assert _block(cfg)["include"] == ["official/python_traceback"]
 
 
-def test_remove_of_a_bundle_only_ref_names_the_bundle(cfg, monkeypatch, capsys):
+def test_remove_of_a_bundle_only_ref_names_the_bundle(cfg):
     """Remove of a bundle only ref names the bundle."""
     _write(cfg, "matchers:\n  include: [official/python]\n")
-    code, _, err = _run(monkeypatch, capsys, "matchers", "remove", "official/pytest")
+    code, _, err = _run("matchers", "remove", "official/pytest")
     assert code == 1
     assert "official/python" in err
     assert _block(cfg)["include"] == ["official/python"]
 
 
-def test_remove_of_an_absent_ref_exits_1(cfg, monkeypatch, capsys):
+def test_remove_of_an_absent_ref_exits_1(cfg):
     """Remove of an absent ref exits 1."""
-    assert _run(monkeypatch, capsys, "matchers", "remove", "official/pytest")[0] == 1
+    assert _run("matchers", "remove", "official/pytest")[0] == 1
 
 
 # --- list / search / info ------------------------------------------------------------
 
 
-def test_list_shows_origin_and_classification(cfg, monkeypatch, capsys):
+def test_list_shows_origin_and_classification(cfg):
     """List shows origin and classification."""
     _write(cfg, "matchers:\n  include: [official/python_traceback, official/all]\n")
-    code, out, _ = _run(monkeypatch, capsys, "matchers", "list")
+    code, out, _ = _run("matchers", "list")
     assert code == 0
     assert "official/python_traceback  via direct  [python, runtime]" in out
     assert "official/pytest  via official/all  [python, test]" in out
 
 
-def test_list_with_nothing_included_says_so(cfg, monkeypatch, capsys):
+def test_list_with_nothing_included_says_so(cfg):
     """List with nothing included says so."""
-    code, out, _ = _run(monkeypatch, capsys, "matchers", "list")
+    code, out, _ = _run("matchers", "list")
     assert code == 0
     assert "nothing included" in out
 
 
-def test_search_matches_name_description_and_classification_case_insensitively(cfg, monkeypatch, capsys):
+def test_search_matches_name_description_and_classification_case_insensitively(cfg):
     """Search matches name description and classification case insensitively."""
-    _, out, _ = _run(monkeypatch, capsys, "matchers", "search", "TRACEBACK")
+    _, out, _ = _run("matchers", "search", "TRACEBACK")
     assert "official/python_traceback" in out
     assert "official/pytest" not in out
-    _, out, _ = _run(monkeypatch, capsys, "matchers", "search", "runtime")
+    _, out, _ = _run("matchers", "search", "runtime")
     assert "official/python_traceback" in out
-    _, out, _ = _run(monkeypatch, capsys, "matchers", "search", "nothing-like-this")
+    _, out, _ = _run("matchers", "search", "nothing-like-this")
     assert "no matchers match" in out
 
 
-def test_search_can_be_limited_to_one_registry(cfg, monkeypatch, capsys, fx_registry):
+def test_search_can_be_limited_to_one_registry(cfg, fx_registry):
     """Search can be limited to one registry."""
     fx = str(fx_registry)
     _write(cfg, f"matchers:\n  registries:\n    fx: {fx}\n")
-    _, out, _ = _run(monkeypatch, capsys, "matchers", "search", "pytest", "--registry", "fx")
+    _, out, _ = _run("matchers", "search", "pytest", "--registry", "fx")
     assert "fx/pytest" in out
     assert "official/" not in out
 
 
-def test_info_on_a_matcher(cfg, monkeypatch, capsys):
+def test_info_on_a_matcher(cfg):
     """Info on a matcher."""
-    code, out, _ = _run(monkeypatch, capsys, "matchers", "info", "official/pytest")
+    code, out, _ = _run("matchers", "info", "official/pytest")
     assert code == 0
     for text in (
         "(matcher)",
@@ -190,191 +184,187 @@ def test_info_on_a_matcher(cfg, monkeypatch, capsys):
         assert text in out
 
 
-def test_info_on_a_bundle_lists_its_flattened_members(cfg, monkeypatch, capsys):
+def test_info_on_a_bundle_lists_its_flattened_members(cfg):
     """Info on a bundle lists its flattened members."""
-    _, out, _ = _run(monkeypatch, capsys, "matchers", "info", "official/all")
+    _, out, _ = _run("matchers", "info", "official/all")
     assert "(bundle)" in out
     assert "  official/pytest" in out
     assert "  official/python_traceback" in out
 
 
-def test_info_unknown_ref_exits_1(cfg, monkeypatch, capsys):
+def test_info_unknown_ref_exits_1(cfg):
     """Info unknown ref exits 1."""
-    assert _run(monkeypatch, capsys, "matchers", "info", "official/zzzzzz")[0] == 1
+    assert _run("matchers", "info", "official/zzzzzz")[0] == 1
 
 
 # --- registry ------------------------------------------------------------------------
 
 
-def test_registry_add_validates_then_writes(cfg, monkeypatch, capsys, fx_registry):
+def test_registry_add_validates_then_writes(cfg, fx_registry):
     """Registry add validates then writes."""
     fx = str(fx_registry)
-    code, out, _ = _run(monkeypatch, capsys, "registry", "add", f"fx={fx}")
+    code, out, _ = _run("registry", "add", f"fx={fx}")
     assert code == 0
     assert f"fx: added {fx}" in out
     assert _block(cfg)["registries"] == {"fx": fx}
 
 
-def test_registry_add_overwrite_prints_old_and_new(cfg, monkeypatch, capsys, fx_registry):
+def test_registry_add_overwrite_prints_old_and_new(cfg, fx_registry):
     """Registry add overwrite prints old and new."""
     fx = str(fx_registry)
     _write(cfg, f"matchers:\n  registries:\n    fx: {fx}/\n")
-    _, out, _ = _run(monkeypatch, capsys, "registry", "add", f"fx={fx}")
+    _, out, _ = _run("registry", "add", f"fx={fx}")
     assert f"fx: {fx}/ -> {fx}" in out
 
 
-def test_registry_add_with_a_failing_index_exits_1_and_leaves_the_config(cfg, monkeypatch, capsys):
+def test_registry_add_with_a_failing_index_exits_1_and_leaves_the_config(cfg):
     """Registry add with a failing index exits 1 and leaves the config."""
     original = "ci: github\n"
     _write(cfg, original)
     for location in ("https://bad.test/", "https://down.test/"):
-        assert _run(monkeypatch, capsys, "registry", "add", f"x={location}")[0] == 1
+        assert _run("registry", "add", f"x={location}")[0] == 1
     assert cfg.read_text() == original
 
 
-def test_registry_add_needs_name_equals_location(cfg, monkeypatch, capsys):
+def test_registry_add_needs_name_equals_location(cfg):
     """Registry add needs name equals location."""
-    assert _run(monkeypatch, capsys, "registry", "add", "nolocation")[0] == 1
+    assert _run("registry", "add", "nolocation")[0] == 1
 
 
-def test_registry_remove_drops_an_unused_registry(cfg, monkeypatch, capsys, fx_registry):
+def test_registry_remove_drops_an_unused_registry(cfg, fx_registry):
     """Registry remove drops an unused registry."""
     fx = str(fx_registry)
     _write(cfg, f"matchers:\n  registries:\n    fx: {fx}\n  include: [official/pytest]\n")
-    code, _, _ = _run(monkeypatch, capsys, "registry", "remove", "fx")
+    code, _, _ = _run("registry", "remove", "fx")
     assert code == 0
     assert _block(cfg) == {"include": ["official/pytest"]}
 
 
-def test_registry_remove_refuses_while_include_uses_it(cfg, monkeypatch, capsys, fx_registry):
+def test_registry_remove_refuses_while_include_uses_it(cfg, fx_registry):
     """Registry remove refuses while include uses it."""
     fx = str(fx_registry)
     _write(cfg, f"matchers:\n  registries:\n    fx: {fx}\n  include: [fx/pytest]\n")
-    code, _, err = _run(monkeypatch, capsys, "registry", "remove", "fx")
+    code, _, err = _run("registry", "remove", "fx")
     assert code == 1
     assert "fx/pytest" in err
     assert "fx" in _block(cfg)["registries"]
 
 
-def test_registry_remove_of_an_official_override_falls_back_to_the_default(
-    cfg, monkeypatch, capsys, fx_registry
-):
+def test_registry_remove_of_an_official_override_falls_back_to_the_default(cfg, fx_registry):
     """The file's own `official` goes; the shipped one is what is left."""
     _write(cfg, f"ci: github\nmatchers:\n  registries:\n    official: {fx_registry}\n")
-    assert _run(monkeypatch, capsys, "registry", "remove", "official")[0] == 0
+    assert _run("registry", "remove", "official")[0] == 0
     assert not _block(cfg)
-    _, out, _ = _run(monkeypatch, capsys, "registry", "list")
+    _, out, _ = _run("registry", "list")
     assert "official  https://matchers.cidoc.dev/" in out
 
 
-def test_registry_remove_of_a_name_not_in_the_file_exits_1(cfg, monkeypatch, capsys):
+def test_registry_remove_of_a_name_not_in_the_file_exits_1(cfg):
     """Neither an unknown name nor the shipped `official` is the file's to remove."""
     for name in ("ghost", "official"):
-        code, _, err = _run(monkeypatch, capsys, "registry", "remove", name)
+        code, _, err = _run("registry", "remove", name)
         assert code == 1
         assert f"registry {name!r} is not in" in err
 
 
-def test_registry_list(cfg, monkeypatch, capsys, fx_registry):
+def test_registry_list(cfg, fx_registry):
     """Registry list."""
     fx = str(fx_registry)
     _write(cfg, f"matchers:\n  registries:\n    fx: {fx}\n")
-    _, out, _ = _run(monkeypatch, capsys, "registry", "list")
+    _, out, _ = _run("registry", "list")
     assert "official  https://matchers.cidoc.dev/" in out
     assert f"fx  {fx}" in out
 
 
-def test_ping_reports_counts_and_exits_0_when_all_are_up(cfg, monkeypatch, capsys):
+def test_ping_reports_counts_and_exits_0_when_all_are_up(cfg):
     """Ping reports counts and exits 0 when all are up."""
-    code, out, _ = _run(monkeypatch, capsys, "registry", "ping")
+    code, out, _ = _run("registry", "ping")
     assert code == 0
     assert "official: ok" in out
     assert "2 matchers, 2 bundles" in out
 
 
-def test_ping_exits_1_when_a_registry_is_down(cfg, monkeypatch, capsys, fx_registry):
+def test_ping_exits_1_when_a_registry_is_down(cfg, fx_registry):
     """Ping exits 1 when a registry is down."""
     fx = str(fx_registry)
     _write(cfg, f"matchers:\n  registries:\n    gone: https://down.test/\n    fx: {fx}\n")
-    code, out, _ = _run(monkeypatch, capsys, "registry", "ping")
+    code, out, _ = _run("registry", "ping")
     assert code == 1
     assert "gone: FAILED" in out
     assert "fx: ok" in out
-    assert _run(monkeypatch, capsys, "registry", "ping", "fx")[0] == 0
-    assert _run(monkeypatch, capsys, "registry", "ping", "ghost")[0] == 1
+    assert _run("registry", "ping", "fx")[0] == 0
+    assert _run("registry", "ping", "ghost")[0] == 1
 
 
-def test_cache_info_prune_and_clean(cfg, monkeypatch, capsys, tmp_path):
+def test_cache_info_prune_and_clean(cfg, tmp_path):
     """`cache` reports what a run left behind, prunes what no index lists, and empties it."""
     _write(cfg, f"matchers:\n  cache_dir: {tmp_path / 'c'}\n")
-    assert "1 files" not in _run(monkeypatch, capsys, "cache", "info")[1]
-    assert _run(monkeypatch, capsys, "matchers", "info", "official/pytest")[0] == 0
-    code, out, _ = _run(monkeypatch, capsys, "cache", "info")
+    assert "1 files" not in _run("cache", "info")[1]
+    assert _run("matchers", "info", "official/pytest")[0] == 0
+    code, out, _ = _run("cache", "info")
     assert code == 0
     assert f"cache: {tmp_path / 'c'}, 1 files" in out
     assert "https://matchers.cidoc.dev/: index fetched 0s ago, 1/4 files cached" in out
     orphan = tmp_path / "c" / "blobs" / "sha256" / "ab" / ("ab" + "0" * 62)
     orphan.parent.mkdir(parents=True, exist_ok=True)
     orphan.write_bytes(b"old")
-    assert "removed 1 file no cached index lists" in _run(monkeypatch, capsys, "cache", "prune")[1]
-    assert "emptied" in _run(monkeypatch, capsys, "cache", "clean")[1]
-    assert ", 0 files" in _run(monkeypatch, capsys, "cache", "info")[1]
+    assert "removed 1 file no cached index lists" in _run("cache", "prune")[1]
+    assert "emptied" in _run("cache", "clean")[1]
+    assert ", 0 files" in _run("cache", "info")[1]
 
 
-def test_pull_fills_the_cache_and_needs_it_on(cfg, monkeypatch, capsys, tmp_path):
+def test_pull_fills_the_cache_and_needs_it_on(cfg, tmp_path):
     """`pull` loads what it's given (or `include`) through the cache; with the cache off it refuses."""
     _write(cfg, f"matchers:\n  cache_dir: {tmp_path / 'c'}\n")
-    code, out, _ = _run(monkeypatch, capsys, "cache", "pull", "official/all")
+    code, out, _ = _run("cache", "pull", "official/all")
     assert code == 0
     assert f"cached 2 matchers from 1 registry in {tmp_path / 'c'}" in out
     assert len(list((tmp_path / "c" / "blobs").rglob("*/*"))) >= 4  # 2 matchers, 2 bundles
-    assert _run(monkeypatch, capsys, "cache", "pull")[0] == 1  # nothing included, nothing named
+    assert _run("cache", "pull")[0] == 1  # nothing included, nothing named
     _write(cfg, "matchers:\n  cache: false\n")
-    code, out, err = _run(monkeypatch, capsys, "cache", "pull", "official/all")
+    code, out, err = _run("cache", "pull", "official/all")
     assert code == 1
     assert "the cache is off" in out + err
 
 
-def test_mirror_writes_a_registry_that_loads_from_disk(cfg, monkeypatch, capsys, tmp_path, fx_registry):
+def test_mirror_writes_a_registry_that_loads_from_disk(cfg, tmp_path, fx_registry):
     """The copy is byte for byte, so it passes the hash check as a local registry; refreshing it works."""
     dest = tmp_path / "mirror"
-    code, out, _ = _run(monkeypatch, capsys, "registry", "mirror", "official", str(dest))
+    code, out, _ = _run("registry", "mirror", "official", str(dest))
     assert code == 0
     assert "mirrored 4 matchers and bundles from official" in out
     for path in fx_registry.rglob("*.yaml"):
         assert (dest / path.relative_to(fx_registry)).read_bytes() == path.read_bytes()
     assert len(load(MatchersConfig(registries={"m": str(dest)}, include=["m/all"]))) == 2
-    assert (
-        _run(monkeypatch, capsys, "registry", "mirror", "official", str(dest))[0] == 0
-    )  # an earlier mirror: refreshed
+    assert _run("registry", "mirror", "official", str(dest))[0] == 0  # an earlier mirror: refreshed
 
 
-def test_mirror_refuses_a_folder_that_holds_something_else(cfg, monkeypatch, capsys, tmp_path):
+def test_mirror_refuses_a_folder_that_holds_something_else(cfg, tmp_path):
     """A mirror never writes over files that aren't a registry's."""
     dest = tmp_path / "notes"
     dest.mkdir()
     (dest / "todo.txt").write_text("keep me")
-    code, out, err = _run(monkeypatch, capsys, "registry", "mirror", "official", str(dest))
+    code, out, err = _run("registry", "mirror", "official", str(dest))
     assert code == 1
     assert "not an empty folder or an earlier mirror" in out + err
     assert sorted(p.name for p in dest.iterdir()) == ["todo.txt"]
 
 
-def test_an_invalid_config_is_a_setup_error(cfg, monkeypatch, capsys):
+def test_an_invalid_config_is_a_setup_error(cfg):
     """An invalid config is a setup error."""
     _write(cfg, "bogus_key: 1\n")
-    assert _run(monkeypatch, capsys, "matchers", "list")[0] == 1
+    assert _run("matchers", "list")[0] == 1
 
 
 @pytest.mark.parametrize("with_file", [False, True])
-def test_matchers_commands_see_the_env_layer_like_analyze(cfg, monkeypatch, capsys, fx_registry, with_file):
+def test_matchers_commands_see_the_env_layer_like_analyze(cfg, monkeypatch, fx_registry, with_file):
     """A registry set through `CI_DOCTOR_*` is as configured for `matchers …` as for `analyze`."""
     if with_file:
         _write(cfg, "ci: gitlab\n")
     monkeypatch.setenv("CI_DOCTOR_MATCHERS__REGISTRIES__ACME", str(fx_registry))
-    _, out, _ = _run(monkeypatch, capsys, "registry", "list")
+    _, out, _ = _run("registry", "list")
     assert f"acme  {fx_registry}" in out
-    code, out, _ = _run(monkeypatch, capsys, "matchers", "search", "pytest", "--registry", "acme")
+    code, out, _ = _run("matchers", "search", "pytest", "--registry", "acme")
     assert code == 0
     assert "acme/pytest" in out
 
@@ -383,131 +373,121 @@ def test_matchers_commands_see_the_env_layer_like_analyze(cfg, monkeypatch, caps
 
 
 @pytest.mark.parametrize("argv", [["registry", "index", "--check"], ["matchers", "verify"]])
-def test_a_non_utf8_matcher_file_fails_the_registry_check(cfg, monkeypatch, capsys, argv):
+def test_a_non_utf8_matcher_file_fails_the_registry_check(cfg, argv):
     """A latin-1 byte is a broken registry, exit 1, whatever the locale's encoding."""
     root = support.write_registry(Path.cwd() / "reg", support.PY_MATCHERS)
     path = next(root.glob("matchers/*/*/matcher.yaml"))
     path.write_bytes(path.read_bytes().replace(b"description: ", b"description: caf\xe9 ", 1))
-    code, _, err = _run(monkeypatch, capsys, *argv, str(root))
+    code, _, err = _run(*argv, str(root))
     assert code == 1
     assert "matcher.yaml" in err
     assert "internal error, exiting 0" not in err
 
 
-def test_writing_into_a_missing_directory_exits_1(cfg, monkeypatch, capsys, fx_registry):
+def test_writing_into_a_missing_directory_exits_1(cfg, fx_registry):
     """The config's directory not existing is a setup problem, not a crash to hide."""
-    code, _, _ = _run(monkeypatch, capsys, "registry", "add", f"fx={fx_registry}", config="nodir/c.yml")
+    code, _, _ = _run("registry", "add", f"fx={fx_registry}", config="nodir/c.yml")
     assert code == 1
 
 
-def test_a_crash_in_a_matchers_command_exits_1(cfg, monkeypatch, capsys):
+def test_a_crash_in_a_matchers_command_exits_1(cfg, monkeypatch):
     """Invariant #3's exit 0 is for analysis: a crashing registry check must not go green."""
 
     def crash(*_args, **_kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(index, "write_index", crash)
-    code, _, err = _run(monkeypatch, capsys, "registry", "index", "--check", ".")
+    code, _, err = _run("registry", "index", "--check", ".")
     assert code == 1
     assert "boom" in err
 
 
-def test_registry_add_stores_a_relative_path_absolute(cfg, monkeypatch, capsys, fx_registry):
+def test_registry_add_stores_a_relative_path_absolute(cfg, fx_registry):
     """`./reg` means the cwd's `reg`, even though the user config lives elsewhere."""
     shutil.copytree(fx_registry, Path.cwd() / "reg")
-    code, _, err = _run(monkeypatch, capsys, "registry", "add", "fx=./reg")
+    code, _, err = _run("registry", "add", "fx=./reg")
     assert code == 0, err
     assert _block(cfg)["registries"] == {"fx": str(Path.cwd() / "reg")}
 
 
-def test_a_hand_written_relative_registry_path_is_relative_to_its_config_file(
-    cfg, monkeypatch, capsys, fx_registry
-):
+def test_a_hand_written_relative_registry_path_is_relative_to_its_config_file(cfg, fx_registry):
     """`sub/.ci-doctor.yml` with `./reg` means `sub/reg`, wherever the command runs."""
     sub = Path.cwd() / "sub"
     shutil.copytree(fx_registry, sub / "reg")
     config = _write(
         sub / ".ci-doctor.yml", "matchers:\n  registries:\n    fx: ./reg\n  include: [fx/pytest]\n"
     )
-    code, out, err = _run(monkeypatch, capsys, "matchers", "list", config=config)
+    code, out, err = _run("matchers", "list", config=config)
     assert code == 0, err
     assert "fx/pytest  via direct" in out
 
 
-def test_a_relative_registry_path_from_the_env_is_relative_to_the_cwd(cfg, monkeypatch, capsys, fx_registry):
+def test_a_relative_registry_path_from_the_env_is_relative_to_the_cwd(cfg, monkeypatch, fx_registry):
     """An env var has no file to be relative to."""
     shutil.copytree(fx_registry, Path.cwd() / "reg")
     monkeypatch.setenv("CI_DOCTOR_MATCHERS__REGISTRIES", "{fx: ./reg}")
     monkeypatch.setenv("CI_DOCTOR_MATCHERS__INCLUDE", "[fx/pytest]")
-    code, out, err = _run(monkeypatch, capsys, "matchers", "list", config=Path.cwd() / "sub" / "missing.yml")
+    code, out, err = _run("matchers", "list", config=Path.cwd() / "sub" / "missing.yml")
     assert code == 0, err
     assert "fx/pytest  via direct" in out
 
 
-def test_the_default_output_is_a_table(cfg, monkeypatch, capsys):
+def test_the_default_output_is_a_table(cfg, monkeypatch):
     """Without `--plain`, rows are a table with a header and changes carry a mark."""
     monkeypatch.setenv("COLUMNS", "200")
-    _, out, _ = _run(monkeypatch, capsys, "matchers", "add", "official/pytest", plain=False)
+    _, out, _ = _run("matchers", "add", "official/pytest", plain=False)
     assert "✓ added official/pytest" in out
-    _, out, _ = _run(monkeypatch, capsys, "matchers", "list", plain=False)
+    _, out, _ = _run("matchers", "list", plain=False)
     assert out.split()[:3] == ["Matcher", "Via", "Tags"]
     assert "official/pytest" in out
 
 
-def test_edits_go_to_the_user_config_by_default(cfg, monkeypatch, capsys):
+def test_edits_go_to_the_user_config_by_default(cfg):
     """Not the last `-f`, not `./.ci-doctor.yml`: the user config, its directory created."""
     shutil.rmtree(cfg.parent)
     repo = _write(Path.cwd() / ".ci-doctor.yml", "ci: github\n")
-    monkeypatch.setattr(
-        sys, "argv", ["ci-doctor", "-f", str(repo), "--plain", "matchers", "add", "official/pytest"]
-    )
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    assert exc.value.code == 0, capsys.readouterr().err
+    result = invoke("-f", str(repo), "--plain", "matchers", "add", "official/pytest")
+    assert result.exit_code == 0, result.stderr
     assert _block(cfg) == {"include": ["official/pytest"]}
     assert repo.read_text() == "ci: github\n"
-    assert (
-        "official/pytest  via direct" in _run(monkeypatch, capsys, "matchers", "list")[1]
-    )  # and it is read back
+    assert "official/pytest  via direct" in _run("matchers", "list")[1]  # and it is read back
 
 
-def test_write_to_picks_the_file_and_is_read_back(cfg, monkeypatch, capsys):
+def test_write_to_picks_the_file_and_is_read_back(cfg):
     """`--write-to x` edits x, and later commands given it see the edit."""
     other = Path.cwd() / "other.yml"
-    assert _run(monkeypatch, capsys, "matchers", "add", "official/pytest", config=other)[0] == 0
+    assert _run("matchers", "add", "official/pytest", config=other)[0] == 0
     assert _block(other) == {"include": ["official/pytest"]}
     assert not cfg.exists()
-    assert "official/pytest" in _run(monkeypatch, capsys, "matchers", "list", config=other)[1]
-    assert (
-        _run(monkeypatch, capsys, "matchers", "list", "--write-to", str(other))[0] == 1
-    )  # global: before the command
+    assert "official/pytest" in _run("matchers", "list", config=other)[1]
+    assert _run("matchers", "list", "--write-to", str(other))[0] == 2  # usage: global, so before the command
 
 
 # --- --json -------------------------------------------------------------------
 
 
-def _json(monkeypatch, capsys, *argv):
+def _json(*argv):
     """Run a listing command with `--json`; returns (exit code, parsed stdout)."""
-    code, out, _ = _run(monkeypatch, capsys, *argv, "--json", plain=False)
+    code, out, _ = _run(*argv, "--json", plain=False)
     return code, json.loads(out)
 
 
-def test_matchers_list_json(cfg, monkeypatch, capsys):
+def test_matchers_list_json(cfg):
     """What include resolves to, with tags as a list, and the excluded outputs."""
     _write(cfg, "matchers:\n  include: [official/pytest]\n  exclude: [official/pytest]\n")
-    code, data = _json(monkeypatch, capsys, "matchers", "list")
+    code, data = _json("matchers", "list")
     assert code == 0 and data["excluded"] == ["official/pytest"]
     assert data["included"] == [{"matcher": "official/pytest", "via": "direct", "tags": ["python", "test"]}]
 
 
-def test_matchers_list_json_with_nothing_included(cfg, monkeypatch, capsys):
+def test_matchers_list_json_with_nothing_included(cfg):
     """An empty selection is an empty list, not a sentence a script must parse."""
-    assert _json(monkeypatch, capsys, "matchers", "list") == (0, {"included": [], "excluded": []})
+    assert _json("matchers", "list") == (0, {"included": [], "excluded": []})
 
 
-def test_matchers_search_json(cfg, monkeypatch, capsys):
+def test_matchers_search_json(cfg):
     """Each hit as an object; no hit is an empty list."""
-    _, hits = _json(monkeypatch, capsys, "matchers", "search", "uncaught")
+    _, hits = _json("matchers", "search", "uncaught")
     assert hits == [
         {
             "name": "official/python_traceback",
@@ -516,37 +496,37 @@ def test_matchers_search_json(cfg, monkeypatch, capsys):
             "description": support.PY_MATCHERS["python_traceback"]["description"],
         }
     ]
-    assert _json(monkeypatch, capsys, "matchers", "search", "nothing-like-this") == (0, [])
+    assert _json("matchers", "search", "nothing-like-this") == (0, [])
 
 
-def test_matchers_info_json(cfg, monkeypatch, capsys):
+def test_matchers_info_json(cfg):
     """A matcher's outputs with their roles; a bundle's members."""
-    _, matcher = _json(monkeypatch, capsys, "matchers", "info", "official/pytest")
+    _, matcher = _json("matchers", "info", "official/pytest")
     assert matcher["kind"] == "matcher" and matcher["tags"] == ["python", "test"]
     assert matcher["outputs"] == [{"id": "pytest", "role": "tool"}]  # as the table shows it
     assert matcher["path"] == "matchers/python/pytest/matcher.yaml"
-    _, bundle = _json(monkeypatch, capsys, "matchers", "info", "official/all")
+    _, bundle = _json("matchers", "info", "official/all")
     assert bundle["kind"] == "bundle" and "official/pytest" in bundle["matchers"]
 
 
-def test_registry_list_and_ping_json(cfg, monkeypatch, capsys):
+def test_registry_list_and_ping_json(cfg):
     """Registries with their locations; ping with real numbers, and still exit 1 when one is down."""
-    _, registries = _json(monkeypatch, capsys, "registry", "list")
+    _, registries = _json("registry", "list")
     assert {"registry": "official", "location": "https://matchers.cidoc.dev/"} in registries
-    code, [ping] = _json(monkeypatch, capsys, "registry", "ping", "official")
+    code, [ping] = _json("registry", "ping", "official")
     assert code == 0 and ping["ok"] is True and ping["matchers"] == 2 and isinstance(ping["latency_ms"], int)
 
     _write(cfg, "matchers:\n  registries:\n    dead: https://down.test/\n")
-    code, [dead] = _json(monkeypatch, capsys, "registry", "ping", "dead")
+    code, [dead] = _json("registry", "ping", "dead")
     assert code == 1 and dead["ok"] is False and dead["error"]
 
 
-def test_cache_info_json(cfg, monkeypatch, capsys, tmp_path):
+def test_cache_info_json(cfg, tmp_path):
     """Where the cache is, how big, and each cached index."""
     _write(cfg, f"matchers:\n  cache_dir: {tmp_path / 'c'}\n")
-    assert _json(monkeypatch, capsys, "cache", "info")[1]["files"] == 0
-    _run(monkeypatch, capsys, "matchers", "info", "official/pytest")
-    _, data = _json(monkeypatch, capsys, "cache", "info")
+    assert _json("cache", "info")[1]["files"] == 0
+    _run("matchers", "info", "official/pytest")
+    _, data = _json("cache", "info")
     assert data["root"] == str(tmp_path / "c") and data["enabled"] is True and data["files"] == 1
     assert data["registries"] == [
         {"registry": "https://matchers.cidoc.dev/", "index_age": "0s", "files": "1/4"}

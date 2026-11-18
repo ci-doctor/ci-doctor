@@ -17,7 +17,7 @@ import difflib
 import hashlib
 import logging
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Generator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
@@ -238,7 +238,7 @@ def fetch_index(alias: str, location: str, client: httpx.Client, cache: Cache | 
 
 
 @contextlib.contextmanager
-def session(cfg: MatchersConfig, client: httpx.Client | None = None) -> Iterator[httpx.Client]:
+def session(cfg: MatchersConfig, client: httpx.Client | None = None) -> Generator[httpx.Client]:
     """The caller's HTTP client, or a fresh one closed afterwards.
 
     Args:

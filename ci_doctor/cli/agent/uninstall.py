@@ -1,5 +1,7 @@
 """`ci-doctor agent uninstall`."""
 
+from typing import Annotated
+
 import typer
 from typing_extensions import override
 
@@ -28,12 +30,16 @@ class UninstallCommand(Command):
     @override
     def run(
         self,
-        target: str | None = typer.Option(
-            None, "--target", "-t", help=f"all (the default), or ids: {','.join(TARGETS)}."
-        ),
-        location: Location | None = typer.Option(
-            None, "--location", "-l", help="local (the default): this project's files. global: your own."
-        ),
+        target: Annotated[
+            str | None,
+            typer.Option("--target", "-t", help=f"all (the default), or ids: {','.join(TARGETS)}."),
+        ] = None,
+        location: Annotated[
+            Location | None,
+            typer.Option(
+                "--location", "-l", help="local (the default): this project's files. global: your own."
+            ),
+        ] = None,
     ) -> None:
         ask = target is None and location is None and interactive()
         location = location or Location.LOCAL

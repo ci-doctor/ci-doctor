@@ -7,6 +7,8 @@ from contextvars import ContextVar
 from enum import StrEnum
 
 from rich.console import Console
+from rich.highlighter import NullHighlighter
+from rich.logging import RichHandler
 from rich.style import Style
 from rich.theme import Theme
 
@@ -92,6 +94,12 @@ def configure_logging(level: str | None, *, colour: bool = True) -> None:
         level: The `--log-level` value, or None when it wasn't passed.
         colour: Colour the level names; off for `--plain` and `--no-color`.
     """
+    # NullHighlighter: rich falls back to ReprHighlighter on highlighter=None.
+    handler = RichHandler(
+        console=LOG_CONSOLE, show_time=False, show_path=False, markup=False, highlighter=NullHighlighter()
+    )
+    logging.basicConfig(level=logging.INFO, format="%(message)s", force=True, handlers=[handler])
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # one INFO line per registry file fetched
     LOG_CONSOLE.no_color = not colour or "NO_COLOR" in os.environ
     name = (level or os.environ.get("CI_DOCTOR_LOG_LEVEL") or "info").upper()
     logging.getLogger("ci_doctor").setLevel(logging.getLevelNamesMapping().get(name, logging.INFO))

@@ -5,6 +5,7 @@ import logging
 import os
 from enum import StrEnum
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from typing_extensions import override
@@ -42,15 +43,17 @@ class AnalyzeCommand(Command):
     @override
     def run(
         self,
-        target: str = typer.Argument(
-            None, help="Pipeline/run id, or the path to a raw job log to replay offline."
-        ),
-        job_id: str = typer.Option(None, "--job-id", help="Analyze a single job id."),
-        output_format: OutputFormat = typer.Option(
-            OutputFormat.TERMINAL,
-            "--format",
-            help="stdout format. `json` prints the report instead of the rendered panels.",
-        ),
+        target: Annotated[
+            str | None,
+            typer.Argument(help="Pipeline/run id, or the path to a raw job log to replay offline."),
+        ] = None,
+        job_id: Annotated[str | None, typer.Option("--job-id", help="Analyze a single job id.")] = None,
+        output_format: Annotated[
+            OutputFormat,
+            typer.Option(
+                "--format", help="stdout format. `json` prints the report instead of the rendered panels."
+            ),
+        ] = OutputFormat.TERMINAL,
     ) -> None:
         # Invariant #3: a SetupError exits 1, anything else 0.
         try:

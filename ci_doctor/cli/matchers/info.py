@@ -1,14 +1,14 @@
 """`ci-doctor matchers info`."""
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
 import typer
 from rich.text import Text
 from typing_extensions import override
 
-from ci_doctor.cli._console.output.json_output import JSON_OPTION, emit
+from ci_doctor.cli._console.output.json_output import JsonFlag, emit
 from ci_doctor.cli._console.output.message import say
 from ci_doctor.cli._console.output.table import Cell, Row, table
 from ci_doctor.cli._lib.command import Command
@@ -44,7 +44,7 @@ class InfoCommand(Command):
 
     @override
     def run(
-        self, ref: str = typer.Argument(..., metavar="ALIAS/NAME"), json_output: bool = JSON_OPTION
+        self, ref: Annotated[str, typer.Argument(metavar="ALIAS/NAME")], json_output: JsonFlag = False
     ) -> None:
         cfg = editable().matchers
         seen = Resolved(cache=Cache.open(cfg))

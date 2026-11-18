@@ -25,6 +25,7 @@ from typing import Any
 
 import httpx
 import yaml
+from typer.testing import CliRunner, Result
 
 from ci_doctor.config.schemas.matchers import MatchersConfig
 from ci_doctor.core.models import Section
@@ -332,3 +333,20 @@ def json_reply(body: Any, status: int = 200, **headers: str) -> httpx.Response:
         The response.
     """
     return httpx.Response(status, json=body, headers={k.replace("_", "-"): v for k, v in headers.items()})
+
+
+# --- the command line --------------------------------------------------------------
+
+
+def invoke(*argv: str | Path) -> Result:
+    """Run `ci-doctor argv` in-process, the way typer tests an app.
+
+    Args:
+        *argv: The arguments after the program name.
+
+    Returns:
+        The exit code, stdout and stderr.
+    """
+    from ci_doctor.cli import app
+
+    return CliRunner().invoke(app, [str(a) for a in argv])

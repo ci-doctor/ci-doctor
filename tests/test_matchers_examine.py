@@ -1,16 +1,12 @@
 """`ci-doctor matchers examine` and `matchers schema`: the real engine on one log, and the matcher JSON Schema."""
 
 import json
-import sys
 from pathlib import Path
 
-import pytest
-
-from ci_doctor import cli
 from ci_doctor.engine import load
 from ci_doctor.matchers.examine import examine
 from ci_doctor.matchers.schema import matcher_schema
-from tests.support import gh_log
+from tests.support import gh_log, invoke
 
 RUFF = Path(__file__).parent / "engine" / "v1" / "cases" / "ruff.yaml"
 LOG = [
@@ -22,18 +18,16 @@ LOG = [
 ]
 
 
-def _main(monkeypatch, capsys, *argv):
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--plain", *argv])
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    return exc.value.code, capsys.readouterr().out
+def _main(*argv):
+    result = invoke("--plain", *argv)
+    return result.exit_code, result.stdout
 
 
-def test_examine_marks_anchors_and_names_the_variants(tmp_path, monkeypatch, capsys):
+def test_examine_marks_anchors_and_names_the_variants(tmp_path):
     """Each output, the variants that fired, `>` on every anchor, and the gaps announced."""
     log = tmp_path / "job.log"
     log.write_text("\n".join(LOG) + "\n")
-    code, out = _main(monkeypatch, capsys, "matchers", "examine", str(RUFF), str(log))
+    code, out = _main("matchers", "examine", str(RUFF), str(log))
     assert code == 0
     assert "ruff.check (concise, full) [tool]" in out
     assert "> src/a.py:1:2: F401 unused" in out
@@ -52,21 +46,21 @@ def test_examine_strips_the_framing_its_name_declares(tmp_path):
     assert not any(line.startswith("> src/a.py") for line in plain_check.lines)  # timestamps stay, `^` misses
 
 
-def test_examine_with_nothing_matching_says_so_and_exits_zero(tmp_path, monkeypatch, capsys):
+def test_examine_with_nothing_matching_says_so_and_exits_zero(tmp_path):
     """Not matching is an answer, not an error."""
     log = tmp_path / "quiet.log"
     log.write_text("all good\n")
-    code, out = _main(monkeypatch, capsys, "matchers", "examine", str(RUFF), str(log))
+    code, out = _main("matchers", "examine", str(RUFF), str(log))
     assert (code, "nothing matched" in out) == (0, True)
 
 
-def test_examine_on_a_missing_log_exits_one(tmp_path, monkeypatch, capsys):
+def test_examine_on_a_missing_log_exits_one(tmp_path):
     """A setup problem is a setup error."""
-    code, _ = _main(monkeypatch, capsys, "matchers", "examine", str(RUFF), str(tmp_path / "nope.log"))
+    code, _ = _main("matchers", "examine", str(RUFF), str(tmp_path / "nope.log"))
     assert code == 1
 
 
-def test_examine_reads_a_matcher_from_a_registry_by_ref(tmp_path, monkeypatch, capsys):
+def test_examine_reads_a_matcher_from_a_registry_by_ref(tmp_path):
     """`<registry>/<name>` fetches through the configured registry, like `info`."""
     from tests import support
 
@@ -78,13 +72,9 @@ def test_examine_reads_a_matcher_from_a_registry_by_ref(tmp_path, monkeypatch, c
     cfg.write_text(f"matchers:\n  registries:\n    fx: {reg}\n")
     log = tmp_path / "job.log"
     log.write_text("\n".join(LOG) + "\n")
-    monkeypatch.setattr(
-        sys, "argv", ["ci-doctor", "--plain", "-f", str(cfg), "matchers", "examine", "fx/ruff", str(log)]
-    )
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    assert exc.value.code == 0
-    assert "ruff.check (concise, full) [tool]" in capsys.readouterr().out
+    result = invoke("--plain", "-f", str(cfg), "matchers", "examine", "fx/ruff", str(log))
+    assert result.exit_code == 0
+    assert "ruff.check (concise, full) [tool]" in result.stdout
 
 
 def test_the_matcher_schema_is_json_schema_with_its_id():
@@ -95,15 +85,15 @@ def test_the_matcher_schema_is_json_schema_with_its_id():
     assert {"from", "while", "until", "max_lines"} <= set(doc["$defs"]["Window"]["properties"])
 
 
-def test_an_unknown_schema_version_exits_one(monkeypatch, capsys):
+def test_an_unknown_schema_version_exits_one():
     """Asking for a version this ci-doctor doesn't know is a setup error."""
-    code, _ = _main(monkeypatch, capsys, "matchers", "schema", "--version", "9")
+    code, _ = _main("matchers", "schema", "--version", "9")
     assert code == 1
 
 
-def test_schema_out_writes_one_file_per_known_version(tmp_path, monkeypatch, capsys):
+def test_schema_out_writes_one_file_per_known_version(tmp_path):
     """What the release attaches: every version this ci-doctor compiles, by the same name."""
-    code, _ = _main(monkeypatch, capsys, "matchers", "schema", "--out", str(tmp_path))
+    code, _ = _main("matchers", "schema", "--out", str(tmp_path))
     assert code == 0
     assert sorted(p.name for p in tmp_path.iterdir()) == ["matcher-v1.schema.json"]
     assert json.loads((tmp_path / "matcher-v1.schema.json").read_text())["$id"].endswith(

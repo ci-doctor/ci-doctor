@@ -13,13 +13,13 @@ import pytest
 import yaml
 from mcp import Client
 
-from ci_doctor import cli
 from ci_doctor.agent.harness.entry import READ_ONLY_TOOLS, SERVER
 from ci_doctor.agent.harness.install import install, uninstall
 from ci_doctor.agent.harness.registry import TARGETS, found, select
 from ci_doctor.agent.server import build
 from ci_doctor.config.files import ConfigFiles
 from ci_doctor.errors import SetupError
+from tests.support import invoke
 
 CASES = [(t.id, loc) for t in TARGETS.values() for loc in sorted(t.locations)]
 
@@ -222,85 +222,76 @@ def test_target_takes_auto_all_or_ids(home):
         select("vscode")
 
 
-def test_from_a_script_with_no_target_install_writes_claude_code_when_nothing_is_found(
-    home, monkeypatch, capsys
-):
+def test_from_a_script_with_no_target_install_writes_claude_code_when_nothing_is_found(home):
     """No terminal and no --target: the agents found here, Claude Code when none is."""
-    code, _, _ = _run(monkeypatch, capsys, "install")
+    code, _, _ = _run("install")
     assert code == 0 and (home.parent / "project" / ".mcp.json").exists()
 
 
 # --- the commands -------------------------------------------------------------
 
 
-def _run(monkeypatch, capsys, *argv):
+def _run(*argv):
     """Run `ci-doctor --plain agent argv`; returns (exit code, stdout, stderr)."""
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--plain", "agent", *argv])
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    out = capsys.readouterr()
-    return exc.value.code, out.out, out.err
+    result = invoke("--plain", "agent", *argv)
+    return result.exit_code, result.stdout, result.stderr
 
 
-def test_install_writes_the_project_config_and_says_what_it_did(home, monkeypatch, capsys):
+def test_install_writes_the_project_config_and_says_what_it_did(home):
     """`agent install --target claude` writes `.mcp.json` here and lists every file."""
-    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude")
+    code, out, _ = _run("install", "--target", "claude")
     assert code == 0
     assert json.loads((home.parent / "project" / ".mcp.json").read_text())["mcpServers"][SERVER]["args"] == [
         "mcp"
     ]
     assert "created ./.mcp.json" in out and "Restart your agents" in out
 
-    code, out, _ = _run(monkeypatch, capsys, "uninstall", "--target", "claude")
+    code, out, _ = _run("uninstall", "--target", "claude")
     assert code == 0 and "removed ./.mcp.json" in out
 
 
-def test_dry_run_shows_the_files_and_config_and_writes_nothing(home, monkeypatch, capsys):
+def test_dry_run_shows_the_files_and_config_and_writes_nothing(home):
     """`--dry-run` names each file and prints the config to add; no file appears."""
-    code, out, _ = _run(
-        monkeypatch, capsys, "install", "--target", "codex,claude", "--location", "global", "--dry-run"
-    )
+    code, out, _ = _run("install", "--target", "codex,claude", "--location", "global", "--dry-run")
     assert code == 0 and "Dry run, nothing is written" in out
     assert "~/.codex/config.toml" in out and "[mcp_servers.ci-doctor]" in out
     assert "~/.claude.json" in out and '"mcpServers"' in out
     assert not any(home.rglob("*")) and not any(home.parent.joinpath("project").rglob("*"))
 
 
-def test_dry_run_says_which_agents_have_no_config_there(home, monkeypatch, capsys):
+def test_dry_run_says_which_agents_have_no_config_there(home):
     """A global-only agent asked for a project install is shown as skipped, with the fix."""
-    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "codex", "--dry-run")
+    code, out, _ = _run("install", "--target", "codex", "--dry-run")
     assert code == 0 and "skipped: no local config; use --location global" in out
     assert not any(home.parent.joinpath("project").rglob("*"))
 
 
-def test_an_unknown_target_is_a_usage_error(home, monkeypatch, capsys):
+def test_an_unknown_target_is_a_usage_error(home):
     """A typo in `--target` names the choices instead of crashing."""
-    code, _, err = _run(monkeypatch, capsys, "install", "--target", "vscode", "--dry-run")
+    code, _, err = _run("install", "--target", "vscode", "--dry-run")
     assert code == 1 and "claude" in err and "internal error" not in err
 
 
-def test_from_a_script_install_writes_what_its_flags_name(home, monkeypatch, capsys):
+def test_from_a_script_install_writes_what_its_flags_name(home):
     """No terminal to ask in: the flags are the decision, so the files are listed and written."""
-    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude")
+    code, out, _ = _run("install", "--target", "claude")
     assert code == 0 and "This will add ci-doctor to" in out
     assert (home.parent / "project" / ".mcp.json").exists()
 
 
-def test_a_skipped_file_prints_the_snippet_and_exits_1(home, monkeypatch, capsys):
+def test_a_skipped_file_prints_the_snippet_and_exits_1(home):
     """The rest is done; the file left alone gets the config to add by hand, and the exit says so."""
     (home.parent / "project" / ".mcp.json").write_text("{not json")
-    code, out, err = _run(monkeypatch, capsys, "install", "--target", "claude")
+    code, out, err = _run("install", "--target", "claude")
     assert code == 1 and "left as they were" in err
     assert "Add this by hand" in out and '"ci-doctor"' in out
     assert (home.parent / "project" / ".claude" / "CLAUDE.md").exists()  # the rest was still done
 
 
-def test_serving_a_project_that_does_not_exist_fails(home, monkeypatch, capsys):
+def test_serving_a_project_that_does_not_exist_fails(home):
     """`ci-doctor mcp --project` must name a folder."""
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--plain", "mcp", "--project", "nowhere"])
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    assert exc.value.code == 1 and "no such directory" in capsys.readouterr().err
+    result = invoke("--plain", "mcp", "--project", "nowhere")
+    assert result.exit_code == 1 and "no such directory" in result.stderr
 
 
 HERMES_WITH_COMMENTS = """\
@@ -348,13 +339,13 @@ def test_a_clean_machine_keeps_nothing_of_ci_doctor_after_uninstall(home, agent,
         assert json.loads(text) in ({}, {"$schema": "https://opencode.ai/config.json"}), path
 
 
-def test_uninstall_lists_only_the_agents_that_have_ci_doctor(home, monkeypatch, capsys):
+def test_uninstall_lists_only_the_agents_that_have_ci_doctor(home):
     """With nothing installed it says so; after one install it names only that agent."""
-    code, out, _ = _run(monkeypatch, capsys, "uninstall")
+    code, out, _ = _run("uninstall")
     assert code == 0 and "nothing to remove" in out
 
-    _run(monkeypatch, capsys, "install", "--target", "gemini")
-    code, out, _ = _run(monkeypatch, capsys, "uninstall")
+    _run("install", "--target", "gemini")
+    code, out, _ = _run("uninstall")
     assert code == 0 and "Gemini CLI" in out and "Claude Code" not in out and "Cursor" not in out
 
 
@@ -419,9 +410,9 @@ def test_uninstall_keeps_the_users_own_entries_in_a_container(home):
     assert json.loads(mcp.read_text()) == {"mcpServers": {"other": {"command": "x"}}}
 
 
-def test_install_warns_when_agents_cannot_find_ci_doctor(home, monkeypatch, capsys):
+def test_install_warns_when_agents_cannot_find_ci_doctor(home, monkeypatch):
     """Agents start the server by name; if `ci-doctor` is not on PATH, say so and how to fix it."""
-    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude")
+    code, out, _ = _run("install", "--target", "claude")
     assert code == 0 and "`ci-doctor` is not on your PATH" in out and "uv tool install ci-doctorr" in out
 
     bin_dir = home / "bin"
@@ -430,11 +421,11 @@ def test_install_warns_when_agents_cannot_find_ci_doctor(home, monkeypatch, caps
     binary.write_text("#!/bin/sh\n")
     binary.chmod(0o755)
     monkeypatch.setenv("PATH", str(bin_dir))
-    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "claude")
+    code, out, _ = _run("install", "--target", "claude")
     assert code == 0 and "not on your PATH" not in out
 
 
-def test_antigravity_uninstall_finds_an_entry_left_in_its_old_config(home, monkeypatch, capsys):
+def test_antigravity_uninstall_finds_an_entry_left_in_its_old_config(home):
     """Install, then Antigravity moves to its new config: uninstall must still find the old entry."""
     (home / ".gemini" / "antigravity").mkdir(parents=True)
     TARGETS["antigravity"].install("global", permissions=True)
@@ -442,14 +433,14 @@ def test_antigravity_uninstall_finds_an_entry_left_in_its_old_config(home, monke
     (home / ".gemini" / "config" / ".migrated").touch()
     assert TARGETS["antigravity"].present("global")
 
-    code, out, _ = _run(monkeypatch, capsys, "uninstall", "--location", "global")
+    code, out, _ = _run("uninstall", "--location", "global")
     assert code == 0 and "Antigravity" in out
     assert not TARGETS["antigravity"].present("global")
 
 
-def test_pi_install_names_the_extension_it_needs(home, monkeypatch, capsys):
+def test_pi_install_names_the_extension_it_needs(home):
     """Pi has no MCP of its own: the server goes in its `mcp.json`, and install says to add the adapter."""
-    code, out, _ = _run(monkeypatch, capsys, "install", "--target", "pi", "--location", "global")
+    code, out, _ = _run("install", "--target", "pi", "--location", "global")
     config = json.loads((home / ".pi" / "agent" / "mcp.json").read_text())
     assert code == 0 and config["mcpServers"][SERVER] == {"command": "ci-doctor", "args": ["mcp"]}
     assert "analyze_run" in (home / ".pi" / "agent" / "AGENTS.md").read_text()
@@ -466,7 +457,7 @@ def test_pi_follows_its_agent_dir(home, monkeypatch):
 DOWN, SPACE, ENTER = "\x1b[B", " ", "\r"
 
 
-def _answer(monkeypatch, capsys, keys, typed, *argv):
+def _answer(monkeypatch, keys, typed, *argv):
     """Run `ci-doctor agent <argv>` (`install` by default) in a terminal, typing `typed` then ending input.
 
     Returns:
@@ -476,15 +467,13 @@ def _answer(monkeypatch, capsys, keys, typed, *argv):
     monkeypatch.setattr(f"ci_doctor.cli.agent.{argv[0]}.interactive", lambda: True)
     keys.send_text(typed)
     keys.close()
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--no-color", "agent", *argv])
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    return exc.value.code, capsys.readouterr().out
+    result = invoke("--no-color", "agent", *argv)
+    return result.exit_code, result.stdout
 
 
-def test_with_no_flags_it_asks_and_enter_takes_every_default(home, monkeypatch, capsys, keys):
+def test_with_no_flags_it_asks_and_enter_takes_every_default(home, monkeypatch, keys):
     """Nothing found here, so Claude Code is ticked; Enter four times installs it in this project."""
-    code, _ = _answer(monkeypatch, capsys, keys, ENTER * 4)
+    code, _ = _answer(monkeypatch, keys, ENTER * 4)
     project = home.parent / "project"
     assert code == 0
     assert SERVER in json.loads((project / ".mcp.json").read_text())["mcpServers"]
@@ -492,17 +481,17 @@ def test_with_no_flags_it_asks_and_enter_takes_every_default(home, monkeypatch, 
     assert allow == [f"mcp__{SERVER}__{tool}" for tool in READ_ONLY_TOOLS]
 
 
-def test_the_answers_choose_the_agents_and_the_location(home, monkeypatch, capsys, keys):
+def test_the_answers_choose_the_agents_and_the_location(home, monkeypatch, keys):
     """Untick Claude, tick Cursor, pick "All my projects": no allow-list question, Cursor's own file."""
-    code, _ = _answer(monkeypatch, capsys, keys, SPACE + DOWN + SPACE + ENTER + DOWN + ENTER + ENTER)
+    code, _ = _answer(monkeypatch, keys, SPACE + DOWN + SPACE + ENTER + DOWN + ENTER + ENTER)
     assert code == 0
     assert SERVER in json.loads((home / ".cursor" / "mcp.json").read_text())["mcpServers"]
     assert not (home.parent / "project" / ".mcp.json").exists()
 
 
-def test_a_global_only_pick_is_not_asked_where(home, monkeypatch, capsys, keys):
+def test_a_global_only_pick_is_not_asked_where(home, monkeypatch, keys):
     """Codex has no project config, so the location question is skipped with a note."""
-    code, out = _answer(monkeypatch, capsys, keys, SPACE + DOWN + DOWN + SPACE + ENTER + ENTER)
+    code, out = _answer(monkeypatch, keys, SPACE + DOWN + DOWN + SPACE + ENTER + ENTER)
     assert code == 0 and "no project config" in out
     assert "[mcp_servers.ci-doctor]" in (home / ".codex" / "config.toml").read_text()
 
@@ -515,27 +504,25 @@ def test_a_global_only_pick_is_not_asked_where(home, monkeypatch, capsys, keys):
         (ENTER, "Cancelled; nothing written."),
     ],
 )
-def test_saying_no_picking_nothing_or_cancelling_writes_nothing(
-    home, monkeypatch, capsys, keys, typed, message
-):
+def test_saying_no_picking_nothing_or_cancelling_writes_nothing(home, monkeypatch, keys, typed, message):
     """No at the end, an empty pick, or end of input: exit 0 and no file anywhere."""
-    code, out = _answer(monkeypatch, capsys, keys, typed)
+    code, out = _answer(monkeypatch, keys, typed)
     assert code == 0 and message in out
     assert not [p for p in home.parent.rglob("*") if p.is_file()]
 
 
-def test_any_flag_skips_the_questions(home, monkeypatch, capsys, keys):
+def test_any_flag_skips_the_questions(home, monkeypatch, keys):
     """A flag means a script or a decision already made: nothing is read from the terminal."""
-    code, _ = _answer(monkeypatch, capsys, keys, "", "install", "--target", "cursor")
+    code, _ = _answer(monkeypatch, keys, "", "install", "--target", "cursor")
     assert code == 0
     assert (home.parent / "project" / ".cursor" / "mcp.json").exists()
 
 
 @pytest.mark.parametrize(("typed", "kept"), [("n", True), (ENTER, False)])
-def test_uninstall_with_no_flags_asks_before_removing(home, monkeypatch, capsys, keys, typed, kept):
+def test_uninstall_with_no_flags_asks_before_removing(home, monkeypatch, keys, typed, kept):
     """In a terminal, "n" leaves the files alone and Enter removes ci-doctor."""
     TARGETS["claude"].install("local", permissions=True)
-    code, out = _answer(monkeypatch, capsys, keys, typed, "uninstall")
+    code, out = _answer(monkeypatch, keys, typed, "uninstall")
     config = home.parent / "project" / ".mcp.json"
     assert code == 0 and "This will remove ci-doctor from" in out
     assert (SERVER in json.loads(config.read_text()).get("mcpServers", {})) is kept

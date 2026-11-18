@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from typing_extensions import override
 
-from ci_doctor.cli._console.output.json_output import JSON_OPTION, emit
+from ci_doctor.cli._console.output.json_output import JsonFlag, emit
 from ci_doctor.cli._console.output.table import Row, table
 from ci_doctor.cli._lib.command import Command
 from ci_doctor.cli._lib.context import editable
@@ -29,7 +29,7 @@ class ListCommand(Command):
             return f"{self.registry}  {self.location}"
 
     @override
-    def run(self, json_output: bool = JSON_OPTION) -> None:
+    def run(self, json_output: JsonFlag = False) -> None:
         rows = [
             self._Registry(alias, redact(location))
             for alias, location in editable().matchers.registries.items()

@@ -1,11 +1,12 @@
 """`ci-doctor matchers search`."""
 
 from dataclasses import dataclass
+from typing import Annotated
 
 import typer
 from typing_extensions import override
 
-from ci_doctor.cli._console.output.json_output import JSON_OPTION, emit
+from ci_doctor.cli._console.output.json_output import JsonFlag, emit
 from ci_doctor.cli._console.output.message import say
 from ci_doctor.cli._console.output.table import Row, table
 from ci_doctor.cli._lib.command import Command
@@ -36,9 +37,9 @@ class SearchCommand(Command):
     @override
     def run(
         self,
-        term: str = typer.Argument(..., help="Case-insensitive text to find."),
-        registry: str | None = typer.Option(None, "--registry", help="Search only this registry."),
-        json_output: bool = JSON_OPTION,
+        term: Annotated[str, typer.Argument(help="Case-insensitive text to find.")],
+        registry: Annotated[str | None, typer.Option("--registry", help="Search only this registry.")] = None,
+        json_output: JsonFlag = False,
     ) -> None:
         hits = search(editable().matchers, term, registry)
         if json_output:
