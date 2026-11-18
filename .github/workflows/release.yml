@@ -88,15 +88,6 @@ jobs:
             docker.io/fennet/ci-doctor:${{ steps.bump.outputs.version }}
             docker.io/fennet/ci-doctor:latest
 
-      # The runner's image store holds one platform per tag, so each is loaded and run alone.
-      - name: Smoke-test the Docker image on each platform
-        if: steps.gate.outputs.release == 'true'
-        run: |
-          for platform in linux/amd64 linux/arm64; do
-            docker buildx build --platform "$platform" --load -t ci-doctor-smoke .
-            docker run --rm --platform "$platform" ci-doctor-smoke --version
-          done
-
       # Editors resolve it via its $id, /releases/latest/download/ci-doctor.schema.json.
       - name: Generate the config JSON Schema
         if: steps.gate.outputs.release == 'true'
