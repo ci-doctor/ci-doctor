@@ -121,6 +121,7 @@ def test_provider_maps_jobs_and_normalizes_status():
         _gh_job(id=12, name="flaky", conclusion="timed_out"),
         _gh_job(id=13, name="ok", conclusion="success"),
         _gh_job(id=14, name="slow", conclusion="cancelled"),
+        _gh_job(id=15, name="sonar", conclusion="skipped"),
     ]
     provider, _ = _github(
         _run_routes(jobs), {"GITHUB_REPOSITORY": "acme/app", "GITHUB_REF": "refs/pull/42/merge"}
@@ -133,7 +134,8 @@ def test_provider_maps_jobs_and_normalizes_status():
     assert build.runner.description == "gh-runner-1" and build.runner.id == "7"
     assert build.started_at == "2024-01-01T00:00:00Z"  # kept as the API sends it
     assert run.jobs[1].failure_reason == FailureReason.TIMEOUT
-    assert run.jobs[2].status == "completed"  # success conclusion stays non-failed
+    # The outcome, not the run state "completed": the brief tells a model which jobs passed.
+    assert [run.jobs[2].status, run.jobs[4].status] == ["success", "skipped"]
     # A cancellation keeps its own status rather than being flattened into
     # "failed" — the domain has a word for it, and GitLab reports the same one.
     assert run.jobs[3].status == "cancelled"

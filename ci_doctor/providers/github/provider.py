@@ -49,6 +49,8 @@ _CONCLUSION_STATUS = {
     "timed_out": "failed",
     "startup_failure": "failed",
     "cancelled": "cancelled",
+    "success": "success",
+    "skipped": "skipped",
 }
 
 

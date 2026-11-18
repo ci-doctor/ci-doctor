@@ -4,7 +4,7 @@ from ci_doctor.config.loader import load_config
 from ci_doctor.core.models import FailureReason, Job, Run
 from ci_doctor.core.ports import LLMClient
 from ci_doctor.errors import LogUnavailable
-from ci_doctor.service.analyze import _ordered, analyze_run, run_from_file
+from ci_doctor.service.analyze import _ordered, analyze_run, diagnose_run, run_from_file
 from tests import support
 
 
@@ -147,3 +147,15 @@ def test_a_log_that_could_not_be_read_is_reported_as_such_not_as_a_missing_runne
     assert (result.attribution.phase, result.attribution.confidence) == ("script", "low")
     assert result.attribution.rule_id != "empty_log_no_runner"
     assert any("could not be read (HTTP 403" in f for f in result.report.contributing_factors)
+
+
+def test_each_brief_says_how_the_rest_of_the_run_went(monkeypatch):
+    """Passing on the other matrix entries points at what differs, which no single log shows."""
+    jobs = [
+        Job(id="1", name="test (ubuntu-latest)", status="success"),
+        Job(id="2", name="test (windows-latest)", status="failed"),
+    ]
+    provider = _FakeProvider(jobs, support.script_log("github", support.FAIL))
+    monkeypatch.setattr("ci_doctor.service.analyze.make_ci_provider", lambda cfg: provider)
+    [diagnosis] = diagnose_run("42", load_config(environ={}), [])
+    assert diagnosis.brief.run_jobs == ["test (ubuntu-latest): success"]  # not the job itself

@@ -5,7 +5,7 @@ as it is; `analyze` turns it into a prompt for the configured LLM (`llm/report.p
 The brief does not know which one reads it (GUIDELINES §2.4).
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from importlib import resources
 from string import Template
 
@@ -17,6 +17,9 @@ from ci_doctor.core.evidence import EvidenceBundle
 from ci_doctor.core.models import Confidence, FailureReason, Job, Phase
 from ci_doctor.core.redact import redact_text
 from ci_doctor.lib.files import ENCODING
+
+#: A matrix of every OS by every version is a few dozen jobs; past that the list is noise.
+MAX_RUN_JOBS = 50
 
 
 class FiredMatcher(BaseModel):
@@ -36,6 +39,10 @@ class Brief(BaseModel):
     web_url: str | None = Field(description="Where the job can be opened, when known.")
     duration: float | None = Field(description="How long the job ran, in seconds, when known.")
     needs: list[str] = Field(description="The upstream jobs this one depends on.")
+    run_jobs: list[str] = Field(
+        description="Every other job in the run as `name: status`; empty for a replayed log. The same job "
+        "passing on another matrix entry points at what differs (OS, version, runner)."
+    )
     failure_phase: Phase = Field(description="Where the job failed. Decided deterministically; settled.")
     reason: FailureReason = Field(description="The normalised failure reason behind that phase.")
     raw_reason: str = Field(description="The CI system's own failure reason, as it spelled it.")
@@ -59,6 +66,7 @@ def build_brief(
     bundle: EvidenceBundle,
     cfg: Config,
     environ: Mapping[str, str] | None = None,
+    run_jobs: Sequence[Job] = (),
 ) -> Brief:
     """Turn one diagnosed job into its brief, every text field redacted (invariant #5).
 
@@ -68,6 +76,7 @@ def build_brief(
         bundle: The budgeted evidence.
         cfg: The effective config, for its redaction rules.
         environ: Environment to harvest secret literals from. Defaults to os.environ.
+        run_jobs: Every job in the run, this one included; none for a replayed log.
 
     Returns:
         The brief.
@@ -84,6 +93,7 @@ def build_brief(
         web_url=job.web_url,
         duration=job.duration,
         needs=[clean(n) for n in job.needs],
+        run_jobs=[clean(f"{j.name}: {j.status}") for j in run_jobs if j.id != job.id][:MAX_RUN_JOBS],
         failure_phase=attr.phase,
         reason=attr.reason,
         raw_reason=clean(job.raw_failure_reason),

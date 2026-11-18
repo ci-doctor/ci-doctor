@@ -11,7 +11,7 @@ pure and provider-neutral (invariant #2). This is the layer that knows both.
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import NamedTuple, TypeVar
@@ -67,7 +67,9 @@ class JobResult(NamedTuple):
     bundle: EvidenceBundle
 
 
-def diagnose_job(job: Job, cfg: Config, plan: Plan, segmenter: LogSegmenter | None = None) -> Diagnosis:
+def diagnose_job(
+    job: Job, cfg: Config, plan: Plan, segmenter: LogSegmenter | None = None, run_jobs: Sequence[Job] = ()
+) -> Diagnosis:
     """Segment, classify and assemble the evidence and the brief for one job. No model is called.
 
     Args:
@@ -77,6 +79,7 @@ def diagnose_job(job: Job, cfg: Config, plan: Plan, segmenter: LogSegmenter | No
         segmenter: Parser for this log's format. Defaults to the one `config.ci`
             names, which is right for a live run — the provider that produced the
             log is the one we just read it from.
+        run_jobs: Every job in the run, for the brief; none for a replayed log.
 
     Returns:
         The job, its verdict, its evidence and its brief.
@@ -93,7 +96,7 @@ def diagnose_job(job: Job, cfg: Config, plan: Plan, segmenter: LogSegmenter | No
         f" (reason {attr.reason}, rule {attr.rule_id}, confidence {attr.confidence})"
     )
     bundle = build_bundle(job, attr, job.sections, cfg, plan)
-    return Diagnosis(job, attr, bundle, build_brief(job, attr, bundle, cfg))
+    return Diagnosis(job, attr, bundle, build_brief(job, attr, bundle, cfg, run_jobs=run_jobs))
 
 
 def explain(diagnosis: Diagnosis, cfg: Config, client: LLMClient | None = None) -> JobResult:
@@ -128,6 +131,7 @@ def process_job(
     plan: Plan,
     segmenter: LogSegmenter | None = None,
     client: LLMClient | None = None,
+    run_jobs: Sequence[Job] = (),
 ) -> JobResult:
     """Diagnose one job, then explain it: `diagnose_job` and `explain` in one call.
 
@@ -137,11 +141,12 @@ def process_job(
         plan: The run's compiled matchers.
         segmenter: Parser for this log's format; see `diagnose_job`.
         client: The run's shared LLM client; see `explain`.
+        run_jobs: Every job in the run; see `diagnose_job`.
 
     Returns:
         The job, its verdict, and its report.
     """
-    return explain(diagnose_job(job, cfg, plan, segmenter), cfg, client)
+    return explain(diagnose_job(job, cfg, plan, segmenter, run_jobs), cfg, client)
 
 
 def _ordered(jobs: list[Job]) -> list[Job]:
@@ -209,9 +214,9 @@ def diagnose_run(
     Returns:
         One diagnosis per failed job, in pipeline order; empty when none failed.
     """
-    _, _, jobs = _fetch(run_id, cfg, job_id)
+    run, _, jobs = _fetch(run_id, cfg, job_id)
     plan = compile_plan(matchers, cfg.matchers.exclude)
-    return _each(jobs, cfg, lambda job: diagnose_job(job, cfg, plan))
+    return _each(jobs, cfg, lambda job: diagnose_job(job, cfg, plan, run_jobs=run.jobs))
 
 
 def analyze_run(
@@ -230,7 +235,7 @@ def analyze_run(
         caller can post an MR note without reconnecting.
     """
     run, provider, jobs = _fetch(run_id, cfg, job_id)
-    return run, provider, _analyze(jobs, cfg, matchers)
+    return run, provider, _analyze(jobs, cfg, matchers, run_jobs=run.jobs)
 
 
 def _each(jobs: list[Job], cfg: Config, step: Callable[[Job], _R]) -> list[_R]:
@@ -258,7 +263,11 @@ def _each(jobs: list[Job], cfg: Config, step: Callable[[Job], _R]) -> list[_R]:
 
 
 def _analyze(
-    jobs: list[Job], cfg: Config, matchers: list[Spec], segmenter: LogSegmenter | None = None
+    jobs: list[Job],
+    cfg: Config,
+    matchers: list[Spec],
+    segmenter: LogSegmenter | None = None,
+    run_jobs: Sequence[Job] = (),
 ) -> list[JobResult]:
     """Diagnose and explain every job, sharing one LLM client.
 
@@ -270,6 +279,7 @@ def _analyze(
         cfg: The effective config.
         matchers: The evidence matchers, loaded from the configured registries.
         segmenter: Parser for the log format, or None to derive it per job.
+        run_jobs: Every job in the run; none for a replayed log.
 
     Returns:
         One result per job, in the order given.
@@ -279,7 +289,7 @@ def _analyze(
     plan = compile_plan(matchers, cfg.matchers.exclude)
     client = client_for_run(cfg)
     try:
-        return _each(jobs, cfg, lambda job: process_job(job, cfg, plan, segmenter, client))
+        return _each(jobs, cfg, lambda job: process_job(job, cfg, plan, segmenter, client, run_jobs))
     finally:
         if client is not None:
             client.close()
