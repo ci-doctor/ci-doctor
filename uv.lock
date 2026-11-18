@@ -459,7 +459,7 @@ wheels = [
 
 [[package]]
 name = "ci-doctorr"
-version = "0.0.1a17"
+version = "0.0.1a18"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
