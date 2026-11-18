@@ -1,25 +1,38 @@
 """The config files a command reads (the global `-f`) and the one it writes (`--write-to`)."""
 
 from collections.abc import Callable
+from contextvars import ContextVar
 from pathlib import Path
-
-import click
 
 from ci_doctor.config.files import ConfigFiles
 from ci_doctor.config.schemas import Config
 
-FILES = "ci_doctor.config_files"
-WRITE_TO = "ci_doctor.write_to"
+# Ours, not click's context: typer 0.26+ runs on its own copy of click, whose context
+# `click.get_current_context()` cannot see.
+_FILES: ContextVar[ConfigFiles | None] = ContextVar("ci_doctor_config_files", default=None)
+
+
+def use(paths: list[Path], write_to: Path | None) -> Callable[[], None]:
+    """Record the global `-f` and `--write-to` for one invocation; the root callback calls it.
+
+    Args:
+        paths: The `-f` files, in order.
+        write_to: The `--write-to` file, or None.
+
+    Returns:
+        What undoes it, for when the invocation ends.
+    """
+    token = _FILES.set(ConfigFiles(paths, write_to))
+    return lambda: _FILES.reset(token)
 
 
 def files() -> ConfigFiles:
     """The global `-f` and `--write-to`, as the services take them.
 
     Returns:
-        The files this invocation reads and the one it edits.
+        The files this invocation reads and the one it edits; none outside a command.
     """
-    meta = click.get_current_context().meta
-    return ConfigFiles(meta.get(FILES, []), meta.get(WRITE_TO))
+    return _FILES.get() or ConfigFiles([], None)
 
 
 def config_files() -> list[Path]:

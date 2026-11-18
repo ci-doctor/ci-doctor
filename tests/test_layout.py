@@ -36,6 +36,11 @@ def test_service_has_no_terminal_in_it():
     assert _offenders((PACKAGE / "service").rglob("*.py"), ("typer", "click")) == {}
 
 
+def test_cli_does_not_import_click():
+    """`cli/` uses typer only: from typer 0.26 on, click's own context is empty (typer runs a copy)."""
+    assert _offenders((PACKAGE / "cli").rglob("*.py"), ("click",)) == {}
+
+
 SERVER = PACKAGE / "agent" / "server.py"
 
 

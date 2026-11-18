@@ -39,6 +39,11 @@ jobs:
       # Every LLM extra, so the provider tests run.
       - run: uv sync --locked --all-extras
       - run: uv run --locked pytest -q --cov
+      # The lock holds typer below 0.26 (huggingface-hub caps it), but pip and uvx install
+      # the newest typer, which runs on its own copy of click. One leg runs the suite on it.
+      - name: Tests on the newest typer
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
+        run: uv run --locked --with "typer>=0.26" pytest -q -p no:cacheprovider
       # One leg is enough for Sonar.
       - name: Coverage report for Sonar
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'

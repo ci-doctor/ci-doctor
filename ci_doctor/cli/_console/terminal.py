@@ -2,15 +2,17 @@
 
 import logging
 import os
+from collections.abc import Callable
+from contextvars import ContextVar
 from enum import StrEnum
 
-import click
 from rich.console import Console
 from rich.style import Style
 from rich.theme import Theme
 
-PLAIN = "ci_doctor.plain"
-NO_COLOR = "ci_doctor.no_color"
+# Ours, not click's context: typer 0.26+ runs on its own copy of click (see cli/_lib/context.py).
+_PLAIN: ContextVar[bool] = ContextVar("ci_doctor_plain", default=False)
+_NO_COLOR: ContextVar[bool] = ContextVar("ci_doctor_no_color", default=False)
 
 _LEVEL_COLORS = Theme(
     {
@@ -25,9 +27,23 @@ _LEVEL_COLORS = Theme(
 LOG_CONSOLE = Console(theme=_LEVEL_COLORS, stderr=True)
 
 
-def _flag(key: str) -> bool:
-    ctx = click.get_current_context(silent=True)
-    return bool(ctx and ctx.meta.get(key))
+def use(*, plain: bool, no_color: bool) -> Callable[[], None]:
+    """Record the global `--plain` and `--no-color` for one invocation; the root callback calls it.
+
+    Args:
+        plain: `--plain`, which implies `no_color`.
+        no_color: `--no-color`.
+
+    Returns:
+        What undoes it, for when the invocation ends.
+    """
+    tokens = _PLAIN.set(plain), _NO_COLOR.set(no_color or plain)
+
+    def undo() -> None:
+        _PLAIN.reset(tokens[0])
+        _NO_COLOR.reset(tokens[1])
+
+    return undo
 
 
 def plain() -> bool:
@@ -36,7 +52,7 @@ def plain() -> bool:
     Returns:
         True for bare-text output.
     """
-    return _flag(PLAIN)
+    return _PLAIN.get()
 
 
 def no_color() -> bool:
@@ -45,7 +61,7 @@ def no_color() -> bool:
     Returns:
         True for uncoloured output.
     """
-    return _flag(NO_COLOR)
+    return _NO_COLOR.get()
 
 
 def console(*, soft_wrap: bool = False) -> Console:

@@ -78,10 +78,9 @@ def _root(
     ),
 ) -> None:
     """Explain why a CI pipeline failed (read-only postmortem)."""
-    ctx.meta[context.FILES] = config_path or []
-    ctx.meta[context.WRITE_TO] = write_to
-    ctx.meta[terminal.PLAIN] = plain
-    ctx.meta[terminal.NO_COLOR] = no_color or plain
+    # Undone when the command ends, so nothing leaks into the next invocation in this process.
+    ctx.call_on_close(context.use(config_path or [], write_to))
+    ctx.call_on_close(terminal.use(plain=plain, no_color=no_color))
     terminal.configure_logging(log_level, colour=not (no_color or plain))
 
 
