@@ -9,6 +9,10 @@ from ci_doctor.errors import SetupError
 
 #: How ci-doctor reads and writes every text file and decodes every body: never the
 #: locale's encoding, which differs on Windows.
+#:
+#: Must stay UTF-8. RE2 matches UTF-8 bytes (`lib/regex.py`, `core/redact.py`), and
+#: fixtures, `.expected` files, matcher files and config are all UTF-8 on disk, so any
+#: other value breaks matching and redaction and misreads every existing file.
 ENCODING = "utf-8"
 
 

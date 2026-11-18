@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from ci_doctor.config.schemas.redaction import RedactionConfig
+from ci_doctor.lib.files import ENCODING
 from ci_doctor.lib.regex import Regex, compile_user
 
 if TYPE_CHECKING:
@@ -94,7 +95,8 @@ def redact_text(
     if not cfg.enabled:
         return text
     environ = os.environ if environ is None else environ
-    text = text.encode("utf-8", "replace").decode()  # RE2 extras need UTF-8; a lone surrogate has none
+    # RE2 extras need UTF-8; a lone surrogate has none.
+    text = text.encode(ENCODING, "replace").decode(ENCODING)
     for literal in _env_secret_literals(environ):
         text = text.replace(literal, "[REDACTED:env]")
     text = _URL_CREDS.sub(r"\1[REDACTED:credentials]@", text)

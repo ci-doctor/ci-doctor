@@ -9,6 +9,7 @@ import pytest
 from ci_doctor import cli
 from ci_doctor.engine import MatcherV1, compile_plan, run
 from ci_doctor.errors import SetupError
+from ci_doctor.lib.files import ENCODING
 from ci_doctor.matchers.logs import read_fixture
 from ci_doctor.matchers.registry.index import write_index
 from ci_doctor.matchers.validate import load_matcher
@@ -96,8 +97,8 @@ def test_a_changed_positive_output_fails_with_a_diff(registry):
     """The `.expected` file is the contract; any drift is shown line by line."""
     expected = registry / FIX / "assert_plain.expected"
     expected.write_text(
-        expected.read_text(encoding="utf-8").replace("assert 2700 == 3000", "assert 2700 == 2900"),
-        encoding="utf-8",
+        expected.read_text(encoding=ENCODING).replace("assert 2700 == 3000", "assert 2700 == 2900"),
+        encoding=ENCODING,
     )
     with pytest.raises(SetupError, match="assert_plain.log: pytest differs") as err:
         verify(registry)
@@ -140,28 +141,28 @@ def test_the_fixture_minimum_is_three_positive_and_two_negative(registry, droppe
 def test_an_exempt_matcher_needs_only_one_positive(registry):
     """`verify-exempt.txt` lets the 38 migrated matchers ship before they are backfilled."""
     _drop(registry, "assert.github", "assert.gitlab", "uncaught_exception", "passing_with_warnings")
-    (registry / Policy().exempt).write_text("# migrated, backfill pending\npytest\n", encoding="utf-8")
+    (registry / Policy().exempt).write_text("# migrated, backfill pending\npytest\n", encoding=ENCODING)
     assert verify(registry) == 2
 
 
 def test_an_exempt_matcher_still_needs_one_positive(registry):
     """The exemption lowers the bar to one positive, not to zero."""
     _drop(registry, "assert_plain", "assert.github", "assert.gitlab")
-    (registry / Policy().exempt).write_text("pytest\n", encoding="utf-8")
+    (registry / Policy().exempt).write_text("pytest\n", encoding=ENCODING)
     with pytest.raises(SetupError, match="needs at least 1 positive"):
         verify(registry)
 
 
 def test_an_exemption_for_an_unknown_name_fails(registry):
     """A stale line in the list would otherwise exempt whatever later takes the name."""
-    (registry / Policy().exempt).write_text("pytest\nno_such_matcher\n", encoding="utf-8")
+    (registry / Policy().exempt).write_text("pytest\nno_such_matcher\n", encoding=ENCODING)
     with pytest.raises(SetupError, match="'no_such_matcher' is not a matcher"):
         verify(registry)
 
 
 def test_an_exempt_matcher_that_meets_the_bar_must_leave_the_list(registry):
     """The list only shrinks: once backfilled, staying exempt is an error."""
-    (registry / Policy().exempt).write_text("pytest\n", encoding="utf-8")
+    (registry / Policy().exempt).write_text("pytest\n", encoding=ENCODING)
     with pytest.raises(SetupError, match="remove it from verify-exempt.txt"):
         verify(registry)
 
@@ -171,7 +172,7 @@ def test_update_writes_the_expected_files(registry):
     for expected in (registry / FIX).glob("*.expected"):
         expected.unlink()
     verify(registry, update=True)
-    assert (registry / FIX / "assert_plain.expected").read_text(encoding="utf-8") == (
+    assert (registry / FIX / "assert_plain.expected").read_text(encoding=ENCODING) == (
         "… [2 lines elided] …\n"
         "=================================== FAILURES ===================================\n"
         "__________________________________ test_total __________________________________\n"
@@ -182,14 +183,14 @@ def test_update_writes_the_expected_files(registry):
         "=========================== short test summary info ============================\n"
         "… [2 lines elided] …\n"
     )
-    assert (registry / FIX / "passing_with_warnings.expected").read_text(encoding="utf-8") == ""
+    assert (registry / FIX / "passing_with_warnings.expected").read_text(encoding=ENCODING) == ""
     assert verify(registry) == 2
 
 
 def test_a_fixture_over_the_size_cap_fails(registry):
     """Fixtures are trimmed logs, not whole job dumps."""
     log = registry / FIX / "assert_plain.log"
-    log.write_text(log.read_text(encoding="utf-8") + "padding line\n" * 20000, encoding="utf-8")
+    log.write_text(log.read_text(encoding=ENCODING) + "padding line\n" * 20000, encoding=ENCODING)
     with pytest.raises(SetupError, match="over 204800"):
         verify(registry)
 
@@ -212,7 +213,7 @@ def test_github_gitlab_and_plain_logs_select_the_same_lines(registry):
 def test_the_cli_exits_one_when_verify_fails(registry, monkeypatch):
     """A broken matcher turns the registry's CI step red."""
     monkeypatch.setattr(sys, "argv", ["ci-doctor", "matchers", "verify", str(registry)])
-    (registry / FIX / "assert_plain.expected").write_text("nothing like the output\n", encoding="utf-8")
+    (registry / FIX / "assert_plain.expected").write_text("nothing like the output\n", encoding=ENCODING)
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 1
@@ -223,7 +224,7 @@ def test_a_framed_fixture_reads_only_the_blamed_step(tmp_path):
     log = tmp_path / "x.github.log"
     log.write_text(
         gh_log([("Run npm ci", ["added 842 packages"]), ("Run npm test", ["boom: test failed"])]),
-        encoding="utf-8",
+        encoding=ENCODING,
     )
     lines = read_fixture(log)
     assert "boom: test failed" in lines
@@ -288,10 +289,10 @@ def test_each_output_has_its_own_golden_per_fixture(npm):
     """`<case>.<output>.expected`: the install output fires on two fixtures, the run output on one."""
     fixtures = npm / "matchers/js/npm/fixtures"
     assert "npm ERR! code E404\n" in (fixtures / "e404_old.github.install.expected").read_text(
-        encoding="utf-8"
+        encoding=ENCODING
     )
-    assert (fixtures / "e404_old.github.run.expected").read_text(encoding="utf-8") == ""
-    assert (fixtures / "script.run.expected").read_text(encoding="utf-8").strip().endswith("failed")
+    assert (fixtures / "e404_old.github.run.expected").read_text(encoding=ENCODING) == ""
+    assert (fixtures / "script.run.expected").read_text(encoding=ENCODING).strip().endswith("failed")
     assert verify(npm, policy=Policy(min_positive=1, min_negative=1)) == 1
 
 
@@ -335,11 +336,11 @@ def test_an_output_firing_on_the_runner_trailer_fails(tmp_path):
 def test_cross_fire_is_reported_and_fails_only_when_asked(registry, tmp_path):
     """python_traceback fires on pytest's fixture: listed in --json, a failure with --cross-fire."""
     log = registry / FIX / "with_traceback.log"
-    log.write_text(_plain(["$ pytest", *TRACEBACK, *PYTEST_OUT]), encoding="utf-8")
+    log.write_text(_plain(["$ pytest", *TRACEBACK, *PYTEST_OUT]), encoding=ENCODING)
     verify(registry, update=True, policy=Policy(min_positive=3, min_negative=2))
     out = tmp_path / "report.json"
     verify(registry, json_out=out)
-    report = __import__("json").loads(out.read_text(encoding="utf-8"))
+    report = __import__("json").loads(out.read_text(encoding=ENCODING))
     assert {"output": "python_traceback", "fixture": f"{FIX}/with_traceback.log"} in report["cross_fire"]
     assert report["outputs"]["pytest"]["positive"] == 4
     with pytest.raises(SetupError, match="python_traceback fires on .*with_traceback.log"):
@@ -356,7 +357,7 @@ def test_two_matchers_with_one_name_are_reported(registry):
 def test_only_checks_the_named_matcher_and_nothing_else(registry):
     """A broken pytest golden fails `--only pytest` and not `--only python_traceback`."""
     expected = registry / FIX / "assert_plain.expected"
-    expected.write_text(expected.read_text(encoding="utf-8").replace("2700", "2900"), encoding="utf-8")
+    expected.write_text(expected.read_text(encoding=ENCODING).replace("2700", "2900"), encoding=ENCODING)
     assert verify(registry, only=["python_traceback"]) == 1
     with pytest.raises(SetupError, match="pytest differs"):
         verify(registry, only=["pytest"])
@@ -365,7 +366,7 @@ def test_only_checks_the_named_matcher_and_nothing_else(registry):
 def test_only_can_name_one_output(npm):
     """`NAME.OUTPUT` checks that output alone."""
     policy = Policy(min_positive=1, min_negative=1)
-    (npm / "matchers/js/npm/fixtures/script.run.expected").write_text("changed\n", encoding="utf-8")
+    (npm / "matchers/js/npm/fixtures/script.run.expected").write_text("changed\n", encoding=ENCODING)
     assert verify(npm, policy=policy, only=["npm.install"]) == 1
     with pytest.raises(SetupError, match="npm.run differs"):
         verify(npm, policy=policy, only=["npm.run"])
@@ -381,18 +382,18 @@ def test_update_with_only_rewrites_only_that_matcher(registry):
     """`--update --only pytest` leaves python_traceback's goldens as they are."""
     mine = registry / FIX / "assert_plain.expected"
     theirs = registry / "matchers/python/python_traceback/fixtures/zero_division.expected"
-    good = mine.read_text(encoding="utf-8")
-    mine.write_text("stale\n", encoding="utf-8")
-    theirs.write_text("stale\n", encoding="utf-8")
+    good = mine.read_text(encoding=ENCODING)
+    mine.write_text("stale\n", encoding=ENCODING)
+    theirs.write_text("stale\n", encoding=ENCODING)
     verify(registry, update=True, only=["pytest"])
-    assert mine.read_text(encoding="utf-8") == good
-    assert theirs.read_text(encoding="utf-8") == "stale\n"
+    assert mine.read_text(encoding=ENCODING) == good
+    assert theirs.read_text(encoding=ENCODING) == "stale\n"
 
 
 def test_only_still_cross_fires_over_every_fixture(registry):
     """python_traceback alone is still run over pytest's fixtures."""
     (registry / FIX / "with_traceback.log").write_text(
-        _plain(["$ pytest", *TRACEBACK, *PYTEST_OUT]), encoding="utf-8"
+        _plain(["$ pytest", *TRACEBACK, *PYTEST_OUT]), encoding=ENCODING
     )
     verify(registry, update=True)
     with pytest.raises(SetupError, match="python_traceback fires on .*with_traceback.log"):
@@ -402,7 +403,7 @@ def test_only_still_cross_fires_over_every_fixture(registry):
 def test_a_long_diff_is_cut_with_a_marker_and_names_the_golden_by_path(registry):
     """At most 60 diff lines, the cut shown (invariant #6), the golden named from the registry root."""
     (registry / FIX / "assert_plain.expected").write_text(
-        "".join(f"line {i}\n" for i in range(100)), encoding="utf-8"
+        "".join(f"line {i}\n" for i in range(100)), encoding=ENCODING
     )
     with pytest.raises(SetupError) as err:
         verify(registry, only=["pytest"])
