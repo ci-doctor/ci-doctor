@@ -499,8 +499,8 @@ Real bugs, kept here so they don't recur:
 - **typer 0.26+ runs on its own copy of click.** `click.get_current_context()` finds
   nothing there, so every command crashed on a fresh install while the locked tests
   passed. `cli/` imports no click (`tests/test_layout.py`); the global options live in
-  ContextVars set by the root callback. The lock holds an older typer
-  (huggingface-hub caps it), so one CI leg runs the suite on the newest.
+  ContextVars set by the root callback. The lock holds an older typer than a fresh
+  install gets (huggingface-hub caps it), so the locked tests can't catch this alone.
 - **A file read or written without an encoding uses the locale's.** On Windows that
   is not UTF-8, and the first Windows runs failed on it. Pass
   `encoding=ENCODING` (`lib/files.py`) to every `read_text`, `write_text` and `open`.
