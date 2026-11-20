@@ -98,7 +98,7 @@ id: mytool`;
     <h2>Relations and windows</h2>
     <p>
         The match inside a relation, inside <code>inside</code>, and inside a
-        window's <code>from</code>, <code>until</code> and <code>while</code> may
+        window's <code>from</code>, <code>until</code>, <code>while</code> and <code>condense</code> may
         only use <code>regex</code>, <code>template</code>, <code>all</code>,
         <code>any</code> and <code>not</code>. That keeps every evaluation linear.
     </p>
@@ -112,6 +112,7 @@ id: mytool`;
             <tr><td><code>from</code></td><td>The window starts at the nearest matching line at most <code>within</code> lines up, or at the anchor.</td></tr>
             <tr><td><code>until</code></td><td>The window ends at the next matching line, inclusive, or after <code>max_lines</code>. An anchor inside an open window starts nothing new.</td></tr>
             <tr><td><code>while</code></td><td>The window extends while the next line matches, up to <code>max_lines</code>.</td></tr>
+            <tr><td><code>condense</code></td><td>Only when the evidence is over budget: the window keeps its anchor and the matching lines, and each run of other lines becomes one elision marker. Under budget the window goes in whole, so a line <code>condense</code> doesn't match can still reach the model. A line another window keeps whole is never cut.</td></tr>
         </tbody>
     </table>
 

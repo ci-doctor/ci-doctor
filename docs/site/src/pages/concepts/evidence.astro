@@ -60,15 +60,17 @@ error: could not compile \`ledger\``;
 
     <h2>Budget</h2>
     <p>
-        The evidence has to fit the model's input limit. Two passes, in order:
-        shed whole windows, lowest-ranked first, then trim whatever survived. Trimming
-        keeps the tail, because the failure lives at the end of a log — and it
-        announces what it dropped.
+        The evidence has to fit the model's input limit. Three passes, in order,
+        each only if the last didn't fit: condense the windows whose matcher sets
+        <code>condense</code> to the lines it marks as essential, shed whole windows,
+        lowest-ranked first, then trim whatever survived. Trimming keeps the head
+        (where a window's anchor and first error are) and the tail (how the run
+        ended), drops the middle, and announces what it dropped.
     </p>
     <p>
-        The order matters. Trimming alone would keep the tail of everything, and
-        a tool that reports its cause <em>before</em> its own epilogue would lose
-        the diagnosis and keep the complaint. Token counting is a four-characters-per-token
+        The order matters. Trimming alone cuts one stretch of lines blindly, so a
+        tool that reports its cause <em>before</em> a long epilogue would lose the
+        diagnosis and keep the complaint. Token counting is a four-characters-per-token
         estimate; no tokenizer is loaded, and nothing is downloaded to do it.
     </p>
 

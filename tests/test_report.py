@@ -387,3 +387,53 @@ def test_the_report_excerpt_keeps_its_head_and_its_tail():
     assert out.startswith("FIRST ERROR") and out.endswith("LAST LINE")
     assert "characters elided" in out
     assert len(out) < 2100
+
+
+_PYTEST = MatcherV1.model_validate(
+    {
+        "schema": 1,
+        "id": "pytest",
+        "description": "pytest - failing tests, with their tracebacks and the short summary.",
+        "tags": ["python"],
+        "outputs": {
+            "failures": {
+                "description": "The FAILURES block: each failing test's traceback and assertion.",
+                "match": {"regex": "^=+ FAILURES =+"},
+                "window": {
+                    "until": {"regex": "^=+ short test summary"},
+                    "max_lines": 500,
+                    "condense": {"regex": r"^(E |>|_{3,} |\S+:\d+: )"},
+                },
+            },
+            "summary": {
+                "description": "The short test summary: every failing test, one line each.",
+                "match": {"regex": "^=+ short test summary info =+"},
+                "window": {"until": {"regex": r"^=+ .*\bin [\d.]+s\b"}, "max_lines": 500},
+            },
+        },
+    }
+)
+
+
+@pytest.mark.parametrize("provider", support.PROVIDERS)
+def test_a_long_pytest_failure_keeps_every_assertion_and_the_whole_summary(provider):
+    """Over budget the echoed source goes first, so every assertion and the whole summary still fit."""
+    lines = ["$ pytest", "=" * 20 + " FAILURES " + "=" * 20]
+    for i in range(12):
+        lines += [f"_____ test_{i} _____", *[f"    source line {k} of test_{i}" for k in range(35)]]
+        lines += [f"E   AssertionError: case {i}", f"tests/test_x.py:{i + 1}: AssertionError"]
+    summary = ["=" * 10 + " short test summary info " + "=" * 10]
+    summary += [f"FAILED tests/test_x.py::test_{i} - AssertionError: case {i}" for i in range(12)]
+    summary += ["=" * 10 + " 12 failed in 3.21s " + "=" * 10]
+    _job, _attr, bundle, _cfg = _pipeline(
+        support.script_log(provider, lines + summary),
+        provider=provider,
+        matchers=[_PYTEST],
+        overrides={"llm": {"max_input_tokens": 1500}},  # the whole block is ~3,000 tokens
+    )
+    kept = bundle.blamed_lines
+    assert all(f"E   AssertionError: case {i}" in kept for i in range(12))
+    assert all(line in kept for line in summary)
+    assert not any("source line" in line for line in kept)
+    assert [m.id for m in bundle.matchers] == ["pytest.failures", "pytest.summary"]
+    assert not bundle.truncated  # condensing was enough; `fit` never had to cut

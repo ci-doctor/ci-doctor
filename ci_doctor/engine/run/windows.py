@@ -4,7 +4,7 @@ Anchored windows catch causes that print *before* a framework's summary, so a
 tail-only view would miss them.
 """
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 
 from ci_doctor.engine.plan import Plan, WindowPlan
@@ -12,6 +12,9 @@ from ci_doctor.engine.run.anchors import Evaluator
 from ci_doctor.engine.run.relations import blocks
 from ci_doctor.engine.run.scan import scan
 from ci_doctor.engine.spec.roles import RANK
+
+#: The tail window ranks below every matcher.
+TAIL = -1
 
 
 @dataclass
@@ -27,6 +30,8 @@ class Window:
         output: Index into `Plan.outputs`; -1 for the tail.
         anchor: The line that anchored it; -1 for the tail.
         variant: The variant that anchored it.
+        keep: The lines kept when the evidence is over budget (`condense`): the
+            anchor and the lines `condense` matched. None keeps every line.
     """
 
     start: int
@@ -35,6 +40,23 @@ class Window:
     output: int = -1
     anchor: int = -1
     variant: str = ""
+    keep: frozenset[int] | None = None
+
+    def pieces(self) -> list[tuple[int, int]]:
+        """The window's kept runs of lines, half-open; the whole window when nothing is condensed.
+
+        Returns:
+            `(start, end)` pairs in log order.
+        """
+        if self.keep is None:
+            return [(self.start, self.end)]
+        out: list[tuple[int, int]] = []
+        for i in sorted(i for i in self.keep if self.start <= i < self.end):
+            if out and out[-1][1] == i:
+                out[-1] = (out[-1][0], i + 1)
+            else:
+                out.append((i, i + 1))
+        return out
 
 
 def _downwards(ev: Evaluator, anchors: list[int], window: WindowPlan) -> list[tuple[int, int]]:
@@ -86,6 +108,11 @@ def _upwards(ev: Evaluator, anchor: int, window: WindowPlan) -> int:
     return heads[k] if k >= 0 and heads[k] >= anchor - window.from_within else anchor
 
 
+def _kept(dense: list[int], anchor: int, start: int, last: int) -> frozenset[int]:
+    """The anchor and the `condense` lines between `start` and `last`, inclusive."""
+    return frozenset({anchor, *dense[bisect_left(dense, start) : bisect_right(dense, last)]})
+
+
 def run(plan: Plan, lines: list[str]) -> list[Window]:
     """Find every anchor of every output and the window it keeps.
 
@@ -105,6 +132,9 @@ def run(plan: Plan, lines: list[str]) -> list[Window]:
     for o, out in enumerate(plan.outputs):
         rank = RANK[out.output.role]
         for v in out.variants:
+            dense = ev.sorted(v.window.condense) if v.window.condense is not None else None
             for anchor, last in _downwards(ev, ev.sorted(v.match), v.window):
-                wins.append(Window(_upwards(ev, anchor, v.window), last + 1, rank, o, anchor, v.name))
+                start = _upwards(ev, anchor, v.window)
+                keep = None if dense is None else _kept(dense, anchor, start, last)
+                wins.append(Window(start, last + 1, rank, o, anchor, v.name, keep))
     return wins

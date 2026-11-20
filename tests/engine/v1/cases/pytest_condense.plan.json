@@ -1,0 +1,46 @@
+{
+  "type": "Plan",
+  "leaves": [
+    "^=+ FAILURES =+",
+    "^=+ short test summary",
+    "^(E |>|_{3,} |\\S+:\\d+: )"
+  ],
+  "outputs": [
+    {
+      "type": "OutputPlan",
+      "output": {
+        "type": "Output",
+        "id": "pytest",
+        "role": "tool",
+        "description": "pytest's FAILURES block. Over budget, the test headers and the failing assertion lines are kept, and the echoed source is cut first."
+      },
+      "variants": [
+        {
+          "type": "VariantPlan",
+          "name": "",
+          "match": {
+            "type": "Leaf",
+            "index": 0
+          },
+          "window": {
+            "type": "WindowPlan",
+            "before": 0,
+            "after": 0,
+            "from_": null,
+            "from_within": 0,
+            "until": {
+              "type": "Leaf",
+              "index": 1
+            },
+            "while_": null,
+            "max_lines": 500,
+            "condense": {
+              "type": "Leaf",
+              "index": 2
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

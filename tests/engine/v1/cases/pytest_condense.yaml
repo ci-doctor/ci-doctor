@@ -1,0 +1,11 @@
+schema: 1
+id: pytest
+description: >-
+  pytest's FAILURES block. Over budget, the test headers and the failing
+  assertion lines are kept, and the echoed source is cut first.
+tags: [python, test]
+match: {regex: '^=+ FAILURES =+'}
+window:
+  until: {regex: '^=+ short test summary'}
+  max_lines: 500
+  condense: {regex: '^(E |>|_{3,} |\S+:\d+: )'}

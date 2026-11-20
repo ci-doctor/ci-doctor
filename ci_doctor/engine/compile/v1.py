@@ -138,6 +138,7 @@ def _window(spec: Window | None, defines: Mapping[str, str], leaves: Leaves, roo
         until=part(spec.until, "until"),
         while_=part(spec.while_, "while"),
         max_lines=spec.max_lines,
+        condense=part(spec.condense, "condense"),
     )
 
 

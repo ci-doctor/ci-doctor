@@ -25,7 +25,7 @@ def render(lines: list[str], windows: list[Window]) -> Evidence:
 
     Args:
         lines: The full log.
-        windows: Merged, sorted, non-overlapping windows.
+        windows: Merged, sorted, non-overlapping windows; a condensed one emits only its kept runs.
 
     Returns:
         Selected lines interleaved with explicit elision markers. Invariant #6:
@@ -34,11 +34,11 @@ def render(lines: list[str], windows: list[Window]) -> Evidence:
     out: list[str] = []
     sources: list[int | None] = []
     prev_end = 0
-    for w in [*windows, Window(len(lines), len(lines), 0)]:
-        if w.start > prev_end:
-            out.append(f"… [{w.start - prev_end} lines elided] …")
+    for start, end in [p for w in windows for p in w.pieces()] + [(len(lines), len(lines))]:
+        if start > prev_end:
+            out.append(f"… [{start - prev_end} lines elided] …")
             sources.append(None)
-        out.extend(lines[w.start : w.end])
-        sources.extend(range(w.start, w.end))
-        prev_end = w.end
+        out.extend(lines[start:end])
+        sources.extend(range(start, end))
+        prev_end = end
     return Evidence(out, sources)

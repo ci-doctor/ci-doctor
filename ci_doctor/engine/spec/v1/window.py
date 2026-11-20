@@ -29,6 +29,11 @@ class Window(Strict):
         le=MAX_REACH,
         description=f"Lines from the anchor down, at most; required with `until` and `while`. 1-{MAX_REACH}.",
     )
+    condense: Node | None = Field(
+        None,
+        description="The lines that matter most. Only when the evidence is over budget, the window's other "
+        "lines are cut first, each cut marked; under budget it goes in whole.",
+    )
 
     @model_validator(mode="after")
     def _exclusive(self) -> Self:

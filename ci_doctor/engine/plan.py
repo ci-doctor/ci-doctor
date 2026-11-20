@@ -6,7 +6,7 @@ dataclasses: hashable, comparable, and printable as JSON for the frozen snapshot
 that pin each released schema version (invariant #11).
 """
 
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any
 
 
@@ -100,6 +100,7 @@ class WindowPlan:
         while_: Extend while the next line matches this.
         max_lines: Caps `until` / `while_`: the window holds at most this many lines
             from the anchor down. None when neither is set.
+        condense: Over budget, the window keeps only these lines and its anchor.
     """
 
     before: int = 0
@@ -109,6 +110,8 @@ class WindowPlan:
     until: Node | None = None
     while_: Node | None = None
     max_lines: int | None = None
+    # Added in alpha: left out of `to_json` when unset, so older plans keep their snapshots.
+    condense: Node | None = field(default=None, metadata={"omit_unset": True})
 
 
 @dataclass(frozen=True)
@@ -158,7 +161,9 @@ def to_json(value: Any) -> Any:  # noqa: ANN401 - walks any Plan node
     """
     if is_dataclass(value) and not isinstance(value, type):
         return {"type": type(value).__name__} | {
-            f.name: to_json(getattr(value, f.name)) for f in fields(value)
+            f.name: to_json(getattr(value, f.name))
+            for f in fields(value)
+            if not (f.metadata.get("omit_unset") and getattr(value, f.name) is None)
         }
     if isinstance(value, tuple | list):
         return [to_json(v) for v in value]
