@@ -48,7 +48,8 @@
             "from_within": 0,
             "until": null,
             "while_": null,
-            "max_lines": null
+            "max_lines": null,
+            "condense": null
           }
         }
       ]
@@ -80,7 +81,8 @@
               "type": "Leaf",
               "index": 3
             },
-            "max_lines": 150
+            "max_lines": 150,
+            "condense": null
           }
         }
       ]
@@ -132,7 +134,8 @@
             "from_within": 20,
             "until": null,
             "while_": null,
-            "max_lines": null
+            "max_lines": null,
+            "condense": null
           }
         }
       ]

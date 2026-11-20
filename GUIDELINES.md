@@ -225,7 +225,8 @@ invariants go on the end. The first three, and #10, are load-bearing:
     ci-doctor compiles every schema version it knows; a change to the format is a new
     version. Pinned by the frozen Plan snapshots in `tests/engine/v1/cases/`, and by the
     `contract` CI job, which verifies the official registry at HEAD. A snapshot diff
-    means a new schema version, not a new snapshot.
+    means a new schema version, not a new snapshot. **From the first release:** until
+    then (alpha), format changes go into schema 1 and the snapshots are regenerated.
 12. **The MCP server calls no model, and writes one thing.** The agent on the other
     end is the model, so `llm:` is ignored there. Stdout carries only the protocol.
     The server writes no report file and posts no note; its single write is the
