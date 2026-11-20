@@ -2,7 +2,7 @@
 name = "ci-doctorr"
 # PEP 440, and the release pipeline owns it — see GUIDELINES.md §8. Each release runs
 # `uv version --bump beta`: 0.0.1a21 → 0.0.1b1 → 0.0.1b2.
-version = "0.0.1a21"
+version = "0.0.1b1"
 description = "Postmortem CI failure analyzer: deterministic phase attribution plus one LLM explanation. Read-only, air-gap friendly."
 requires-python = ">=3.11"
 license = "MIT"
