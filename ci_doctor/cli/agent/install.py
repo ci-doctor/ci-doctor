@@ -1,5 +1,7 @@
 """`ci-doctor agent install`."""
 
+from typing import Annotated
+
 import typer
 from typing_extensions import override
 
@@ -34,23 +36,33 @@ class InstallCommand(Command):
     @override
     def run(
         self,
-        target: str | None = typer.Option(
-            None,
-            "--target",
-            "-t",
-            help=f"auto (the agents found here, Claude Code if none), all, or ids: {','.join(TARGETS)}.",
-        ),
-        location: Location | None = typer.Option(
-            None, "--location", "-l", help="local (the default): this project's files. global: your own."
-        ),
-        permissions: bool | None = typer.Option(
-            None,
-            "--permissions/--no-permissions",
-            help="Auto-allow the read-only tools in Claude Code (the default).",
-        ),
-        dry_run: bool = typer.Option(
-            False, "--dry-run", help="Show the files and the config that would be added; write nothing."
-        ),
+        target: Annotated[
+            str | None,
+            typer.Option(
+                "--target",
+                "-t",
+                help=f"auto (the agents found here, Claude Code if none), all, or ids: {','.join(TARGETS)}.",
+            ),
+        ] = None,
+        location: Annotated[
+            Location | None,
+            typer.Option(
+                "--location", "-l", help="local (the default): this project's files. global: your own."
+            ),
+        ] = None,
+        permissions: Annotated[
+            bool | None,
+            typer.Option(
+                "--permissions/--no-permissions",
+                help="Auto-allow the read-only tools in Claude Code (the default).",
+            ),
+        ] = None,
+        dry_run: Annotated[
+            bool,
+            typer.Option(
+                "--dry-run", help="Show the files and the config that would be added; write nothing."
+            ),
+        ] = False,
     ) -> None:
         no_flags = target is None and location is None and permissions is None and not dry_run
         if no_flags and interactive():

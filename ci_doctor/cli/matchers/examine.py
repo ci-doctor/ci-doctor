@@ -1,6 +1,7 @@
 """`ci-doctor matchers examine`."""
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from typing_extensions import override
@@ -30,13 +31,16 @@ class ExamineCommand(Command):
     @override
     def run(
         self,
-        matcher: str = typer.Argument(..., help="A matcher.yaml file, or `<registry>/<name>`."),
-        log: Path = typer.Argument(
-            ..., help="The log. `.github.log` / `.gitlab.log` strip that runner's framing."
-        ),
-        framing: Framing | None = typer.Option(
-            None, "--framing", help="The runner framing to strip; overrides the log's name. Default: plain."
-        ),
+        matcher: Annotated[str, typer.Argument(help="A matcher.yaml file, or `<registry>/<name>`.")],
+        log: Annotated[
+            Path, typer.Argument(help="The log. `.github.log` / `.gitlab.log` strip that runner's framing.")
+        ],
+        framing: Annotated[
+            Framing | None,
+            typer.Option(
+                "--framing", help="The runner framing to strip; overrides the log's name. Default: plain."
+            ),
+        ] = None,
     ) -> None:
         try:
             raw = log.read_text(encoding=ENCODING, errors="replace")

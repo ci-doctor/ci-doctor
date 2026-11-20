@@ -1,6 +1,7 @@
 """`ci-doctor registry index`."""
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from typing_extensions import override
@@ -23,10 +24,12 @@ class IndexCommand(Command):
     @override
     def run(
         self,
-        root: Path = typer.Argument(Path("."), help="The registry directory (the one holding index.yaml)."),
-        check: bool = typer.Option(
-            False, "--check", help="Write nothing; exit 1 if index.yaml is not current."
-        ),
+        root: Annotated[
+            Path, typer.Argument(help="The registry directory (the one holding index.yaml).")
+        ] = Path("."),
+        check: Annotated[
+            bool, typer.Option("--check", help="Write nothing; exit 1 if index.yaml is not current.")
+        ] = False,
     ) -> None:
         n = write_index(root, check=check)
         done(f"{root / INDEX}: {'current' if check else 'written'}, {n} entries")

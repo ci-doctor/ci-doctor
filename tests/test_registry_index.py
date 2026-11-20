@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ci_doctor import cli
 from ci_doctor.errors import SetupError
 from ci_doctor.matchers.registry.index import build_index, write_index
 from tests import support
+from tests.support import invoke
 
 PYTEST = "matchers/python/pytest/matcher.yaml"
 
@@ -28,12 +28,9 @@ def _bundle(root: Path, name: str, include: list[str]) -> None:
     (root / "bundles" / f"{name}.yaml").write_text(yaml.safe_dump(body))
 
 
-def _main(monkeypatch, *argv) -> int:
-    """Run the real entry point and return its exit code."""
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", *argv])
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    return exc.value.code
+def _main(*argv) -> int:
+    """Run the command and return its exit code."""
+    return invoke(*argv).exit_code
 
 
 def test_the_index_is_deterministic(registry):
@@ -52,11 +49,11 @@ def test_check_fails_on_a_stale_index_and_write_fixes_it(registry):
     write_index(registry, check=True)
 
 
-def test_the_cli_exits_one_on_a_stale_index_and_zero_when_current(registry, monkeypatch):
+def test_the_cli_exits_one_on_a_stale_index_and_zero_when_current(registry):
     """The registry's CI step goes red on a stale index (invariant #3's one exception)."""
-    assert _main(monkeypatch, "registry", "index", str(registry), "--check") == 0
+    assert _main("registry", "index", str(registry), "--check") == 0
     (registry / "index.yaml").write_text("schema: 1\n")
-    assert _main(monkeypatch, "registry", "index", str(registry), "--check") == 1
+    assert _main("registry", "index", str(registry), "--check") == 1
 
 
 @pytest.mark.parametrize(

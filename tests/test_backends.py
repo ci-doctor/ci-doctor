@@ -446,7 +446,6 @@ _REAL = [
     ("mistral", "mistralai", "MistralModel", {}),
     ("cohere", "cohere", "CohereModel", {}),
     ("xai", "xai_sdk", "XaiModel", {}),
-    ("huggingface", "huggingface_hub", "HuggingFaceModel", {}),
 ]
 
 

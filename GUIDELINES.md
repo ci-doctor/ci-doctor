@@ -99,6 +99,9 @@ cli/
   `test_every_command_has_examples_that_name_it` keeps them in step with its name. A
   command that lists things takes `--json` (`_console.output.json_output`): the same data as one
   JSON document, built from the data and not from the table's text.
+- **Typer, the current way.** Every option and argument is `Annotated[T, typer.Option(...)]
+  with the default after `=`; no click import or click-only setting. `register` wraps
+  `run`, so a `SetupError` or a crash is one log line and exit 1.
 - **No logic in `cli/`.** A command parses, calls `service/` (or the owning package) and
   prints. `service/` imports no typer or click; `tests/test_layout.py` pins both.
 - **Global options** (`-f`, `--write-to`, `--plain`, `--no-color`) are read through
@@ -245,6 +248,9 @@ Running them is in [CONTRIBUTING.md §2](CONTRIBUTING.md). What they must look l
   renders only the shape it checks, in the real provider format, so the intent is on
   the page.
 - Assert *behaviour*, not incidental formatting.
+- **Run a command with `tests.support.invoke`**, typer's `CliRunner`: exit code, stdout
+  and stderr in one result. Only the entry point's own exit-code mapping goes through
+  `cli.main()`.
 
 ### 4.1 Synthetic logs
 
@@ -496,6 +502,12 @@ Write them for a colleague reading the code for the first time.
 
 Real bugs, kept here so they don't recur:
 
+- **typer 0.26+ runs on its own copy of click.** `click.get_current_context()` finds
+  nothing there, so every command crashed on a fresh install while the locked tests
+  passed. `cli/` imports no click (`tests/test_layout.py`); the global options live in
+  ContextVars set by the root callback. huggingface-hub 1.x capped typer below 0.26,
+  so the lock held an old typer while fresh installs got a new one; the `huggingface`
+  backend was dropped to lift the cap.
 - **A file read or written without an encoding uses the locale's.** On Windows that
   is not UTF-8, and the first Windows runs failed on it. Pass
   `encoding=ENCODING` (`lib/files.py`) to every `read_text`, `write_text` and `open`.

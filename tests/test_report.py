@@ -359,9 +359,19 @@ def test_the_brief_carries_everything_the_prompt_says():
     """An agent reading the brief and the configured model reading the prompt get the same facts."""
     job, attr, bundle, cfg = _pipeline(_INHOUSE_LOG, matchers=[MatcherV1.model_validate(_INHOUSE_PACK)])
     job.stage, job.duration, job.needs, job.raw_failure_reason = "deploy", 12.5, ["build"], "script_failure"
-    brief = build_brief(job, attr, bundle, cfg, environ={})
+    others = [job, Job(id="2", name="test (macos)", status="success")]
+    brief = build_brief(job, attr, bundle, cfg, environ={}, run_jobs=others)
     prompt = render_prompt(brief)
-    for said in ("build", "deploy", "12.5", "script_failure", brief.excerpt, brief.instructions):
+    assert brief.run_jobs == ["test (macos): success"]
+    for said in (
+        "build",
+        "deploy",
+        "12.5",
+        "script_failure",
+        "test (macos): success",
+        brief.excerpt,
+        brief.instructions,
+    ):
         assert said in prompt
     assert (brief.stage, brief.duration, brief.needs, brief.raw_reason) == (
         "deploy",
@@ -376,7 +386,8 @@ def test_every_text_field_of_a_brief_is_redacted():
     secret = "glpat-" + "a" * 20
     job, attr, bundle, cfg = _pipeline(_INHOUSE_LOG.replace("E-LOCK prod", f"E-LOCK {secret} prod"))
     job.name, job.stage, job.needs, job.raw_failure_reason = (f"n {secret}", f"s {secret}", [secret], secret)
-    brief = build_brief(job, attr, bundle, cfg, environ={})
+    other = Job(id="2", name=f"lint {secret}", status="success")
+    brief = build_brief(job, attr, bundle, cfg, environ={}, run_jobs=[other])
     assert secret not in brief.model_dump_json()
     assert secret not in render_prompt(brief)
 

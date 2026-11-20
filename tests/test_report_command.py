@@ -1,11 +1,8 @@
 """`ci-doctor report`: what a bug report needs, and nothing a stranger shouldn't read."""
 
-import sys
-
-import pytest
-
-from ci_doctor import __version__, cli
+from ci_doctor import __version__
 from ci_doctor.service.report import build
+from tests.support import invoke
 
 
 def _fields(sections):
@@ -42,13 +39,11 @@ def test_an_invalid_config_is_reported_not_raised(tmp_path):
     assert "error" in _fields(build([cfg]))["config"]
 
 
-def test_the_command_prints_every_section(monkeypatch, capsys):
+def test_the_command_prints_every_section():
     """`ci-doctor --plain report` prints one `key: value` line per field and exits 0."""
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "--plain", "report"])
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    out = capsys.readouterr().out
-    assert exc.value.code == 0
+    result = invoke("--plain", "report")
+    out = result.stdout
+    assert result.exit_code == 0
     assert f"  version: {__version__}" in out
     assert {"ci-doctor", "packages", "config", "environment"} <= set(out.splitlines())
     assert len(out.splitlines()) <= 16

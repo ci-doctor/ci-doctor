@@ -8,8 +8,8 @@ requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "typer>=0.12,<0.27",  # 0.27 vendors click; cli/ reads click's context directly
-    "click>=8.0",  # cli/ reads the click context; config/ uses get_app_dir
+    "typer>=0.29.2",  # runs on its own vendored click; cli/ never imports click
+    "click>=8.0",  # config/ uses get_app_dir
     "typing-extensions>=4.4",  # `override` on Python 3.11
     "pydantic>=2.5",
     "pyyaml>=6",
@@ -51,7 +51,6 @@ groq = ["pydantic-ai-slim[groq]>=2.40"]
 mistral = ["pydantic-ai-slim[mistral]>=2.40"]
 cohere = ["pydantic-ai-slim[cohere]>=2.40"]
 xai = ["pydantic-ai-slim[xai]>=2.40"]
-huggingface = ["pydantic-ai-slim[huggingface]>=2.40"]
 
 [project.scripts]
 ci-doctor = "ci_doctor.cli:main"
@@ -99,7 +98,7 @@ convention = "google"
 # ANN off for tests: a test function returns None and says so by being a test.
 # `support.py` and `conftest.py` are annotated anyway — they are shared code.
 "tests/**" = ["S101", "S603", "ANN", "PLW1514"]  # assert is the test; subprocess there is fixture setup
-"ci_doctor/cli/**" = ["B008"]  # typer declares options as call-valued defaults, by design
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

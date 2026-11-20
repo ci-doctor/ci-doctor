@@ -56,7 +56,7 @@ github:                          # used when github is the ci or the scm
 llm:
   enabled: true                  # false => deterministic-only report
   backend: openai                # openai | anthropic | azure | bedrock | bedrock-mantle | google |
-                                 # google-cloud | groq | mistral | cohere | xai | huggingface
+                                 # google-cloud | groq | mistral | cohere | xai
   model: null                    # e.g. "qwen2.5-coder:32b" or "claude-opus-4-8"
   api_base: null                 # OpenAI-compatible base URL
   api_key_env: null              # optional; local servers often need none
@@ -285,13 +285,6 @@ redaction:
                     >xAI's Grok API</td
                 ><td
                     ><code>model</code>; <code>api_key_env</code> or <code>XAI_API_KEY</code>; <code>pip install ci-doctorr[xai]</code></td
-                ></tr
-            >
-            <tr
-                ><td><code>huggingface</code></td><td
-                    >Hugging Face Inference</td
-                ><td
-                    ><code>model</code>; <code>api_key_env</code> or <code>HF_TOKEN</code>; <code>pip install ci-doctorr[huggingface]</code></td
                 ></tr
             >
         </tbody>

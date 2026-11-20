@@ -2,12 +2,14 @@
 
 import json
 from dataclasses import asdict, is_dataclass
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 
 #: The `--json` option every listing command takes.
-JSON_OPTION = typer.Option(False, "--json", help="Print the result as JSON instead of a table, for scripts.")
+JsonFlag = Annotated[
+    bool, typer.Option("--json", help="Print the result as JSON instead of a table, for scripts.")
+]
 
 
 def emit(data: Any) -> None:  # noqa: ANN401 - any JSON-ready value

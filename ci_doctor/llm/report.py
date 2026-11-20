@@ -322,6 +322,7 @@ def _prompt(brief: "Brief") -> str:
         raw_failure_reason=brief.raw_reason,
         duration=brief.duration,
         needs=", ".join(brief.needs) or "none",
+        run_jobs="\n".join(brief.run_jobs) or "n/a",
         terminal=brief.terminal_evidence or "n/a",
         log_error=brief.log_error or "none",
         phase=brief.failure_phase,

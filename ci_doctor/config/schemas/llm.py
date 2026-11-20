@@ -81,7 +81,6 @@ class LLMConfig(Strict):
         "mistral",
         "cohere",
         "xai",
-        "huggingface",
     ] = Field(
         default="openai",
         description=(

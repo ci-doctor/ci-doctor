@@ -1,12 +1,10 @@
 """`ci-doctor matchers verify`: golden fixtures, the 3 + 2 minimum, and the exemption list."""
 
 import shutil
-import sys
 from pathlib import Path
 
 import pytest
 
-from ci_doctor import cli
 from ci_doctor.engine import MatcherV1, compile_plan, run
 from ci_doctor.errors import SetupError
 from ci_doctor.lib.files import ENCODING
@@ -15,7 +13,7 @@ from ci_doctor.matchers.registry.index import write_index
 from ci_doctor.matchers.validate import load_matcher
 from ci_doctor.matchers.verify import Policy, selection, verify
 from tests import support
-from tests.support import gh_log, gitlab_log
+from tests.support import gh_log, gitlab_log, invoke
 
 PYTEST_DIR = "matchers/python/pytest"
 FIX = f"{PYTEST_DIR}/fixtures"
@@ -210,13 +208,11 @@ def test_github_gitlab_and_plain_logs_select_the_same_lines(registry):
     assert selected("assert.github") == selected("assert.gitlab") == selected("assert_plain")
 
 
-def test_the_cli_exits_one_when_verify_fails(registry, monkeypatch):
+def test_the_cli_exits_one_when_verify_fails(registry):
     """A broken matcher turns the registry's CI step red."""
-    monkeypatch.setattr(sys, "argv", ["ci-doctor", "matchers", "verify", str(registry)])
     (registry / FIX / "assert_plain.expected").write_text("nothing like the output\n", encoding=ENCODING)
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    assert exc.value.code == 1
+    result = invoke("matchers", "verify", str(registry))
+    assert result.exit_code == 1
 
 
 def test_a_framed_fixture_reads_only_the_blamed_step(tmp_path):
@@ -413,7 +409,7 @@ def test_a_long_diff_is_cut_with_a_marker_and_names_the_golden_by_path(registry)
     assert "line 99" not in message
 
 
-def test_the_cli_takes_only(registry, monkeypatch, capsys):
+def test_the_cli_takes_only(registry):
     """`--only` is repeatable on the command line."""
     argv = [
         "ci-doctor",
@@ -425,7 +421,5 @@ def test_the_cli_takes_only(registry, monkeypatch, capsys):
         "--only",
         "python_traceback",
     ]
-    monkeypatch.setattr(sys, "argv", argv)
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    assert exc.value.code == 0 and "2 matchers verified" in capsys.readouterr().out
+    result = invoke(*argv[1:])
+    assert result.exit_code == 0 and "2 matchers verified" in result.stdout

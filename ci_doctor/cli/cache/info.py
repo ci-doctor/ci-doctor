@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from typing_extensions import override
 
-from ci_doctor.cli._console.output.json_output import JSON_OPTION, emit
+from ci_doctor.cli._console.output.json_output import JsonFlag, emit
 from ci_doctor.cli._console.output.message import say
 from ci_doctor.cli._console.output.table import Row, table
 from ci_doctor.cli._lib.command import Command
@@ -32,7 +32,7 @@ class InfoCommand(Command):
             return f"{self.registry}: index fetched {self.index_age} ago, {self.files} files cached"
 
     @override
-    def run(self, json_output: bool = JSON_OPTION) -> None:
+    def run(self, json_output: JsonFlag = False) -> None:
         cfg = editable().matchers
         root = root_for(cfg)
         cache = Cache(root) if root.is_dir() else None

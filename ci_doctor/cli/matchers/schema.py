@@ -1,6 +1,7 @@
 """`ci-doctor matchers schema`."""
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from typing_extensions import override
@@ -25,10 +26,15 @@ class SchemaCommand(Command):
     @override
     def run(
         self,
-        version: int = typer.Option(max(SCHEMAS), "--version", help="The matcher schema version to print."),
-        out: Path | None = typer.Option(
-            None, "--out", help="Write matcher-v<N>.schema.json for every known version into this directory."
+        version: Annotated[int, typer.Option("--version", help="The matcher schema version to print.")] = max(
+            SCHEMAS
         ),
+        out: Annotated[
+            Path | None,
+            typer.Option(
+                "--out", help="Write matcher-v<N>.schema.json for every known version into this directory."
+            ),
+        ] = None,
     ) -> None:
         if out is not None:
             for path in write_schemas(out):
