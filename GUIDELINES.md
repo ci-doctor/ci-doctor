@@ -228,8 +228,9 @@ invariants go on the end. The first three, and #10, are load-bearing:
     ci-doctor compiles every schema version it knows; a change to the format is a new
     version. Pinned by the frozen Plan snapshots in `tests/engine/v1/cases/`, and by the
     `contract` CI job, which verifies the official registry at HEAD. A snapshot diff
-    means a new schema version, not a new snapshot. **From the first release:** until
-    then (alpha), format changes go into schema 1 and the snapshots are regenerated.
+    means a new schema version, not a new snapshot. **From the first stable release:**
+    until then (alpha and beta), format changes go into schema 1 and the snapshots are
+    regenerated.
 12. **The MCP server calls no model, and writes one thing.** The agent on the other
     end is the model, so `llm:` is ignored there. Stdout carries only the protocol.
     The server writes no report file and posts no note; its single write is the
@@ -591,34 +592,38 @@ spec, and the one PyPI normalises against. Not SemVer: `0.0.1a2`, never `0.0.1-a
 re-locks `uv.lock` in one step, so the two can never disagree. Never hand-edit either,
 and never create a release tag by hand — the pipeline owns both.
 
-### 8.1 Today — master ships alphas, the base version stays put
+### 8.1 Today — master ships betas, the base version stays put
 
 Every push to `master` that carries a `feat:`, `fix:` or `BREAKING CHANGE:` commit
-publishes the next alpha. Only the alpha counter moves:
+publishes the next beta. Only the beta counter moves:
 
 ```
-0.0.1a1 → 0.0.1a2 → 0.0.1a3 → …
+0.0.1b1 → 0.0.1b2 → 0.0.1b3 → …
 ```
+
+The alphas ran `0.0.1a1` to `0.0.1a21`; beta started on 2026-11-20. Until the first
+stable release the alpha-era rules still hold: no back-compat or aliases for breaking
+changes, and matcher format changes go into schema 1 (invariant #11).
 
 `.github/workflows/release.yml` does the whole thing, ordered so that a failure before
-the push leaves nothing public: `uv version --bump alpha` in the working tree, `uv build`,
+the push leaves nothing public: `uv version --bump beta` in the working tree, `uv build`,
 the image built locally, the config JSON Schema and the SBOM — and only then the
 `chore(release): <version> [skip ci]` commit and the `v<version>` tag, pushed to `master`
 by the `ci-doctor-release` GitHub App (the one actor the branch and tag rulesets let
 through). After that: a GitHub Release with the image tarball, the config JSON Schema and
 the SBOM attached, then PyPI, then the image pushed to Docker Hub. A push with only
-`docs:`/`chore:`/`refactor:` commits ships nothing and rides along in the next alpha. The
+`docs:`/`chore:`/`refactor:` commits ships nothing and rides along in the next beta. The
 full pipeline map is [docs/ci-cd.md](docs/ci-cd.md).
 
 Note what is *missing*: nothing decides how big the next version is. A commit message
 cannot move the base version, only the counter. That is deliberate — while the shape of
-the tool is still moving, `0.0.1aN` means exactly one thing ("the Nth alpha"), and
+the tool is still moving, `0.0.1bN` means exactly one thing ("the Nth beta"), and
 promoting it is a decision a person makes, not a side effect of typing `feat:`.
 
 Two consequences worth knowing:
 
 - **`pip install ci-doctorr` works anyway.** pip installs a pre-release when a project
-  has no stable release. Once a final version exists, alphas need `--pre`.
+  has no stable release. Once a final version exists, betas need `--pre`.
 - **The GitHub Releases are not flagged as pre-releases.** `/releases/latest` resolves to
   the newest *non*-prerelease, and the config schema `$id` points through it
   (`releases/latest/download/ci-doctor.schema.json`). Flagging them would break every
@@ -626,7 +631,7 @@ Two consequences worth knowing:
 
 ### 8.2 Next — release candidates on master, the final release by hand
 
-Not built yet. Written down so the alpha flow above doesn't have to be unpicked to get
+Not built yet. Written down so the beta flow above doesn't have to be unpicked to get
 here. Two pipelines:
 
 1. **`master`, automatic.** Bumps the base version and publishes a **release
@@ -651,4 +656,4 @@ the next one.
 Open question for whoever builds this: a `feat:` landing mid-cycle in a `fix:`-sized
 cycle (base at `0.1.1rc2`, a feature arrives). Either re-pick the base and restart at
 `rc1`, or hold the feature's bump for the next cycle. Decide it then; both are defensible,
-and the alpha flow above never has to face it.
+and the beta flow above never has to face it.

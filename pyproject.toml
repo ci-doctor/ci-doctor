@@ -1,7 +1,7 @@
 [project]
 name = "ci-doctorr"
-# PEP 440, and the release pipeline owns it — see GUIDELINES.md §8. The `a0` seed is
-# the state before the first alpha: `uv version --bump alpha` makes it 0.0.1a1.
+# PEP 440, and the release pipeline owns it — see GUIDELINES.md §8. Each release runs
+# `uv version --bump beta`: 0.0.1a21 → 0.0.1b1 → 0.0.1b2.
 version = "0.0.1a21"
 description = "Postmortem CI failure analyzer: deterministic phase attribution plus one LLM explanation. Read-only, air-gap friendly."
 requires-python = ">=3.11"
@@ -23,7 +23,7 @@ dependencies = [
 ]
 classifiers = [
     "License :: OSI Approved :: MIT License",
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Build Tools",
     "Programming Language :: Python :: 3.11",
@@ -117,5 +117,5 @@ fail_under = 92
 show_missing = true
 
 # No [tool.semantic_release]: python-semantic-release is SemVer-only and cannot express
-# a PEP 440 alpha — it reads `0.0.1a1` as unparseable and writes `0.0.1-a.2`. The
+# a PEP 440 pre-release — it reads `0.0.1b1` as unparseable and writes `0.0.1-b.2`. The
 # pipeline bumps with `uv version` instead (GUIDELINES.md §8).

@@ -47,7 +47,7 @@ def test_scm_is_independent_of_ci(tmp_path):
 
 
 def test_the_old_provider_key_is_an_unknown_key(tmp_path):
-    """`provider:` was renamed `ci:`; in the alpha the old spelling is a typo like any other."""
+    """`provider:` was renamed `ci:`; before stable, the old spelling is a typo like any other."""
     p = tmp_path / ".ci-doctor.yml"
     p.write_text("provider: github\n")
     with pytest.raises(SetupError, match="provider"):

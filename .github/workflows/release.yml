@@ -1,6 +1,6 @@
 name: release
 
-# Every push to master with a feat/fix/BREAKING commit publishes the next alpha (0.0.1aN).
+# Every push to master with a feat/fix/BREAKING commit publishes the next beta (0.0.1bN).
 # The base version never moves; bumping it is a decision. See GUIDELINES.md §8.
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0               # the gate reads every commit since the last tag
           persist-credentials: false   # the push authenticates as the release App
 
-      # Docs, chores and refactors ride along in the next alpha instead of cutting one.
+      # Docs, chores and refactors ride along in the next beta instead of cutting one.
       - name: Is there anything to release?
         id: gate
         run: |
@@ -48,11 +48,11 @@ jobs:
           enable-cache: false
 
       # Working tree only: nothing is committed until everything below has built.
-      - name: Bump to the next alpha
+      - name: Bump to the next beta
         id: bump
         if: steps.gate.outputs.release == 'true'
         run: |
-          uv version --bump alpha --no-sync
+          uv version --bump beta --no-sync
           echo "version=$(uv version --short)" >> "$GITHUB_OUTPUT"
 
       - name: Build the distributions

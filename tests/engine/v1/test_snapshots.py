@@ -2,7 +2,7 @@
 
 Each `cases/*.yaml` compiles to its committed `*.plan.json`. A change that moves a
 snapshot changes a released format: that needs a new schema version instead.
-In alpha, format changes go into schema 1 and the snapshots are regenerated.
+Until the first stable release, format changes go into schema 1 and the snapshots are regenerated.
 `CI_DOCTOR_UPDATE_SNAPSHOTS=1` rewrites them.
 """
 
