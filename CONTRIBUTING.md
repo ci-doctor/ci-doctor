@@ -138,14 +138,14 @@ pipeline parses them, so the format is functional, not cosmetic.
 
 | Type | Effect |
 |---|---|
-| `feat:` `fix:` `BREAKING CHANGE:` in body (or `feat!:`) | ships the next alpha |
+| `feat:` `fix:` `BREAKING CHANGE:` in body (or `feat!:`) | ships the next beta |
 | `docs:` `test:` `chore:` `refactor:` `perf:` `ci:` | no release; rides along in the next one |
 
 `.github/workflows/release.yml` runs on every push to `master`: if any commit since the
-last tag is a `feat:`/`fix:`/`BREAKING`, it bumps to the next alpha (`0.0.1a2` →
-`0.0.1a3`), tags, builds and publishes to PyPI. Otherwise it no-ops.
+last tag is a `feat:`/`fix:`/`BREAKING`, it bumps to the next beta (`0.0.1b2` →
+`0.0.1b3`), tags, builds and publishes to PyPI. Otherwise it no-ops.
 
-The type does **not** pick how big the bump is — while the project is in alpha, only the
+The type does **not** pick how big the bump is — until the first stable release, only the
 counter moves. [GUIDELINES.md §8](GUIDELINES.md) has the versioning scheme and where it
 goes next. Keep the summary imperative and scoped to one change, and don't hand-edit the
 version in `pyproject.toml` or `uv.lock` — the pipeline owns both.
