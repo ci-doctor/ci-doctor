@@ -70,7 +70,7 @@ llm:
   gcp: null                      # backend: google-cloud; required there
   #   project: my-project        # optional; falls back to the environment's
   #   location: us-central1      # optional; e.g. us-central1 or global
-  max_input_tokens: 12000
+  max_input_tokens: 16000        # 70% is the log excerpt; lower for a small local model, raise for a hosted one
   temperature: 0.1
   timeout_seconds: 120           # wall-clock budget for one call, retries included
   max_retries: 1                 # SDK retries (not bedrock); Pydantic AI's own Agent retries once more on an invalid reply

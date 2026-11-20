@@ -109,8 +109,9 @@ class LLMConfig(Strict):
         default=None, description="Settings for backend: google-cloud. Required there."
     )
     max_input_tokens: int = Field(
-        default=12000,
-        description="Evidence budget. Larger bundles are truncated, and every truncation is visible in the report.",
+        default=16000,
+        description="Prompt budget, in tokens; 70% of it is the log excerpt. Lower it for a small local model's "
+        "context, raise it for a hosted one. Every cut to fit is visible in the report.",
     )
     temperature: float = Field(
         default=0.1, description="Sampling temperature. Low keeps the postmortem reproducible."
