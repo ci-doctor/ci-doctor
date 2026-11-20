@@ -176,6 +176,7 @@ class _Parse:
         """
         if _STEP_DONE.match(line) and self.current is not None and not self.nested:
             self.current.closed = True
+            self.current.failed = line.startswith("##[error]")  # only a non-zero exit is reported
             self.current = None
             # fall through: the annotation itself is the runner's verdict, and
             # belongs in the trailer where the classifier reads it.

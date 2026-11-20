@@ -126,6 +126,8 @@ class Section:
         end_ts: Epoch seconds from the closing marker.
         closed: Whether an explicit end marker was seen. False is a signal in
             itself — an unclosed section usually means the job died inside it.
+        failed: The runner said this section exited non-zero. Of several sections in
+            one phase, it is the one that broke the job.
         lines: The section's own lines, excluding its children's.
         children: Nested sections; nesting is legal and providers do use it.
     """
@@ -136,6 +138,7 @@ class Section:
     start_ts: int | None = None
     end_ts: int | None = None
     closed: bool = False  # saw an explicit end marker
+    failed: bool = False  # the runner reported a non-zero exit for it
     lines: list[LogLine] = field(default_factory=list)
     children: list["Section"] = field(default_factory=list)  # nesting is legal
 

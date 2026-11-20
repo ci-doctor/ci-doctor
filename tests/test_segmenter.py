@@ -6,6 +6,7 @@ GitLab first, then the GitHub Actions step/sub-group structure.
 import pytest
 
 from ci_doctor.config.loader import load_config
+from ci_doctor.core.evidence import evidence_lines
 from ci_doctor.core.models import Phase
 from ci_doctor.core.phases import assign_phases
 from ci_doctor.providers.github.segmenter import GitHubSegmenter
@@ -195,6 +196,24 @@ def test_a_step_stays_open_until_the_runner_reports_it():
     cancelled = _gh(gh_log([("Run ./soak.sh", ["still working..."])], cancelled=True))
     open_steps = [s for s in cancelled if not s.closed]
     assert [s.name for s in open_steps] == ["run"]
+
+
+def test_evidence_comes_from_the_step_that_failed_not_a_later_always_step():
+    """Every `run:` step is SCRIPT, so the last one is often an `if: always()` summary that passed.
+
+    The runner's `Process completed with exit code N` names the step that failed.
+    """
+    failed = "FAILED tests/test_x.py::test_y - AssertionError"
+    log = gh_log(
+        [
+            ("Run pytest -q", [failed, "##[error]Process completed with exit code 1."]),
+            ("Run echo coverage >> $GITHUB_STEP_SUMMARY", ["wrote the summary"]),
+        ],
+        exit_code=None,
+    )
+    lines = evidence_lines(_gh(log), Phase.SCRIPT)
+    assert failed in lines
+    assert "wrote the summary" not in lines
 
 
 def test_github_timestamp_strip_keeps_the_lines_indentation():

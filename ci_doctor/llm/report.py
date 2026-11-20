@@ -194,20 +194,23 @@ def _call_and_validate(client: LLMClient, prompt: str) -> Report | None:
 def _capped(text: str, limit: int = 2000) -> str:
     """Cap the excerpt for the report field, announcing the cut.
 
-    Keeps the tail, matching `budget.fit`: the failure lives at the end. The
-    marker is the point — a silent cut is a lie about the evidence, and this is
-    the last place the evidence can be lost before a human reads it.
+    Keeps the head and the tail, matching `budget.fit`: the head holds the first
+    error, the tail how the run ended. The marker is the point — a silent cut is a
+    lie about the evidence, and this is the last place the evidence can be lost
+    before a human reads it.
 
     Args:
         text: The excerpt.
         limit: Maximum characters to keep.
 
     Returns:
-        The text, or its last `limit` characters behind an elision marker.
+        The text, or its first third and last two thirds of `limit` around an
+        elision marker.
     """
     if len(text) <= limit:
         return text
-    return f"… [{len(text) - limit} characters elided] …\n{text[-limit:]}"
+    head = limit // 3
+    return f"{text[:head]}\n… [{len(text) - limit} characters elided] …\n{text[-(limit - head) :]}"
 
 
 def deterministic_report(
