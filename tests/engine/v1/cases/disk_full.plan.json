@@ -38,7 +38,8 @@
             "from_within": 0,
             "until": null,
             "while_": null,
-            "max_lines": null
+            "max_lines": null,
+            "condense": null
           }
         }
       ]

@@ -100,6 +100,7 @@ class WindowPlan:
         while_: Extend while the next line matches this.
         max_lines: Caps `until` / `while_`: the window holds at most this many lines
             from the anchor down. None when neither is set.
+        condense: Over budget, the window keeps only these lines and its anchor.
     """
 
     before: int = 0
@@ -109,6 +110,7 @@ class WindowPlan:
     until: Node | None = None
     while_: Node | None = None
     max_lines: int | None = None
+    condense: Node | None = None
 
 
 @dataclass(frozen=True)

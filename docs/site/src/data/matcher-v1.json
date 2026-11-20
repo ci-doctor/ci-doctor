@@ -120,6 +120,11 @@
       "field": "max_lines",
       "required": false,
       "description": "Lines from the anchor down, at most; required with `until` and `while`. 1-500."
+    },
+    {
+      "field": "condense",
+      "required": false,
+      "description": "The lines that matter most. Only when the evidence is over budget, the window's other lines are cut first, each cut marked; under budget it goes in whole."
     }
   ],
   "near": [
